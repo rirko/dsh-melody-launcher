@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 1,
+  "repository": "zhu1090093659/dsh-web-ui",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T11:47:55Z",
+  "analyzedAt": "2026-08-18T11:50:07.136Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "zhu1090093659/dsh-web-ui",
+    "defaultBranch": "main",
+    "kind": "plugin",
+    "componentKinds": [
+      "plugin"
+    ],
+    "summary": "检测到 14 个可安装组件，请选择需要的组件。",
+    "pluginAnalysis": {
+      "repository": "zhu1090093659/dsh-web-ui",
+      "defaultBranch": "main",
+      "installability": "choice",
+      "summary": "检测到 14 个可安装组件，请选择需要的组件。",
+      "targets": [
+        {
+          "id": "@linxin666/dsh-client-ui-aionui-panel:packages/dsh-aionui-panel",
+          "packageName": "@linxin666/dsh-client-ui-aionui-panel",
+          "version": "0.2.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": "packages/dsh-aionui-panel",
+          "commit": "878a66b5fbc3b32fad199bfc9cbac2dcd05d826d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        },
+        {
+          "id": "@linxin666/dsh-client-ui-community-plugins:packages/dsh-community-plugins",
+          "packageName": "@linxin666/dsh-client-ui-community-plugins",
+          "version": "0.2.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": "packages/dsh-community-plugins",
+          "commit": "878a66b5fbc3b32fad199bfc9cbac2dcd05d826d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        },
+        {
+          "id": "@linxin666/dsh-client-ui-git-graph:packages/dsh-git-graph",
+          "packageName": "@linxin666/dsh-client-ui-git-graph",
+          "version": "0.2.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": "packages/dsh-git-graph",
+          "commit": "878a66b5fbc3b32fad199bfc9cbac2dcd05d826d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": "^22.19.0 || >=24.0.0"
+        },
+        {
+          "id": "@linxin666/dsh-liangshen:packages/dsh-liangshen",
+          "packageName": "@linxin666/dsh-liangshen",
+          "version": "0.2.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "unknown",
+          "subdirectory": "packages/dsh-liangshen",
+          "commit": "878a66b5fbc3b32fad199bfc9cbac2dcd05d826d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": "^22.19.0 || >=24.0.0"
+        },
+        {
+          "id": "@linxin666/dsh-pet:packages/dsh-pet",
+          "packageName": "@linxin666/dsh-pet",
+          "version": "0.2.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": "packages/dsh-pet",
+          "commit": "878a66b5fbc3b32fad199bfc9cbac2dcd05d826d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": "^22.19.0 || >=24.0.0"
+        },
+        {
+          "id": "@linxin666/dsh-remote-web-ui:packages/dsh-remote-web-ui",
+          "packageName": "@linxin666/dsh-remote-web-ui",
+          "version": "0.2.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": "packages/dsh-remote-web-ui",
+          "commit": "878a66b5fbc3b32fad199bfc9cbac2dcd05d826d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": "^22.19.0 || >=24.0.0"
+        },
+        {
+          "id": "@linxin666/dsh-client-ui-skill-explorer:packages/dsh-skill-explorer",
+          "packageName": "@linxin666/dsh-client-ui-skill-explorer",
+          "version": "0.2.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": "packages/dsh-skill-explorer",
+          "commit": "878a66b5fbc3b32fad199bfc9cbac2dcd05d826d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        },
+        {
+          "id": "@linxin666/dsh-skins:packages/dsh-skins",
+          "packageName": "@linxin666/dsh-skins",
+          "version": "0.2.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "unknown",
+          "subdirectory": "packages/dsh-skins",
+          "commit": "878a66b5fbc3b32fad199bfc9cbac2dcd05d826d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        },
+        {
+          "id": "@linxin666/dsh-ssh:packages/dsh-ssh",
+          "packageName": "@linxin666/dsh-ssh",
+          "version": "0.2.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": "packages/dsh-ssh",
+          "commit": "878a66b5fbc3b32fad199bfc9cbac2dcd05d826d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": "^22.19.0 || >=24.0.0"
+        },
+        {
+          "id": "@linxin666/dsh-client-ui-task-board:packages/dsh-task-board",
+          "packageName": "@linxin666/dsh-client-ui-task-board",
+          "version": "0.2.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": "packages/dsh-task-board",
+          "commit": "878a66b5fbc3b32fad199bfc9cbac2dcd05d826d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        },
+        {
+          "id": "@linxin666/dsh-tool-describe-image:packages/dsh-tool-describe-image",
+          "packageName": "@linxin666/dsh-tool-describe-image",
+          "version": "0.2.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": "packages/dsh-tool-describe-image",
+          "commit": "878a66b5fbc3b32fad199bfc9cbac2dcd05d826d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": "^22.19.0 || >=24.0.0"
+        },
+        {
+          "id": "@linxin666/dsh-web-ui-all:packages/dsh-web-ui-all",
+          "packageName": "@linxin666/dsh-web-ui-all",
+          "version": "0.2.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": "packages/dsh-web-ui-all",
+          "commit": "878a66b5fbc3b32fad199bfc9cbac2dcd05d826d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        },
+        {
+          "id": "@linxin666/dsh-client-ui-web-ui-settings:packages/dsh-web-ui-settings",
+          "packageName": "@linxin666/dsh-client-ui-web-ui-settings",
+          "version": "0.2.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": "packages/dsh-web-ui-settings",
+          "commit": "878a66b5fbc3b32fad199bfc9cbac2dcd05d826d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        },
+        {
+          "id": "@linxin666/dsh-client-ui-skin-center:packages/skins/skin-center",
+          "packageName": "@linxin666/dsh-client-ui-skin-center",
+          "version": "0.2.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": "packages/skins/skin-center",
+          "commit": "878a66b5fbc3b32fad199bfc9cbac2dcd05d826d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        }
+      ]
+    },
+    "skillAnalysis": null,
+    "applicationAnalysis": {
+      "repository": "zhu1090093659/dsh-web-ui",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": [
+      "Skill 检测失败：仓库压缩包过大，已停止 Skill 检测。"
+    ]
+  }
+}
