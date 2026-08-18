@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "repository": "YaoApp/yao",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T14:23:21Z",
+  "analyzedAt": "2026-08-18T14:46:00.138Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "YaoApp/yao",
+    "defaultBranch": "main",
+    "kind": "skill",
+    "componentKinds": [
+      "skill"
+    ],
+    "summary": "确认包含 10 个有效 DSH Skills。",
+    "pluginAnalysis": {
+      "repository": "YaoApp/yao",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到同时包含 package.json、dsh.bundle.patch 和对应补丁文件的插件组件。",
+      "targets": []
+    },
+    "skillAnalysis": {
+      "repository": "YaoApp/yao",
+      "defaultBranch": "main",
+      "installability": "choice",
+      "summary": "确认包含 10 个有效 DSH Skills。",
+      "targets": [
+        {
+          "id": "yao-agent:tools/skills/yao-agent/SKILL.md",
+          "name": "yao-agent",
+          "description": "Agent management expert. ALWAYS invoke this skill when you need to list available agents, download or reference agent source code, deploy agent code to the host, or query the LLM connector matrix. Do not guess agent structures — use this skill first.",
+          "sourcePath": "tools/skills/yao-agent/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "yao-audio:tools/skills/yao-audio/SKILL.md",
+          "name": "yao-audio",
+          "description": "Audio expert. ALWAYS invoke this skill when the user asks to transcribe, recognize, or convert speech/audio to text.",
+          "sourcePath": "tools/skills/yao-audio/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "yao-board:tools/skills/yao-board/SKILL.md",
+          "name": "yao-board",
+          "description": "Kanban board and task query expert. ALWAYS invoke this skill when the user asks about boards, tasks, task status, or project progress. Do not guess task state — use this skill first.",
+          "sourcePath": "tools/skills/yao-board/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "yao-doc:tools/skills/yao-doc/SKILL.md",
+          "name": "yao-doc",
+          "description": "Yao process documentation expert. ALWAYS invoke this skill when the user needs to discover available processes, read process signatures, or validate process names. Do not guess process APIs — use this skill first.",
+          "sourcePath": "tools/skills/yao-doc/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "yao-image:tools/skills/yao-image/SKILL.md",
+          "name": "yao-image",
+          "description": "Image expert. ALWAYS invoke this skill when you need to read, analyze, describe, or generate images. Use for screenshots, photos, charts, diagrams, AI-generated images, or any visual content.",
+          "sourcePath": "tools/skills/yao-image/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "yao-process:tools/skills/yao-process/SKILL.md",
+          "name": "yao-process",
+          "description": "Yao process execution expert. ALWAYS invoke this skill when the user needs to call a Yao process, query data models, run scripts, or check process permissions. Do not call processes without checking this skill first.",
+          "sourcePath": "tools/skills/yao-process/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "yao-secret:tools/skills/yao-secret/SKILL.md",
+          "name": "yao-secret",
+          "description": "Secret management expert. ALWAYS invoke this skill when you need to read API keys, tokens, or other secrets configured by the user. Never hardcode credentials — use this skill to retrieve them securely.",
+          "sourcePath": "tools/skills/yao-secret/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "yao-web:tools/skills/yao-web/SKILL.md",
+          "name": "yao-web",
+          "description": "Web information retrieval expert. ALWAYS invoke this skill when the user needs to search the web, fetch a URL, or access real-time information beyond training data. Do not guess or use stale knowledge — use this skill first.",
+          "sourcePath": "tools/skills/yao-web/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "yao-workspace:tools/skills/yao-workspace/SKILL.md",
+          "name": "yao-workspace",
+          "description": "Workspace file I/O expert. ALWAYS invoke this skill when you need to list workspaces, read or write files in a workspace on a remote node, or browse workspace directories. Use this for cross-node file operations — for local sandbox files, use standard filesystem tools instead.",
+          "sourcePath": "tools/skills/yao-workspace/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "yao-workspace-config:tools/skills/yao-workspace-config/SKILL.md",
+          "name": "yao-workspace-config",
+          "description": "Workspace Git identity and credential management. ALWAYS invoke this skill when the user asks about configuring Git user info, adding HTTPS tokens, importing SSH keys, or managing workspace-level Git authentication.",
+          "sourcePath": "tools/skills/yao-workspace-config/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "YaoApp/yao",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

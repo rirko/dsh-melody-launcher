@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "repository": "ysr666/dsh-vision-router",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T15:27:53Z",
+  "analyzedAt": "2026-08-18T15:39:34.634Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "ysr666/dsh-vision-router",
+    "defaultBranch": "main",
+    "kind": "plugin",
+    "componentKinds": [
+      "plugin"
+    ],
+    "summary": "检测到可安装的 dsh-vision-router。",
+    "pluginAnalysis": {
+      "repository": "ysr666/dsh-vision-router",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 dsh-vision-router。",
+      "targets": [
+        {
+          "id": "dsh-vision-router:.",
+          "packageName": "dsh-vision-router",
+          "version": "1.6.1",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": null,
+          "commit": "30d890e7b964fea0b9ab9cd94b5b5d33a2ea5468",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": "^22.19.0 || >=24.0.0"
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "ysr666/dsh-vision-router",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到符合 DSH 规范的 SKILL.md 或单文件 Skill。",
+      "targets": []
+    },
+    "applicationAnalysis": {
+      "repository": "ysr666/dsh-vision-router",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

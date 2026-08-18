@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "repository": "Starfie1d1272/dsh-github-skills",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T07:51:38Z",
+  "analyzedAt": "2026-08-18T14:42:49.984Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "Starfie1d1272/dsh-github-skills",
+    "defaultBranch": "main",
+    "kind": "hybrid",
+    "componentKinds": [
+      "plugin",
+      "skill"
+    ],
+    "summary": "确认包含 1 个 Plugin、3 个 Skill。",
+    "pluginAnalysis": {
+      "repository": "Starfie1d1272/dsh-github-skills",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 dsh-github-skills。",
+      "targets": [
+        {
+          "id": "dsh-github-skills:.",
+          "packageName": "dsh-github-skills",
+          "version": "0.2.1",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "unknown",
+          "subdirectory": null,
+          "commit": "5876d3ed83242c2c9cbc5fe7130f5db8b9f84564",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": "^22.19.0 || >=24.0.0"
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "Starfie1d1272/dsh-github-skills",
+      "defaultBranch": "main",
+      "installability": "choice",
+      "summary": "确认包含 3 个有效 DSH Skills。",
+      "targets": [
+        {
+          "id": "gh-address-comments:skills/gh-address-comments/SKILL.md",
+          "name": "gh-address-comments",
+          "description": "Inspect or address GitHub pull request review feedback using thread-aware state. Use for requested changes, unresolved inline review threads, or review comments; fixing feedback authorizes local edits, not GitHub writes.",
+          "sourcePath": "skills/gh-address-comments/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "gh-fix-ci:skills/gh-fix-ci/SKILL.md",
+          "name": "gh-fix-ci",
+          "description": "Diagnose or fix failing GitHub Actions checks from real check and log evidence. Use when the user asks why CI failed or wants failing checks fixed; non-Actions CI is report-only.",
+          "sourcePath": "skills/gh-fix-ci/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "gh-publish:skills/gh-publish/SKILL.md",
+          "name": "gh-publish",
+          "description": "Publish task-scoped changes to GitHub through a branch/commit/push/PR flow, including fork-based external contributions. Use when the user wants changes pushed or a PR opened; draft PR is the default.",
+          "sourcePath": "skills/gh-publish/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "Starfie1d1272/dsh-github-skills",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

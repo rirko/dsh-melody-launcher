@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "repository": "Ychris12138/dsh-usage-stats",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T15:31:59Z",
+  "analyzedAt": "2026-08-18T15:46:00.592Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "Ychris12138/dsh-usage-stats",
+    "defaultBranch": "main",
+    "kind": "plugin",
+    "componentKinds": [
+      "plugin"
+    ],
+    "summary": "检测到可安装的 dsh-usage-stats。",
+    "pluginAnalysis": {
+      "repository": "Ychris12138/dsh-usage-stats",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 dsh-usage-stats。",
+      "targets": [
+        {
+          "id": "dsh-usage-stats:.",
+          "packageName": "dsh-usage-stats",
+          "version": "0.2.4",
+          "source": "github",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": null,
+          "commit": "b853e7dacd6f2526190db8d3206821945205184d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "Ychris12138/dsh-usage-stats",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到符合 DSH 规范的 SKILL.md 或单文件 Skill。",
+      "targets": []
+    },
+    "applicationAnalysis": {
+      "repository": "Ychris12138/dsh-usage-stats",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

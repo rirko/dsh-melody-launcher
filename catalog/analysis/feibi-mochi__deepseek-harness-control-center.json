@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "repository": "feibi-mochi/deepseek-harness-control-center",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T15:28:11Z",
+  "analyzedAt": "2026-08-18T15:45:48.136Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "feibi-mochi/deepseek-harness-control-center",
+    "defaultBranch": "main",
+    "kind": "plugin",
+    "componentKinds": [
+      "plugin"
+    ],
+    "summary": "检测到可安装的 deepseek-harness-wallet。",
+    "pluginAnalysis": {
+      "repository": "feibi-mochi/deepseek-harness-control-center",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 deepseek-harness-wallet。",
+      "targets": [
+        {
+          "id": "deepseek-harness-wallet:.",
+          "packageName": "deepseek-harness-wallet",
+          "version": "0.1.5",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": null,
+          "commit": "da3dbd138f48f20ad7af74fee9863318816ab097",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": "^22.19.0 || >=24.0.0"
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "feibi-mochi/deepseek-harness-control-center",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到符合 DSH 规范的 SKILL.md 或单文件 Skill。",
+      "targets": []
+    },
+    "applicationAnalysis": {
+      "repository": "feibi-mochi/deepseek-harness-control-center",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

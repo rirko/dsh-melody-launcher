@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "repository": "amruthpillai/reactive-resume",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T14:27:34Z",
+  "analyzedAt": "2026-08-18T14:46:47.642Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "amruthpillai/reactive-resume",
+    "defaultBranch": "main",
+    "kind": "skill",
+    "componentKinds": [
+      "skill"
+    ],
+    "summary": "确认是 DSH Skill：resume-builder",
+    "pluginAnalysis": {
+      "repository": "amruthpillai/reactive-resume",
+      "defaultBranch": "main",
+      "installability": "application",
+      "summary": "这是完整应用或源码工作区，仓库根目录没有可安装的 DSH Bundle。",
+      "targets": []
+    },
+    "skillAnalysis": {
+      "repository": "amruthpillai/reactive-resume",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "确认是 DSH Skill：resume-builder",
+      "targets": [
+        {
+          "id": "resume-builder:skills/resume-builder/SKILL.md",
+          "name": "resume-builder",
+          "description": "Generate professional resumes that conform to the Reactive Resume schema. Use when the user wants to create, build, or generate a resume through conversational AI, or asks about resume structure, sections, or content. This skill guides the agent to ask clarifying questions, avoid hallucination, and produce valid JSON output for https://rxresu.me.",
+          "sourcePath": "skills/resume-builder/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "amruthpillai/reactive-resume",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

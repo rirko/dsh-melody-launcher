@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "repository": "weshopai/weshop-dsh-plugin",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T02:55:59Z",
+  "analyzedAt": "2026-08-18T14:43:53.986Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "weshopai/weshop-dsh-plugin",
+    "defaultBranch": "main",
+    "kind": "hybrid",
+    "componentKinds": [
+      "plugin",
+      "skill"
+    ],
+    "summary": "确认包含 1 个 Plugin、3 个 Skill。",
+    "pluginAnalysis": {
+      "repository": "weshopai/weshop-dsh-plugin",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 weshop-dsh-plugin。",
+      "targets": [
+        {
+          "id": "weshop-dsh-plugin:.",
+          "packageName": "weshop-dsh-plugin",
+          "version": "1.0.1",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": null,
+          "commit": "bb01658c4707ff9a5491903f324db22da74bab3e",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "weshopai/weshop-dsh-plugin",
+      "defaultBranch": "main",
+      "installability": "choice",
+      "summary": "确认包含 3 个有效 DSH Skills。",
+      "targets": [
+        {
+          "id": "inspect-weshop-canvas:skills/inspect-weshop-canvas/SKILL.md",
+          "name": "inspect-weshop-canvas",
+          "description": "Read, generate for, edit, and operate the current WeShop for DeepSeek Harness canvas. Use whenever the user asks about canvas materials/results or asks the agent to generate, upscale, transform, reverse-prompt, or locally edit an image for the canvas. All generated outputs must be published automatically with weshop_canvas_publish_result; never use the webpage Add button.",
+          "sourcePath": "skills/inspect-weshop-canvas/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "open-weshop-2-0:skills/open-weshop-2-0/SKILL.md",
+          "name": "open-weshop-2-0",
+          "description": "Use whenever the user asks to open, launch, show, or display WeShop for DeepSeek Harness or the WeShop canvas workspace.",
+          "sourcePath": "skills/open-weshop-2-0/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "weshop-openapi:skills/weshop-openapi/SKILL.md",
+          "name": "weshop-openapi",
+          "description": "Use for WeShop image and video generation, editing, and transformation tasks — virtual try-on, model swap, background replace, pose change, canvas expand, background removal, AI video generation, product/photo generation, and more.",
+          "sourcePath": "skills/weshop-openapi/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "weshopai/weshop-dsh-plugin",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

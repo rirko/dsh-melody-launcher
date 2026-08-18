@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "repository": "Nagi-ovo/dsh-visualize",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T13:14:07Z",
+  "analyzedAt": "2026-08-18T14:42:36.911Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "Nagi-ovo/dsh-visualize",
+    "defaultBranch": "main",
+    "kind": "plugin",
+    "componentKinds": [
+      "plugin"
+    ],
+    "summary": "检测到可安装的 @dsh-external/dsh-visualize。",
+    "pluginAnalysis": {
+      "repository": "Nagi-ovo/dsh-visualize",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 @dsh-external/dsh-visualize。",
+      "targets": [
+        {
+          "id": "@dsh-external/dsh-visualize:.",
+          "packageName": "@dsh-external/dsh-visualize",
+          "version": "0.1.2",
+          "source": "github",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": null,
+          "commit": "e86f68fe66b980a0ebeed8ef7409522b0b720bed",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "Nagi-ovo/dsh-visualize",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到符合 DSH 规范的 SKILL.md 或单文件 Skill。",
+      "targets": []
+    },
+    "applicationAnalysis": {
+      "repository": "Nagi-ovo/dsh-visualize",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

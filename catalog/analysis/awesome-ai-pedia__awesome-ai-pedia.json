@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "repository": "Awesome-AI-Pedia/Awesome-AI-Pedia",
+  "defaultBranch": "master",
+  "repositoryUpdatedAt": "2026-08-18T13:44:13Z",
+  "analyzedAt": "2026-08-18T14:46:01.674Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "Awesome-AI-Pedia/Awesome-AI-Pedia",
+    "defaultBranch": "master",
+    "kind": "invalid",
+    "componentKinds": [],
+    "summary": "没有找到符合 DSH 规范的 Plugin、Skill 或应用加载项。",
+    "pluginAnalysis": {
+      "repository": "Awesome-AI-Pedia/Awesome-AI-Pedia",
+      "defaultBranch": "master",
+      "installability": "invalid",
+      "summary": "没有找到同时包含 package.json、dsh.bundle.patch 和对应补丁文件的插件组件。",
+      "targets": []
+    },
+    "skillAnalysis": {
+      "repository": "Awesome-AI-Pedia/Awesome-AI-Pedia",
+      "defaultBranch": "master",
+      "installability": "invalid",
+      "summary": "没有找到符合 DSH 规范的 SKILL.md 或单文件 Skill。",
+      "targets": []
+    },
+    "applicationAnalysis": {
+      "repository": "Awesome-AI-Pedia/Awesome-AI-Pedia",
+      "defaultBranch": "master",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

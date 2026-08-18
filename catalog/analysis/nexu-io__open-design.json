@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "repository": "nexu-io/open-design",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T14:31:19Z",
+  "analyzedAt": "2026-08-18T14:47:37.889Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "nexu-io/open-design",
+    "defaultBranch": "main",
+    "kind": "plugin",
+    "componentKinds": [
+      "plugin"
+    ],
+    "summary": "检测到可安装的 @open-design/dsh-runtime。",
+    "pluginAnalysis": {
+      "repository": "nexu-io/open-design",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 @open-design/dsh-runtime。",
+      "targets": [
+        {
+          "id": "@open-design/dsh-runtime:packages/dsh-runtime",
+          "packageName": "@open-design/dsh-runtime",
+          "version": "0.1.0",
+          "source": "archive-subdirectory",
+          "profileName": "web",
+          "platform": "unknown",
+          "subdirectory": "packages/dsh-runtime",
+          "commit": "42faa84d0c90a5cf058bc2baa6a793cbc9ab59be",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": ">=24"
+        }
+      ]
+    },
+    "skillAnalysis": null,
+    "applicationAnalysis": {
+      "repository": "nexu-io/open-design",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": [
+      "Skill 检测失败：net::ERR_NETWORK_IO_SUSPENDED"
+    ]
+  }
+}

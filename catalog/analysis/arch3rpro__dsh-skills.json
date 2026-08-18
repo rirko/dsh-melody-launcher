@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "repository": "arch3rPro/dsh-skills",
+  "defaultBranch": "dsh-skills",
+  "repositoryUpdatedAt": "2026-08-18T08:56:14Z",
+  "analyzedAt": "2026-08-18T14:42:23.398Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "arch3rPro/dsh-skills",
+    "defaultBranch": "dsh-skills",
+    "kind": "skill",
+    "componentKinds": [
+      "skill"
+    ],
+    "summary": "确认包含 15 个有效 DSH Skills。",
+    "pluginAnalysis": {
+      "repository": "arch3rPro/dsh-skills",
+      "defaultBranch": "dsh-skills",
+      "installability": "invalid",
+      "summary": "没有找到同时包含 package.json、dsh.bundle.patch 和对应补丁文件的插件组件。",
+      "targets": []
+    },
+    "skillAnalysis": {
+      "repository": "arch3rPro/dsh-skills",
+      "defaultBranch": "dsh-skills",
+      "installability": "choice",
+      "summary": "确认包含 15 个有效 DSH Skills。",
+      "targets": [
+        {
+          "id": "code-conventions:skills/architecture/code-conventions/SKILL.md",
+          "name": "code-conventions",
+          "description": "General code conventions that keep a codebase predictable — reversible side effects, switching on discriminant tags, explicit-over-implicit at boundaries, configuration over hardcoded tunables, branded opaque ids, trusting types at typed boundaries, and honest empty catches. Use when writing, reviewing, or refactoring code in a typed language with an explicit boundary structure (services, plugins, modules, packages).",
+          "sourcePath": "skills/architecture/code-conventions/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "code-review:skills/process/code-review/SKILL.md",
+          "name": "code-review",
+          "description": "Review a change along two axes — Standards (does the code follow the repo's documented standards, plus a smell baseline?) and Spec (does it faithfully implement the originating issue/spec?) — run as parallel sub-agents and reported side by side, prioritizing correctness, lifecycle, and security over style. Use when reviewing a branch, PR, or work-in-progress change, or when asked to \"review since X\".",
+          "sourcePath": "skills/process/code-review/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "decision-records:skills/process/decision-records/SKILL.md",
+          "name": "decision-records",
+          "description": "Record design decisions as Architecture Decision Records (ADRs) so the why survives — with a classification, a lifecycle, and a mandatory alternatives-considered section. Use when making or proposing a non-trivial design decision, when reviewing a change that affects architecture, contracts, processes, or formats, or when deciding whether to archive a past decision. Applies to any project that wants its decision rationale to outlive the people who made it.",
+          "sourcePath": "skills/process/decision-records/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "defensive-patterns:skills/architecture/defensive-patterns/SKILL.md",
+          "name": "defensive-patterns",
+          "description": "Defensive-programming patterns to apply when writing or reviewing lifecycle, concurrency, subprocess, teardown, error-reporting, or untrusted-IO code. Use when a change touches async setup or teardown, callbacks, spawned processes, workers, event listeners, disposal, error aggregation, temp files, or anything receiving untrusted input — and when reviewing a PR that touches any of those.",
+          "sourcePath": "skills/architecture/defensive-patterns/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "documentation-placement:skills/documentation/documentation-placement/SKILL.md",
+          "name": "documentation-placement",
+          "description": "Decide where documentation belongs so each fact has exactly one home — classify documents as tutorial or reference, place each fact in the tier that owns it and link everywhere else, and keep budgets as guardrails rather than reduction targets. Use when writing, moving, restructuring, or auditing documentation, or deciding where a fact should be documented.",
+          "sourcePath": "skills/documentation/documentation-placement/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "event-contract-matrix:skills/documentation/event-contract-matrix/SKILL.md",
+          "name": "event-contract-matrix",
+          "description": "Maintain an explicit matrix of which module dispatches each event and which modules listen — many-to-many, with deliberate bypass sites noted — so event contracts stay a single source of truth. Use in event-driven or pub/sub systems where events cross module boundaries.",
+          "sourcePath": "skills/documentation/event-contract-matrix/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "extension-points-and-seams:skills/architecture/extension-points-and-seams/SKILL.md",
+          "name": "extension-points-and-seams",
+          "description": "Design for swappable capabilities — when a capability may have multiple implementations or consumers, separate it into contract / implementation / consumer so they vary independently, and route new behavior through documented extension points instead of patching a core. Use when designing a new capability, deciding whether to split an interface, or adding behavior to an existing system. Out of scope (no seam needed) when a capability has a single fixed implementation and consumer.",
+          "sourcePath": "skills/architecture/extension-points-and-seams/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "minimal-evidence-checks:skills/process/minimal-evidence-checks/SKILL.md",
+          "name": "minimal-evidence-checks",
+          "description": "Run the smallest set of checks that covers an outgoing change before pushing, committing, or claiming checks pass — select evidence by the surface the diff touches, never reflexively run the full suite, and fix or explain a failure rather than pushing and hoping CI differs. Use before push, force-push, marking ready for review, or claiming checks pass.",
+          "sourcePath": "skills/process/minimal-evidence-checks/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "module-layering:skills/architecture/module-layering/SKILL.md",
+          "name": "module-layering",
+          "description": "Know and enforce your module dependency graph — derive inter-module edges from the canonical dependency signal, catch circular dependencies, and enforce intended layering with tooling. Use when a codebase has many modules or packages and layering is a real concern.",
+          "sourcePath": "skills/architecture/module-layering/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "postmortem:skills/process/postmortem/SKILL.md",
+          "name": "postmortem",
+          "description": "Write a backward-looking failure record — executive summary, timeline, root cause, and guardrails — when a bug was subtle, systemic, and costly to rediscover. Use after a hard incident or regression, or when deciding whether one is owed. It records what broke and why it escaped; complement it with decision-records, which record forward-looking decisions.",
+          "sourcePath": "skills/process/postmortem/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "pr-history-hygiene:skills/process/pr-history-hygiene/SKILL.md",
+          "name": "pr-history-hygiene",
+          "description": "Keep pull-request history deliberate and safe — split independent changes, rewrite with lease-protected force-push (never raw force), apply one kind label plus all material area labels, and land a stack of dependent PRs through the platform's native stack feature rather than manually merging and retargeting. Use when preparing, rewriting, labeling, merging, or stacking pull requests.",
+          "sourcePath": "skills/process/pr-history-hygiene/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "prose-standard:skills/documentation/prose-standard/SKILL.md",
+          "name": "prose-standard",
+          "description": "Write prose that preserves every contract while deleting reasoning transcripts, repetition, and decoration — across comments, JSDoc, docs, prompts, diagnostics, and user-visible strings. Use when writing, reviewing, trimming, restoring, or auditing prose, or deciding where documentation or a comment is required. It owns two rules: preserve the complete proposition, and never let an authoring-session vantage leak into durable text.",
+          "sourcePath": "skills/documentation/prose-standard/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "responding-to-review-on-a-stack:skills/process/responding-to-review-on-a-stack/SKILL.md",
+          "name": "responding-to-review-on-a-stack",
+          "description": "Respond to code review across a dependent PR stack — fix on the PR that introduced the issue, propagate the fix up-stack, keep each review fix a distinct commit, lease-protect any rewrite, and re-audit threads, approvals, and checks after every rewrite. Use when review comments span several stacked PRs.",
+          "sourcePath": "skills/process/responding-to-review-on-a-stack/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "runtime-invariants:skills/testing/runtime-invariants/SKILL.md",
+          "name": "runtime-invariants",
+          "description": "Assert only authoritative state at runtime — authoritative event streams or mutable data, never service or method presence — with each check owned by the module it guards and failing loud at startup. Use when adding runtime invariant checks, or deciding what an invariant may assert. It complements testing-tiers, which picks the test tier.",
+          "sourcePath": "skills/testing/runtime-invariants/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "testing-tiers:skills/testing/testing-tiers/SKILL.md",
+          "name": "testing-tiers",
+          "description": "Choose the right test tier for a change and keep the suite meaningful — unit, integration, real-entry-path, end-to-end, and snapshot tiers; test the real entry path rather than a hand-built harness; verify the world rather than the component's self-report; prefer the real implementation over a mock; and treat line coverage as necessary, never sufficient. Use when writing, planning, or reviewing tests, deciding what a change needs to be tested, or when a suite is green but the product is broken.",
+          "sourcePath": "skills/testing/testing-tiers/SKILL.md",
+          "format": "bundle",
+          "revision": "dsh-skills",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "arch3rPro/dsh-skills",
+      "defaultBranch": "dsh-skills",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "repository": "titanwings/colleague-skill",
+  "defaultBranch": "dot-skill",
+  "repositoryUpdatedAt": "2026-08-18T14:30:14Z",
+  "analyzedAt": "2026-08-18T14:43:50.937Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "titanwings/colleague-skill",
+    "defaultBranch": "dot-skill",
+    "kind": "skill",
+    "componentKinds": [
+      "skill"
+    ],
+    "summary": "确认是 DSH Skill：dot-skill",
+    "pluginAnalysis": {
+      "repository": "titanwings/colleague-skill",
+      "defaultBranch": "dot-skill",
+      "installability": "invalid",
+      "summary": "没有找到同时包含 package.json、dsh.bundle.patch 和对应补丁文件的插件组件。",
+      "targets": []
+    },
+    "skillAnalysis": {
+      "repository": "titanwings/colleague-skill",
+      "defaultBranch": "dot-skill",
+      "installability": "ready",
+      "summary": "确认是 DSH Skill：dot-skill",
+      "targets": [
+        {
+          "id": "dot-skill:SKILL.md",
+          "name": "dot-skill",
+          "description": "Unified meta-skill engine for distilling colleague, relationship, or celebrity characters into reusable Skills. | 统一的 meta-skill 引擎，把 colleague、relationship、celebrity 三类对象蒸馏成可复用 Skill。",
+          "sourcePath": "SKILL.md",
+          "format": "bundle",
+          "revision": "dot-skill",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "titanwings/colleague-skill",
+      "defaultBranch": "dot-skill",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "repository": "vectorize-io/hindsight",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T13:09:17Z",
+  "analyzedAt": "2026-08-18T13:18:13.836Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "vectorize-io/hindsight",
+    "defaultBranch": "main",
+    "kind": "plugin",
+    "componentKinds": [
+      "plugin"
+    ],
+    "summary": "检测到可安装的 @vectorize-io/hindsight-coding-agents。",
+    "pluginAnalysis": {
+      "repository": "vectorize-io/hindsight",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 @vectorize-io/hindsight-coding-agents。",
+      "targets": [
+        {
+          "id": "@vectorize-io/hindsight-coding-agents:hindsight-integrations/coding-agents",
+          "packageName": "@vectorize-io/hindsight-coding-agents",
+          "version": "0.3.4",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "unknown",
+          "subdirectory": "hindsight-integrations/coding-agents",
+          "commit": "e256a7409b484d66649bcd56e53ddfa37b904ac6",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        }
+      ]
+    },
+    "skillAnalysis": null,
+    "applicationAnalysis": {
+      "repository": "vectorize-io/hindsight",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": [
+      "Skill 检测失败：仓库压缩包过大，已停止 Skill 检测。"
+    ]
+  }
+}

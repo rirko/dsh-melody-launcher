@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "repository": "NanmiCoder/dsh-agent-teams",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T15:51:16Z",
+  "analyzedAt": "2026-08-18T15:52:25.073Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "NanmiCoder/dsh-agent-teams",
+    "defaultBranch": "main",
+    "kind": "hybrid",
+    "componentKinds": [
+      "plugin",
+      "skill"
+    ],
+    "summary": "确认包含 1 个 Plugin、1 个 Skill。",
+    "pluginAnalysis": {
+      "repository": "NanmiCoder/dsh-agent-teams",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 @nanmicoder/dsh-agent-teams。",
+      "targets": [
+        {
+          "id": "@nanmicoder/dsh-agent-teams:.",
+          "packageName": "@nanmicoder/dsh-agent-teams",
+          "version": "0.1.7",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": null,
+          "commit": "763d88f0d5060f6009b87764d958e6caa18bade8",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": "^22.19.0 || >=24"
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "NanmiCoder/dsh-agent-teams",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "确认是 DSH Skill：dsh-plugin-development",
+      "targets": [
+        {
+          "id": "dsh-plugin-development:skills/dsh-plugin-development/SKILL.md",
+          "name": "dsh-plugin-development",
+          "description": "开发、维护、分发和验证 DeepSeek Harness (DSH) 插件的执行型 Skill。覆盖 host/client 形态判断、bundle/profile 契约、Service 与函数插件、工具、HTTP、持久化、slot、Conversation Node、客户端构建、HMR、GitHub 安装和真实组合验证。",
+          "sourcePath": "skills/dsh-plugin-development/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "NanmiCoder/dsh-agent-teams",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

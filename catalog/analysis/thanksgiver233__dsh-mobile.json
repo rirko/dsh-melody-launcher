@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "repository": "Thanksgiver233/dsh-mobile",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T09:05:58Z",
+  "analyzedAt": "2026-08-18T14:42:21.804Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "Thanksgiver233/dsh-mobile",
+    "defaultBranch": "main",
+    "kind": "invalid",
+    "componentKinds": [],
+    "summary": "没有找到符合 DSH 规范的 Plugin、Skill 或应用加载项。",
+    "pluginAnalysis": {
+      "repository": "Thanksgiver233/dsh-mobile",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到同时包含 package.json、dsh.bundle.patch 和对应补丁文件的插件组件。",
+      "targets": []
+    },
+    "skillAnalysis": {
+      "repository": "Thanksgiver233/dsh-mobile",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到符合 DSH 规范的 SKILL.md 或单文件 Skill。",
+      "targets": []
+    },
+    "applicationAnalysis": {
+      "repository": "Thanksgiver233/dsh-mobile",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

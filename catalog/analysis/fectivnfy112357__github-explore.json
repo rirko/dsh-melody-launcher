@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "repository": "Fectivnfy112357/github-explore",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T13:59:06Z",
+  "analyzedAt": "2026-08-18T14:42:24.491Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "Fectivnfy112357/github-explore",
+    "defaultBranch": "main",
+    "kind": "hybrid",
+    "componentKinds": [
+      "plugin",
+      "skill"
+    ],
+    "summary": "确认包含 1 个 Plugin、1 个 Skill。",
+    "pluginAnalysis": {
+      "repository": "Fectivnfy112357/github-explore",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 github-explore。",
+      "targets": [
+        {
+          "id": "github-explore:.",
+          "packageName": "github-explore",
+          "version": "3.1.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "unknown",
+          "subdirectory": null,
+          "commit": "5533f3b46fd1e03e270ea448f0bb050fdf57fed4",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "Fectivnfy112357/github-explore",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "确认是 DSH Skill：github-explore",
+      "targets": [
+        {
+          "id": "github-explore:skills/github-explore/SKILL.md",
+          "name": "github-explore",
+          "description": "Use when the user wants to search/discover/summarize/audit GitHub (find repos about X, explore a topic's landscape, what's trending, repo overview, similar projects, code search, issue/PR search, org audit) or run gh CLI operations. Prefer scripts/ for discovery; raw gh commands for management ops.",
+          "sourcePath": "skills/github-explore/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "Fectivnfy112357/github-explore",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "repository": "EverMind-AI/EverOS",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T13:59:10Z",
+  "analyzedAt": "2026-08-18T14:43:14.057Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "EverMind-AI/EverOS",
+    "defaultBranch": "main",
+    "kind": "hybrid",
+    "componentKinds": [
+      "plugin",
+      "skill"
+    ],
+    "summary": "确认包含 1 个 Plugin、5 个 Skill。",
+    "pluginAnalysis": {
+      "repository": "EverMind-AI/EverOS",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 @evermind-ai/dsh-plugin。",
+      "targets": [
+        {
+          "id": "@evermind-ai/dsh-plugin:examples/dsh",
+          "packageName": "@evermind-ai/dsh-plugin",
+          "version": "0.1.0",
+          "source": "archive-subdirectory",
+          "profileName": "web",
+          "platform": "unknown",
+          "subdirectory": "examples/dsh",
+          "commit": "d07cddc403049464aa0cd48bb3b8233d68e41af4",
+          "requiresBuild": true,
+          "buildScripts": [
+            "prepare"
+          ],
+          "nodeRange": "^22.19.0 || >=24.0.0"
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "EverMind-AI/EverOS",
+      "defaultBranch": "main",
+      "installability": "choice",
+      "summary": "确认包含 5 个有效 DSH Skills。",
+      "targets": [
+        {
+          "id": "add-memory-kind:.claude/skills/add-memory-kind/SKILL.md",
+          "name": "add-memory-kind",
+          "description": "Add a new business memory kind end-to-end. Pick the storage combination (Markdown / SQLite / LanceDB), pick the markdown strategy (daily-log / skill-named / single-file), then wire up the schema(s), repo(s), and writer(s).",
+          "sourcePath": ".claude/skills/add-memory-kind/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "commit:.claude/skills/commit/SKILL.md",
+          "name": "commit",
+          "description": "Stage and create a Conventional Commits message for the current change",
+          "sourcePath": ".claude/skills/commit/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "new-branch:.claude/skills/new-branch/SKILL.md",
+          "name": "new-branch",
+          "description": "Create a GitHub branch from main with the project naming convention",
+          "sourcePath": ".claude/skills/new-branch/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "pr:.claude/skills/pr/SKILL.md",
+          "name": "pr",
+          "description": "Open a GitHub PR targeting the correct branch with the project template",
+          "sourcePath": ".claude/skills/pr/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "release:.claude/skills/release/SKILL.md",
+          "name": "release",
+          "description": "Cut a versioned release and publish everos to PyPI via the tag-triggered workflow",
+          "sourcePath": ".claude/skills/release/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "EverMind-AI/EverOS",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

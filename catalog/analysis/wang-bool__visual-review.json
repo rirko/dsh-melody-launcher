@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "repository": "wang-bool/visual-review",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T03:03:51Z",
+  "analyzedAt": "2026-08-18T14:42:28.055Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "wang-bool/visual-review",
+    "defaultBranch": "main",
+    "kind": "plugin",
+    "componentKinds": [
+      "plugin"
+    ],
+    "summary": "检测到可安装的 visual-review。",
+    "pluginAnalysis": {
+      "repository": "wang-bool/visual-review",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 visual-review。",
+      "targets": [
+        {
+          "id": "visual-review:.",
+          "packageName": "visual-review",
+          "version": "1.0.1",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": null,
+          "commit": "0e2a4a6c2cbee9667b544e57f0232b2cc7ddcc21",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": ">=18"
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "wang-bool/visual-review",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到符合 DSH 规范的 SKILL.md 或单文件 Skill。",
+      "targets": []
+    },
+    "applicationAnalysis": {
+      "repository": "wang-bool/visual-review",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "repository": "imsai-sh/awesome-deepseek-harness-plugins",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T14:10:59Z",
+  "analyzedAt": "2026-08-18T14:43:27.284Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "imsai-sh/awesome-deepseek-harness-plugins",
+    "defaultBranch": "main",
+    "kind": "hybrid",
+    "componentKinds": [
+      "plugin",
+      "skill"
+    ],
+    "summary": "确认包含 1 个 Plugin、1 个 Skill。",
+    "pluginAnalysis": {
+      "repository": "imsai-sh/awesome-deepseek-harness-plugins",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 dsh1024。",
+      "targets": [
+        {
+          "id": "dsh1024:packages/dsh1024",
+          "packageName": "dsh1024",
+          "version": "0.3.1",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": "packages/dsh1024",
+          "commit": "f3a2725395d0a19a8eeacc0e9f5df326cf2993bf",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": ">=22"
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "imsai-sh/awesome-deepseek-harness-plugins",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "确认是 DSH Skill：submit-dsh-plugin",
+      "targets": [
+        {
+          "id": "submit-dsh-plugin:skills/submit-dsh-plugin/SKILL.md",
+          "name": "submit-dsh-plugin",
+          "description": "验证并提交 DeepSeek Harness 插件到 imsai-sh/awesome-deepseek-harness-plugins 社区目录。适用于插件作者要求收录、发布或提交自己的插件，创建目录 JSON，修复目录提交 PR，或者发起合规 PR。检查公开仓库、dsh-plugin topic、dsh.bundle.patch、作者测试证据、双语元数据和单文件差异，并在获得授权后执行 fork、push 和创建 PR。",
+          "sourcePath": "skills/submit-dsh-plugin/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "imsai-sh/awesome-deepseek-harness-plugins",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

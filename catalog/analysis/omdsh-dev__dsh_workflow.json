@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "repository": "omdsh-dev/dsh_workflow",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T09:55:44Z",
+  "analyzedAt": "2026-08-18T13:50:06.621Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "omdsh-dev/dsh_workflow",
+    "defaultBranch": "main",
+    "kind": "plugin",
+    "componentKinds": [
+      "plugin"
+    ],
+    "summary": "检测到可安装的 @dsh-external/workflow。",
+    "pluginAnalysis": {
+      "repository": "omdsh-dev/dsh_workflow",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 @dsh-external/workflow。",
+      "targets": [
+        {
+          "id": "@dsh-external/workflow:.",
+          "packageName": "@dsh-external/workflow",
+          "version": "0.1.2",
+          "source": "github",
+          "profileName": "web",
+          "platform": "unknown",
+          "subdirectory": null,
+          "commit": "44b83c182aa02d1be8a0803e8446cb495f93cd8f",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": "^22.19.0 || >=24.0.0"
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "omdsh-dev/dsh_workflow",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到符合 DSH 规范的 SKILL.md 或单文件 Skill。",
+      "targets": []
+    },
+    "applicationAnalysis": {
+      "repository": "omdsh-dev/dsh_workflow",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

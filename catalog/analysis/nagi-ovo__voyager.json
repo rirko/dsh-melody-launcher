@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "repository": "Nagi-ovo/voyager",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T14:27:51Z",
+  "analyzedAt": "2026-08-18T14:45:59.849Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "Nagi-ovo/voyager",
+    "defaultBranch": "main",
+    "kind": "skill",
+    "componentKinds": [
+      "skill"
+    ],
+    "summary": "确认包含 4 个有效 DSH Skills。",
+    "pluginAnalysis": {
+      "repository": "Nagi-ovo/voyager",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到同时包含 package.json、dsh.bundle.patch 和对应补丁文件的插件组件。",
+      "targets": []
+    },
+    "skillAnalysis": {
+      "repository": "Nagi-ovo/voyager",
+      "defaultBranch": "main",
+      "installability": "choice",
+      "summary": "确认包含 4 个有效 DSH Skills。",
+      "targets": [
+        {
+          "id": "issue-review:.agents/skills/issue-review/SKILL.md",
+          "name": "issue-review",
+          "description": "Investigate, review, and fix GitHub issues. Use when a request references a GitHub issue URL or number and asks for analysis, root-cause location, implementation, or a fix commit.",
+          "sourcePath": ".agents/skills/issue-review/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "release:.agents/skills/release/SKILL.md",
+          "name": "release",
+          "description": "Cut or recover a Voyager release, including issue triage, verification, versioning, the 10-locale in-product changelog, commit and tag creation, GitHub Actions monitoring, Chrome Web Store, Firefox AMO, Edge Add-ons, and the signed/notarized Safari DMG with Sparkle updates. Use for “发版”, “release”, “bump”, “ship vX.Y.Z”, store retries, or Safari release failures.",
+          "sourcePath": ".agents/skills/release/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "update-safari-extension:.agents/skills/update-safari-extension/SKILL.md",
+          "name": "update-safari-extension",
+          "description": "Safely build, reload, install, and verify Voyager's Safari web extension without disturbing extension storage, permissions, or the user's signed app. Use for Safari UI or runtime testing, refreshing dist_safari after TypeScript or CSS changes, testing Swift or native messaging changes, diagnosing stale Safari resources, or validating a signed direct-distribution build.",
+          "sourcePath": ".agents/skills/update-safari-extension/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "voyager-contribute:.agents/skills/voyager-contribute/SKILL.md",
+          "name": "voyager-contribute",
+          "description": "Prepare and publish Voyager contributions through the Issue, topic branch, verification, commit, and pull request workflow. Use when claiming or implementing Voyager work, preparing browser evidence, committing or pushing local changes, opening or updating a Voyager PR, or checking whether a contribution is ready for review.",
+          "sourcePath": ".agents/skills/voyager-contribute/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "Nagi-ovo/voyager",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

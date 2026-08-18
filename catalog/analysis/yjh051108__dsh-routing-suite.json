@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "repository": "yjh051108/dsh-routing-suite",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-01T00:00:00Z",
+  "analyzedAt": "2026-08-18T14:42:35.399Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "yjh051108/dsh-routing-suite",
+    "defaultBranch": "main",
+    "kind": "hybrid",
+    "componentKinds": [
+      "plugin",
+      "preset"
+    ],
+    "summary": "聚合仓库（meta-repo）：可确定性安装 1 个 Plugin、0 个 Skill 与 2 个预设（injector → yjh051108/dsh-super-injector@f4ef59fb3143；preset → yjh051108/dsh-router-standard@eff787e95132）。",
+    "pluginAnalysis": {
+      "repository": "yjh051108/dsh-routing-suite",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到 1 个可安装 Plugin 组件。",
+      "targets": [
+        {
+          "id": "@dsh-external/dsh-super-injector:.",
+          "packageName": "@dsh-external/dsh-super-injector",
+          "version": "0.3.3",
+          "source": "release",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": null,
+          "commit": "f4ef59fb31439225abefe45d6e793235a2a9d5e0",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null,
+          "tarballUrl": "https://github.com/yjh051108/dsh-super-injector/releases/download/v0.3.3/dsh-external-dsh-super-injector-0.3.3.tgz",
+          "sourceRepository": "yjh051108/dsh-super-injector"
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "yjh051108/dsh-routing-suite",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "未在子模块中检测到 Skill 组件。",
+      "targets": []
+    },
+    "applicationAnalysis": null,
+    "presetAnalysis": {
+      "repository": "yjh051108/dsh-routing-suite",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到 2 个可安装 Agent 预设。",
+      "targets": [
+        {
+          "id": "router-spec:preset/router-spec",
+          "name": "router-spec",
+          "description": "router-spec agent preset（含 preset.yml 的 DSH 预设目录）。",
+          "sourceRepository": "yjh051108/dsh-router-standard",
+          "revision": "eff787e95132d6c7104214542104a84d656b497e",
+          "sourcePath": "preset/router-spec"
+        },
+        {
+          "id": "router-standard:preset/router-standard",
+          "name": "router-standard",
+          "description": "router-standard agent preset（含 preset.yml 的 DSH 预设目录）。",
+          "sourceRepository": "yjh051108/dsh-router-standard",
+          "revision": "eff787e95132d6c7104214542104a84d656b497e",
+          "sourcePath": "preset/router-standard"
+        }
+      ]
+    },
+    "warnings": []
+  }
+}

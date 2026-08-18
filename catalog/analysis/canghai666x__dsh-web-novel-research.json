@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "repository": "canghai666x/dsh-web-novel-research",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-17T17:28:09Z",
+  "analyzedAt": "2026-08-18T14:42:21.569Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "canghai666x/dsh-web-novel-research",
+    "defaultBranch": "main",
+    "kind": "skill",
+    "componentKinds": [
+      "skill"
+    ],
+    "summary": "确认是 DSH Skill：web-novel-research",
+    "pluginAnalysis": {
+      "repository": "canghai666x/dsh-web-novel-research",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到同时包含 package.json、dsh.bundle.patch 和对应补丁文件的插件组件。",
+      "targets": []
+    },
+    "skillAnalysis": {
+      "repository": "canghai666x/dsh-web-novel-research",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "确认是 DSH Skill：web-novel-research",
+      "targets": [
+        {
+          "id": "web-novel-research:SKILL.md",
+          "name": "web-novel-research",
+          "description": "查中文网络小说剧情/后续/章节正文时使用。免费转载站工作流,不依赖起点等付费站。",
+          "sourcePath": "SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "canghai666x/dsh-web-novel-research",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "repository": "riffkit/skill",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T13:46:23Z",
+  "analyzedAt": "2026-08-18T14:44:31.188Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "riffkit/skill",
+    "defaultBranch": "main",
+    "kind": "skill",
+    "componentKinds": [
+      "skill"
+    ],
+    "summary": "确认是 DSH Skill：riffkit",
+    "pluginAnalysis": {
+      "repository": "riffkit/skill",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到同时包含 package.json、dsh.bundle.patch 和对应补丁文件的插件组件。",
+      "targets": []
+    },
+    "skillAnalysis": {
+      "repository": "riffkit/skill",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "确认是 DSH Skill：riffkit",
+      "targets": [
+        {
+          "id": "riffkit:SKILL.md",
+          "name": "riffkit",
+          "description": "Riff winning short videos — give one source (a TikTok link, an uploaded video, or an analyzed template) and the backend riffs its emotion formula into your own AI video (post-ready short-form or UGC-style ad creative), with optional digital character, product placement, and language. You riff the formula, not the video. Triggers: the user says 'riff this video', 'turn this TikTok into mine', 'make a video with this product', 'make an ad' / 'make an ad creative' / 'a UGC ad for my product', 'make a promo / marketing video for my app or product', 'remake a viral video', 'generate a short video', 'riff', 'riffkit', or sends a product image / viral link wanting a short video.",
+          "sourcePath": "SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "riffkit/skill",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

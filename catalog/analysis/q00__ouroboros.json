@@ -1,0 +1,276 @@
+{
+  "schemaVersion": 1,
+  "repository": "Q00/ouroboros",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T14:02:44Z",
+  "analyzedAt": "2026-08-18T14:45:42.809Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "Q00/ouroboros",
+    "defaultBranch": "main",
+    "kind": "hybrid",
+    "componentKinds": [
+      "plugin",
+      "skill"
+    ],
+    "summary": "确认包含 1 个 Plugin、22 个 Skill。",
+    "pluginAnalysis": {
+      "repository": "Q00/ouroboros",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 dsh-ouroboros。",
+      "targets": [
+        {
+          "id": "dsh-ouroboros:integrations/dsh-plugin",
+          "packageName": "dsh-ouroboros",
+          "version": "0.1.0",
+          "source": "archive-subdirectory",
+          "profileName": "web",
+          "platform": "unknown",
+          "subdirectory": "integrations/dsh-plugin",
+          "commit": "961def3538a61135b599c3e4c38e705f6412760d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "Q00/ouroboros",
+      "defaultBranch": "main",
+      "installability": "choice",
+      "summary": "确认包含 22 个有效 DSH Skills。",
+      "targets": [
+        {
+          "id": "auto:skills/auto/SKILL.md",
+          "name": "auto",
+          "description": "Automatically converge from goal to A-grade Seed and execute it",
+          "sourcePath": "skills/auto/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "brownfield:skills/brownfield/SKILL.md",
+          "name": "brownfield",
+          "description": "Scan and manage brownfield repository/worktree defaults for interviews",
+          "sourcePath": "skills/brownfield/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "cancel:skills/cancel/SKILL.md",
+          "name": "cancel",
+          "description": "Cancel stuck or orphaned executions",
+          "sourcePath": "skills/cancel/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "evaluate:skills/evaluate/SKILL.md",
+          "name": "evaluate",
+          "description": "Evaluate execution with three-stage verification pipeline",
+          "sourcePath": "skills/evaluate/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "evolve:skills/evolve/SKILL.md",
+          "name": "evolve",
+          "description": "Start or monitor an evolutionary development loop",
+          "sourcePath": "skills/evolve/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "interview:skills/interview/SKILL.md",
+          "name": "interview",
+          "description": "Socratic interview to crystallize vague requirements",
+          "sourcePath": "skills/interview/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "ooo:skills/ooo/SKILL.md",
+          "name": "ooo",
+          "description": "Start Ouroboros onboarding. Use when the user sends bare `ooo`, asks to start Ouroboros, or is using Ouroboros for the first time.",
+          "sourcePath": "skills/ooo/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "ouroboros-config:skills/config/SKILL.md",
+          "name": "ouroboros-config",
+          "description": "Open or drive the Ouroboros settings GUI (browser, TUI, or conversational fallback)",
+          "sourcePath": "skills/config/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "ouroboros-help:skills/help/SKILL.md",
+          "name": "ouroboros-help",
+          "description": "Full reference guide for Ouroboros commands and agents",
+          "sourcePath": "skills/help/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "ouroboros-run:skills/run/SKILL.md",
+          "name": "ouroboros-run",
+          "description": "Execute a Seed specification through the workflow engine",
+          "sourcePath": "skills/run/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "ouroboros-status:skills/status/SKILL.md",
+          "name": "ouroboros-status",
+          "description": "Check session status and measure goal drift",
+          "sourcePath": "skills/status/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "pm:skills/pm/SKILL.md",
+          "name": "pm",
+          "description": "Generate a PM through guided PM-focused interview with automatic question classification. Use when the user says 'ooo pm', 'prd', 'product requirements', or wants to create a PRD/PM document.",
+          "sourcePath": "skills/pm/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "publish:skills/publish/SKILL.md",
+          "name": "publish",
+          "description": "Publish Seed specification as GitHub Issues for team-based project management",
+          "sourcePath": "skills/publish/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "qa:skills/qa/SKILL.md",
+          "name": "qa",
+          "description": "General-purpose QA verdict for any artifact type",
+          "sourcePath": "skills/qa/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "ralph:skills/ralph/SKILL.md",
+          "name": "ralph",
+          "description": "MCP-owned Ralph loop around background evolve_step jobs",
+          "sourcePath": "skills/ralph/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "resume-session:skills/resume-session/SKILL.md",
+          "name": "resume-session",
+          "description": "List in-flight Ouroboros sessions and show the commands needed to re-attach after MCP disconnect",
+          "sourcePath": "skills/resume-session/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "seed:skills/seed/SKILL.md",
+          "name": "seed",
+          "description": "Generate validated Seed specifications from interview results",
+          "sourcePath": "skills/seed/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "setup:skills/setup/SKILL.md",
+          "name": "setup",
+          "description": "Guided onboarding wizard for Ouroboros setup",
+          "sourcePath": "skills/setup/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "tutorial:skills/tutorial/SKILL.md",
+          "name": "tutorial",
+          "description": "Interactive tutorial teaching Ouroboros hands-on",
+          "sourcePath": "skills/tutorial/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "unstuck:skills/unstuck/SKILL.md",
+          "name": "unstuck",
+          "description": "Break through stagnation with lateral thinking personas — single or multi-persona debate",
+          "sourcePath": "skills/unstuck/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "update:skills/update/SKILL.md",
+          "name": "update",
+          "description": "Check for updates and upgrade Ouroboros to the latest version",
+          "sourcePath": "skills/update/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        },
+        {
+          "id": "welcome:skills/welcome/SKILL.md",
+          "name": "welcome",
+          "description": "First-touch experience for new Ouroboros users",
+          "sourcePath": "skills/welcome/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "Q00/ouroboros",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

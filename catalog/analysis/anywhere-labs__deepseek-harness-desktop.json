@@ -2,216 +2,60 @@
   "schemaVersion": 1,
   "repository": "anywhere-labs/deepseek-harness-desktop",
   "defaultBranch": "master",
-  "repositoryUpdatedAt": "2026-08-18T09:44:06Z",
-  "analyzedAt": "2026-08-18T09:44:20.835Z",
-  "submittedBy": "rirko",
+  "repositoryUpdatedAt": "2026-08-18T14:31:13Z",
+  "analyzedAt": "2026-08-18T14:45:21.346Z",
+  "submittedBy": "rikey123",
   "analysis": {
     "repository": "anywhere-labs/deepseek-harness-desktop",
     "defaultBranch": "master",
-    "kind": "skill",
+    "kind": "application",
     "componentKinds": [
-      "skill"
+      "application"
     ],
-    "summary": "聚合仓库（meta-repo）：可确定性安装 0 个 Plugin、16 个 Skill 与 0 个预设（deepseek-harness → deepseek-ai/deepseek-harness@99f6f02fecdb）。",
+    "summary": "根据仓库与 npm 清单检测到应用加载项 DSH Desktop。",
     "pluginAnalysis": {
       "repository": "anywhere-labs/deepseek-harness-desktop",
       "defaultBranch": "master",
-      "installability": "invalid",
-      "summary": "未在子模块中检测到 Plugin 组件。",
+      "installability": "application",
+      "summary": "该 Bundle 由同一个替代运行时应用提供，不应单独加入普通 DSH Profile。",
       "targets": []
     },
     "skillAnalysis": {
       "repository": "anywhere-labs/deepseek-harness-desktop",
       "defaultBranch": "master",
-      "installability": "choice",
-      "summary": "检测到 16 个可安装 Skill 组件。",
+      "installability": "invalid",
+      "summary": "没有找到符合 DSH 规范的 SKILL.md 或单文件 Skill。",
+      "targets": []
+    },
+    "applicationAnalysis": {
+      "repository": "anywhere-labs/deepseek-harness-desktop",
+      "defaultBranch": "master",
+      "installability": "ready",
+      "summary": "根据仓库与 npm 清单检测到应用加载项 DSH Desktop。",
       "targets": [
         {
-          "id": "cordis-plugin-development:apps/cli/config/agent-presets/cordis/skills/cordis-plugin-development/SKILL.md",
-          "name": "cordis-plugin-development",
-          "description": "Create, modify, debug, or extend dynamic Cordis Plugins, including Host Services and Events, Client Slot and theme UI, Package-private Client-to-Host calls, dynamic Tools, version updates, approval failures, and runtime diagnostics. Use this Skill to route a user request to the correct platform and Inspect Provider, then define, run, repair, or roll back the Plugin.",
-          "sourcePath": "apps/cli/config/agent-presets/cordis/skills/cordis-plugin-development/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": true,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "dsh-archive-agent-notes:.agents/skills/dsh-archive-agent-notes/SKILL.md",
-          "name": "dsh-archive-agent-notes",
-          "description": "Use when adding, auditing, pruning, archiving, restoring, or reviewing Agent Notes in deepseek-harness; checks every new note for superseded active records, classifies implemented notes by future decision value, deletes rejected notes that no longer prevent a tempting fallacy, and applies the frozen archived/{kind} triplet and manifest rules.",
-          "sourcePath": ".agents/skills/dsh-archive-agent-notes/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": true,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "dsh-code-review:.agents/skills/dsh-code-review/SKILL.md",
-          "name": "dsh-code-review",
-          "description": "Use when reviewing a pull request in the deepseek-harness repo — orients the reviewer to this codebase's standards (AGENTS.md conventions, defensive patterns, ADRs, quality gates) and the review-specific checks that code alone can't show",
-          "sourcePath": ".agents/skills/dsh-code-review/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": true,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "dsh-doc-site-sync:.agents/skills/dsh-doc-site-sync/SKILL.md",
-          "name": "dsh-doc-site-sync",
-          "description": "Use when publishing, updating, moving, or removing DeepSeek Harness documentation website pages; editing website/docs.ts mappings or navigation; diagnosing a page missing from the VitePress site; fixing projected documentation links; or running the docs:dev, docs:check, and doc-sync workflow after website-content changes.",
-          "sourcePath": ".agents/skills/dsh-doc-site-sync/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": true,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "dsh-doc-standards:.agents/skills/dsh-doc-standards/SKILL.md",
-          "name": "dsh-doc-standards",
-          "description": "Use when writing, moving, reviewing, or auditing documentation in the deepseek-harness repo — choosing hierarchy and detail, separating tutorials from references, checking tutorial progression, trimming doc slop, responding to a verify-doc-budgets failure, or requests like \"improve the docs\", \"audit the docs\", \"where should this be documented\", or \"this doc is too long\".",
-          "sourcePath": ".agents/skills/dsh-doc-standards/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": true,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "dsh-find-simplifications:.agents/skills/dsh-find-simplifications/SKILL.md",
-          "name": "dsh-find-simplifications",
-          "description": "Use when working in the deepseek-harness repo to find non-obvious simplification candidates, write proposed Agent Notes or inline TODO/FIXME/XXX notes, audit or coalesce superseded Agent Notes, or fold worthwhile simplification ideas from another PR; especially for dead, duplicated, speculative, over-built, added-then-removed, or hand-rolled-where-a-dependency-exists surfaces.",
-          "sourcePath": ".agents/skills/dsh-find-simplifications/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": true,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "dsh-merging-stacked-prs:.agents/skills/dsh-merging-stacked-prs/SKILL.md",
-          "name": "dsh-merging-stacked-prs",
-          "description": "Use when landing a stack of dependent GitHub PRs (A ← B ← C, where each bases on the one below) onto master, merging a PR whose base is another open PR's branch, or whenever a request mentions \"stacked PRs\", \"PR stack\", \"dependent PRs\", or merging several related PRs in sequence. Requires every same-repository dependency chain to use GitHub's official stacked-PR feature before landing so GitHub owns stack-wide rules, CI, ordering, retargeting, and merge state.",
-          "sourcePath": ".agents/skills/dsh-merging-stacked-prs/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": true,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "dsh-pre-push-checks:.agents/skills/dsh-pre-push-checks/SKILL.md",
-          "name": "dsh-pre-push-checks",
-          "description": "Use before pushing, force-pushing, marking ready for review, or claiming checks pass on a deepseek-harness branch, and immediately after gh stack sync publishes rewritten branches, to select the smallest tests and checks that cover the outgoing or just-published diff without reflexively running the full repository suite.",
-          "sourcePath": ".agents/skills/dsh-pre-push-checks/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": true,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "dsh-prose-standard:.agents/skills/dsh-prose-standard/SKILL.md",
-          "name": "dsh-prose-standard",
-          "description": "Use when writing, reviewing, restoring, trimming, or auditing prose in the deepseek-harness repo, including deciding where documentation or comments are required across Markdown, JSDoc, code and test comments, prompts, descriptions, diagnostics, and CLI or UI strings.",
-          "sourcePath": ".agents/skills/dsh-prose-standard/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": true,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "dsh-translate-docs:.agents/skills/dsh-translate-docs/SKILL.md",
-          "name": "dsh-translate-docs",
-          "description": "Manually run the extended DeepSeek Harness bilingual-document workflow, including generated briefings, delegated prose translation, whole-document translation, and scoped pairing verification.",
-          "sourcePath": ".agents/skills/dsh-translate-docs/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": false,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "dsh-trim-cot-leakage:.agents/skills/dsh-trim-cot-leakage/SKILL.md",
-          "name": "dsh-trim-cot-leakage",
-          "description": "Use when auditing or fixing prose that reads like a leaked reasoning transcript — dead design-session citations such as (decision N), audit item codes, or §N of uncommitted drafts; change narration such as \"used to\", \"no longer\", \"this cut\"; stack or review vantage (\"a later PR in this stack\", \"rejected in review\"); reviewer-addressed justifications; control-flow narration; or hedged planning residue in comments, JSDoc, docs, or Agent Notes.",
-          "sourcePath": ".agents/skills/dsh-trim-cot-leakage/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": true,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "editing-cordis-compositions:apps/cli/config/agent-presets/cordis/skills/editing-cordis-compositions/SKILL.md",
-          "name": "editing-cordis-compositions",
-          "description": "Use when creating, changing, or validating a Cordis composition for this harness — writing or editing an agent preset, adding or removing a plugin row, deciding whether something belongs to the host composition or to one session, checking whether a preset you authored actually mounts, or diagnosing a row that mounted but contributed nothing.",
-          "sourcePath": "apps/cli/config/agent-presets/cordis/skills/editing-cordis-compositions/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": true,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "model-only-skill:examples/acp-agent/tests/snapshots/skill-load/workspace/.dsh/skills/model-only-skill/SKILL.md",
-          "name": "model-only-skill",
-          "description": "Prove user-disabled skills remain available to the model.",
-          "sourcePath": "examples/acp-agent/tests/snapshots/skill-load/workspace/.dsh/skills/model-only-skill/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": true,
-          "userInvocable": false,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "record-browser-gif:.agents/skills/record-browser-gif/SKILL.md",
-          "name": "record-browser-gif",
-          "description": "Record browser or Web UI interaction demos as optimized GIFs using the available built-in browser, state-based frame capture, and deterministic encoding, then publish to a dedicated assets branch when the task includes attaching the GIF to a pull request. Use when asked to make, record, or generate a GIF that demonstrates a browser workflow, and for every pull request that changes product-user-visible GUI behavior, which MUST include a GIF recorded from the pull request's real server and model flow.",
-          "sourcePath": ".agents/skills/record-browser-gif/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": true,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "snapshot-skill:examples/acp-agent/tests/snapshots/skill-load/workspace/.dsh/skills/snapshot-skill/SKILL.md",
-          "name": "snapshot-skill",
-          "description": "Exercise project skill discovery and loading in snapshot tests.",
-          "sourcePath": "examples/acp-agent/tests/snapshots/skill-load/workspace/.dsh/skills/snapshot-skill/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": true,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
-        },
-        {
-          "id": "user-only-skill:examples/acp-agent/tests/snapshots/skill-load/workspace/.dsh/skills/user-only-skill/SKILL.md",
-          "name": "user-only-skill",
-          "description": "Prove model-disabled skills stay outside the model catalog.",
-          "sourcePath": "examples/acp-agent/tests/snapshots/skill-load/workspace/.dsh/skills/user-only-skill/SKILL.md",
-          "format": "bundle",
-          "revision": "99f6f02fecdb7dff40c3fbc9470f5907c29f74ca",
-          "modelInvocable": false,
-          "userInvocable": true,
-          "sourceRepository": "deepseek-ai/deepseek-harness"
+          "id": "dsh-plugin-desktop:dsh-plugin-desktop",
+          "addonId": "dsh-plugin-desktop",
+          "name": "DSH Desktop",
+          "description": "DSH Desktop: an Electron shell composed as a DeepSeek Harness Cordis plugin",
+          "provider": "npm",
+          "packageName": "dsh-plugin-desktop",
+          "version": "2.0.0",
+          "binName": "dsh-plugin-desktop",
+          "launchMode": "runtime-replacement",
+          "launchArgs": [],
+          "platforms": [
+            "win32",
+            "darwin",
+            "linux"
+          ],
+          "supported": true,
+          "verified": false,
+          "provides": []
         }
       ]
     },
-    "applicationAnalysis": null,
-    "presetAnalysis": {
-      "repository": "anywhere-labs/deepseek-harness-desktop",
-      "defaultBranch": "master",
-      "installability": "invalid",
-      "summary": "未在子模块中检测到 Agent 预设。",
-      "targets": []
-    },
+    "presetAnalysis": null,
     "warnings": []
   }
 }

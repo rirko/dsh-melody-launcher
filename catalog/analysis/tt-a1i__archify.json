@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "repository": "tt-a1i/archify",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T15:48:45Z",
+  "analyzedAt": "2026-08-18T15:51:02.415Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "tt-a1i/archify",
+    "defaultBranch": "main",
+    "kind": "hybrid",
+    "componentKinds": [
+      "plugin",
+      "skill"
+    ],
+    "summary": "确认包含 1 个 Plugin、1 个 Skill。",
+    "pluginAnalysis": {
+      "repository": "tt-a1i/archify",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 @tt-a1i/archify-dsh。",
+      "targets": [
+        {
+          "id": "@tt-a1i/archify-dsh:integrations/deepseek-harness",
+          "packageName": "@tt-a1i/archify-dsh",
+          "version": "0.1.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "unknown",
+          "subdirectory": "integrations/deepseek-harness",
+          "commit": "e1ac748f19cf805e44bf74fb93c796662152e273",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": "^22.19.0 || >=24.0.0"
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "tt-a1i/archify",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "确认是 DSH Skill：archify",
+      "targets": [
+        {
+          "id": "archify:archify/SKILL.md",
+          "name": "archify",
+          "description": "Create polished, validated architecture, workflow, sequence, data-flow, and lifecycle/state diagrams as explorable standalone HTML with inline SVG, dark/light themes, optional trace motion, and PNG/JPEG/WebP/SVG/WebM export. Accept plain-language requirements or pasted Mermaid flowchart, sequenceDiagram, and stateDiagram input; inspect repository evidence when the diagram must reflect real code. Use when the user asks to visualize system architecture, infrastructure, cloud/security/network topology, technical workflows, API call sequences, request lifecycles, data pipelines, ETL/ELT, data lineage, state machines, or to convert/beautify Mermaid.",
+          "sourcePath": "archify/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "tt-a1i/archify",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

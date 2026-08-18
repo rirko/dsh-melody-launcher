@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "repository": "walkinglabs/learn-harness-engineering",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T14:19:14Z",
+  "analyzedAt": "2026-08-18T14:44:06.510Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "walkinglabs/learn-harness-engineering",
+    "defaultBranch": "main",
+    "kind": "skill",
+    "componentKinds": [
+      "skill"
+    ],
+    "summary": "确认是 DSH Skill：harness-creator",
+    "pluginAnalysis": {
+      "repository": "walkinglabs/learn-harness-engineering",
+      "defaultBranch": "main",
+      "installability": "application",
+      "summary": "这是完整应用或源码工作区，仓库根目录没有可安装的 DSH Bundle。",
+      "targets": []
+    },
+    "skillAnalysis": {
+      "repository": "walkinglabs/learn-harness-engineering",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "确认是 DSH Skill：harness-creator",
+      "targets": [
+        {
+          "id": "harness-creator:skills/harness-creator/SKILL.md",
+          "name": "harness-creator",
+          "description": "Build, audit, and improve harnesses that make AI coding agents reliable: AGENTS.md/CLAUDE.md instruction files, feature/state tracking, verification gates, scope boundaries, session handoff, memory persistence, context budgets, tool-permission safety, and multi-agent coordination. Use this whenever a coding agent is unreliable across sessions — forgets context, drifts out of scope, claims \"done\" before tests pass, or starts each session inconsistently — or when creating or assessing AGENTS.md, CLAUDE.md, feature_list.json, init.sh, progress.md, or session-handoff files. Reach for it even if the user never says the word \"harness.\"",
+          "sourcePath": "skills/harness-creator/SKILL.md",
+          "format": "bundle",
+          "revision": "main",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "walkinglabs/learn-harness-engineering",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

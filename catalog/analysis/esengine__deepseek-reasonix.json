@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "repository": "esengine/DeepSeek-Reasonix",
+  "defaultBranch": "main-v2",
+  "repositoryUpdatedAt": "2026-08-18T14:30:06Z",
+  "analyzedAt": "2026-08-18T14:45:41.901Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "esengine/DeepSeek-Reasonix",
+    "defaultBranch": "main-v2",
+    "kind": "skill",
+    "componentKinds": [
+      "skill"
+    ],
+    "summary": "确认是 DSH Skill：reasonix-guide",
+    "pluginAnalysis": {
+      "repository": "esengine/DeepSeek-Reasonix",
+      "defaultBranch": "main-v2",
+      "installability": "invalid",
+      "summary": "没有找到同时包含 package.json、dsh.bundle.patch 和对应补丁文件的插件组件。",
+      "targets": []
+    },
+    "skillAnalysis": {
+      "repository": "esengine/DeepSeek-Reasonix",
+      "defaultBranch": "main-v2",
+      "installability": "ready",
+      "summary": "确认是 DSH Skill：reasonix-guide",
+      "targets": [
+        {
+          "id": "reasonix-guide:internal/skill/builtincontent/reasonix-guide/SKILL.md",
+          "name": "reasonix-guide",
+          "description": "Troubleshoot and configure Reasonix capabilities: Skills (project/custom/global/builtin priority, discovery dirs), Commands (override order, /dir:file naming), Hooks (11 events, automatic project loading, matchers, timeouts), MCP (reasonix.toml + .mcp.json + plugin packages, auto_start), plugin packages (native/Codex/Claude manifests), and AGENTS.md / instruction docs. Use when the user asks how to configure, debug missing skills/commands/hooks/MCP/plugins, or diagnose capability loading.",
+          "sourcePath": "internal/skill/builtincontent/reasonix-guide/SKILL.md",
+          "format": "bundle",
+          "revision": "main-v2",
+          "modelInvocable": true,
+          "userInvocable": true
+        }
+      ]
+    },
+    "applicationAnalysis": {
+      "repository": "esengine/DeepSeek-Reasonix",
+      "defaultBranch": "main-v2",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

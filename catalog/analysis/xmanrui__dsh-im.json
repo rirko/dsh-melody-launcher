@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "repository": "xmanrui/dsh-im",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T15:31:28Z",
+  "analyzedAt": "2026-08-18T15:41:47.136Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "xmanrui/dsh-im",
+    "defaultBranch": "main",
+    "kind": "plugin",
+    "componentKinds": [
+      "plugin"
+    ],
+    "summary": "检测到可安装的 @xmanrui/dsh-im。",
+    "pluginAnalysis": {
+      "repository": "xmanrui/dsh-im",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 @xmanrui/dsh-im。",
+      "targets": [
+        {
+          "id": "@xmanrui/dsh-im:.",
+          "packageName": "@xmanrui/dsh-im",
+          "version": "0.9.0",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": null,
+          "commit": "99a877c6404a1512b1c5e85706a1aef7111b4043",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": ">=22.19"
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "xmanrui/dsh-im",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到符合 DSH 规范的 SKILL.md 或单文件 Skill。",
+      "targets": []
+    },
+    "applicationAnalysis": {
+      "repository": "xmanrui/dsh-im",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

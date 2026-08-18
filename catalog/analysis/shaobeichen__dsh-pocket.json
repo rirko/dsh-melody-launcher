@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "repository": "shaobeichen/dsh-pocket",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T14:24:31Z",
+  "analyzedAt": "2026-08-18T14:26:49.079Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "shaobeichen/dsh-pocket",
+    "defaultBranch": "main",
+    "kind": "plugin",
+    "componentKinds": [
+      "plugin"
+    ],
+    "summary": "检测到可安装的 dsh-pocket。",
+    "pluginAnalysis": {
+      "repository": "shaobeichen/dsh-pocket",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 dsh-pocket。",
+      "targets": [
+        {
+          "id": "dsh-pocket:.",
+          "packageName": "dsh-pocket",
+          "version": "1.4.8",
+          "source": "npm",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": null,
+          "commit": "d0ff1f2b812c7f7ac1d9609f23f441f6437ff89a",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": ">=22"
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "shaobeichen/dsh-pocket",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到符合 DSH 规范的 SKILL.md 或单文件 Skill。",
+      "targets": []
+    },
+    "applicationAnalysis": {
+      "repository": "shaobeichen/dsh-pocket",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}

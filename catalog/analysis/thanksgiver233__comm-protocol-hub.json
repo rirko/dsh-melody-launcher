@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "repository": "Thanksgiver233/comm-protocol-hub",
+  "defaultBranch": "main",
+  "repositoryUpdatedAt": "2026-08-18T09:05:21Z",
+  "analyzedAt": "2026-08-18T14:42:23.871Z",
+  "submittedBy": "rikey123",
+  "analysis": {
+    "repository": "Thanksgiver233/comm-protocol-hub",
+    "defaultBranch": "main",
+    "kind": "plugin",
+    "componentKinds": [
+      "plugin"
+    ],
+    "summary": "检测到可安装的 dsh-comm-protocol-hub。",
+    "pluginAnalysis": {
+      "repository": "Thanksgiver233/comm-protocol-hub",
+      "defaultBranch": "main",
+      "installability": "ready",
+      "summary": "检测到可安装的 dsh-comm-protocol-hub。",
+      "targets": [
+        {
+          "id": "dsh-comm-protocol-hub:.",
+          "packageName": "dsh-comm-protocol-hub",
+          "version": "1.0.0",
+          "source": "github",
+          "profileName": "web",
+          "platform": "web",
+          "subdirectory": null,
+          "commit": "8b7b07d88315ffe85ead1d680e72f9b83f07853d",
+          "requiresBuild": false,
+          "buildScripts": [],
+          "nodeRange": null
+        }
+      ]
+    },
+    "skillAnalysis": {
+      "repository": "Thanksgiver233/comm-protocol-hub",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到符合 DSH 规范的 SKILL.md 或单文件 Skill。",
+      "targets": []
+    },
+    "applicationAnalysis": {
+      "repository": "Thanksgiver233/comm-protocol-hub",
+      "defaultBranch": "main",
+      "installability": "invalid",
+      "summary": "没有找到 .dsh-launcher/addon.json，也没有检测到可验证的 DSH Electron 应用宿主。",
+      "targets": []
+    },
+    "presetAnalysis": null,
+    "warnings": []
+  }
+}
