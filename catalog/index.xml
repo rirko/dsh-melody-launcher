@@ -6,6 +6,7 @@
   <repository name="chuspeeism/dashi-taskboard" branch="main" updated="2026-08-19T02:41:16Z" tags="skill"/>
   <repository name="anywhere-labs/deepseek-harness-desktop" branch="master" updated="2026-08-19T03:55:52Z" tags="skill,runtime"/>
   <repository name="esengine/DeepSeek-Reasonix" branch="main-v2" updated="2026-08-19T03:54:10Z" tags="skill"/>
+  <repository name="Nagi-ovo/dsh-ads" branch="main" updated="2026-08-19T05:33:25Z" tags="plugin"/>
   <repository name="xiaobright/dsh-anchored-standard" branch="main" updated="2026-08-19T03:53:41Z" tags="invalid"/>
   <repository name="omdsh-dev/DSH-better-sidebar" branch="main" updated="2026-08-19T03:54:07Z" tags="plugin"/>
   <repository name="yjh051108/dsh-routing-suite" branch="main" updated="2026-08-19T03:52:48Z" tags="plugin,preset"/>
