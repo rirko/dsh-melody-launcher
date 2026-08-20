@@ -4,5 +4,7 @@
   <repository name="Tencent/BrowserSkill" branch="main" updated="2026-08-19T08:11:19Z" tags="plugin,skill"/>
   <repository name="NanmiCoder/dsh-auto-mode" branch="main" updated="2026-08-19T06:39:48Z" tags="plugin"/>
   <repository name="PerryLink/dsh-auto-review" branch="main" updated="2026-08-19T06:47:05Z" tags="plugin"/>
+  <repository name="WizisCool/dsh-ears" branch="master" updated="2026-08-20T05:53:23Z" tags="plugin"/>
+  <repository name="huguangyu666/dsh-plugin-notify" branch="main" updated="2026-08-16T11:16:25Z" tags="plugin"/>
   <repository name="Fisfzy/ego-browser" branch="master" updated="2026-08-19T06:53:46Z" tags="plugin,skill"/>
 </dsh-catalog>
