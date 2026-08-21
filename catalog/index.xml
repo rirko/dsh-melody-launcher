@@ -8,7 +8,8 @@
   <repository name="esengine/DeepSeek-Reasonix" branch="main-v2" updated="2026-08-19T03:54:10Z" tags="skill"/>
   <repository name="Nagi-ovo/dsh-ads" branch="main" updated="2026-08-19T05:33:25Z" tags="plugin"/>
   <repository name="xiaobright/dsh-anchored-standard" branch="main" updated="2026-08-19T03:53:41Z" tags="invalid"/>
-  <repository name="omdsh-dev/DSH-better-sidebar" branch="main" updated="2026-08-19T03:54:07Z" tags="plugin"/>
+  <repository name="FSMargoo/dsh-at-file" branch="main" updated="2026-08-21T07:29:31Z" tags="plugin"/>
+  <repository name="omdsh-dev/DSH-better-sidebar" branch="main" updated="2026-08-21T08:06:27Z" tags="plugin"/>
   <repository name="Leawind/dsh-minecraft-dev" branch="main" updated="2026-08-15T19:30:41Z" tags="skill"/>
   <repository name="HuanLinOTO/dsh-plugin-anti-ads" branch="master" updated="2026-08-17T02:18:27Z" tags="plugin"/>
   <repository name="yjh051108/dsh-routing-suite" branch="main" updated="2026-08-19T05:41:49Z" tags="plugin,preset"/>
