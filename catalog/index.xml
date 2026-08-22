@@ -10,9 +10,14 @@
   <repository name="Nagi-ovo/dsh-ads" branch="main" updated="2026-08-19T05:33:25Z" tags="plugin"/>
   <repository name="xiaobright/dsh-anchored-standard" branch="main" updated="2026-08-22T07:14:10Z" tags="invalid"/>
   <repository name="omdsh-dev/DSH-better-sidebar" branch="main" updated="2026-08-19T03:54:07Z" tags="plugin"/>
+  <repository name="havingautism/dsh-deepresearch" branch="main" updated="2026-08-22T09:51:14Z" tags="plugin"/>
+  <repository name="609476965/dsh-LorebookMD" branch="main" updated="2026-08-22T01:34:36Z" tags="plugin"/>
   <repository name="Leawind/dsh-minecraft-dev" branch="main" updated="2026-08-15T19:30:41Z" tags="skill"/>
   <repository name="HuanLinOTO/dsh-plugin-anti-ads" branch="master" updated="2026-08-17T02:18:27Z" tags="plugin"/>
+  <repository name="staff-os/dsh-ragflow" branch="main" updated="2026-08-20T06:50:46Z" tags="plugin"/>
   <repository name="yjh051108/dsh-routing-suite" branch="main" updated="2026-08-22T09:05:29Z" tags="plugin,preset"/>
+  <repository name="chen731215-dev/dsh-tavern" branch="main" updated="2026-08-22T04:52:52Z" tags="plugin"/>
+  <repository name="omdsh-dev/dsh-toolkit" branch="main" updated="2026-08-21T12:01:24Z" tags="plugin"/>
   <repository name="zhu1090093659/dsh-web-ui" branch="dev" updated="2026-08-22T09:02:17Z" tags="plugin,skill"/>
   <repository name="edison7009/EchoBird" branch="main" updated="2026-08-22T08:47:29Z" tags="invalid"/>
   <repository name="EverMind-AI/EverOS" branch="main" updated="2026-08-22T08:40:58Z" tags="plugin,skill"/>
@@ -22,6 +27,7 @@
   <repository name="MemTensor/MemOS" branch="main" updated="2026-08-22T09:09:32Z" tags="skill"/>
   <repository name="strukto-ai/mirage" branch="main" updated="2026-08-22T08:58:13Z" tags="plugin,skill"/>
   <repository name="liustack/modlens" branch="main" updated="2026-08-22T08:32:36Z" tags="plugin,skill"/>
+  <repository name="worldwonderer/oh-story-dsh" branch="main" updated="2026-08-22T09:38:24Z" tags="plugin,skill"/>
   <repository name="nexu-io/open-design" branch="main" updated="2026-08-22T09:16:27Z" tags="plugin"/>
   <repository name="whiteguo233/OpenBiliClaw" branch="main" updated="2026-08-22T08:43:19Z" tags="skill"/>
   <repository name="ZSeven-W/openpencil" branch="main" updated="2026-08-22T08:12:58Z" tags="invalid"/>
