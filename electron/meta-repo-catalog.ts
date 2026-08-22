@@ -3,6 +3,7 @@ import type {
   PluginInstallTarget,
   PresetInstallTarget,
   PresetRepositoryAnalysis,
+  ReleaseAnalysis,
   RepositoryAnalysis,
   SkillInstallTarget,
   SkillRepositoryAnalysis,
@@ -157,6 +158,7 @@ export async function analyzeMetaRepository(
   const seenPlugins = new Set<string>()
   const seenSkills = new Set<string>()
   const seenPresets = new Set<string>()
+  const releaseAnalyses: ReleaseAnalysis[] = []
 
   for (const declaration of declarations) {
     const submodulePath = declaration.path
@@ -175,6 +177,9 @@ export async function analyzeMetaRepository(
     ])
     const basePluginTargets = pluginAnalysis?.targets ?? []
     const baseSkillTargets = skillAnalysis?.targets ?? []
+    if (pluginAnalysis?.releaseAnalysis?.state === 'found' && pluginAnalysis.releaseAnalysis.assets.length > 0) {
+      releaseAnalyses.push(pluginAnalysis.releaseAnalysis)
+    }
 
     // github 源插件：优先官方 Release tgz（源码 pin 不一定带构建产物）。
     let submodulePluginTargets = basePluginTargets
@@ -244,6 +249,17 @@ export async function analyzeMetaRepository(
       ? `检测到 ${pluginTargets.length} 个可安装 Plugin 组件。`
       : '未在子模块中检测到 Plugin 组件。',
     targets: pluginTargets,
+    releaseAnalysis: releaseAnalyses.length === 0
+      ? null
+      : releaseAnalyses.length === 1
+        ? releaseAnalyses[0]
+        : {
+            state: 'found',
+            releaseTag: null,
+            releaseName: `${releaseAnalyses.length} 个子模块 Release`,
+            publishedAt: null,
+            assets: releaseAnalyses.flatMap(analysis => analysis.assets),
+          },
   }
   const skillAnalysis: SkillRepositoryAnalysis = {
     repository: fullName,

@@ -1,5 +1,5 @@
-import { AppWindow, ChevronRight, CircleStop, Download, Folder, GitFork, KeyRound, Layers3, LoaderCircle, Maximize2, Minus, Package, Play, X } from 'lucide-react'
-import type { CredentialStatus, GitHubAuthStatus, InstalledApplicationAddon, LauncherUpdateStatus, PackStatus, RuntimeState } from '../types'
+import { AppWindow, ChevronRight, CircleStop, Download, Folder, KeyRound, Layers3, LoaderCircle, Maximize2, Minus, Package, Play, X } from 'lucide-react'
+import type { CredentialStatus, GitHubAuthStatus, InstalledApplicationAddon, LauncherUpdateStatus, PackStatus, ProfileSummary, RuntimeState } from '../types'
 
 /** 管理界面顶栏：品牌、当前配置与运行状态、全局动作。 */
 
@@ -16,6 +16,7 @@ interface AppHeaderProps {
   launcherUpdate: LauncherUpdateStatus | null
   showPackSwitcher: boolean
   packs: PackStatus[]
+  profiles?: ProfileSummary[]
   activePackId: string | null | undefined
   packSwitcherDisabled: boolean
   profileActiveCount: number
@@ -27,6 +28,7 @@ interface AppHeaderProps {
   onToggleRuntime: () => void
   onUpdate: () => void
   onPackChange: (packId: string) => void
+  onProfileChange?: (profileName: string) => void
   onOpenProfileDirectory: () => void
   onMinimize: () => void
   onToggleMaximize: () => void
@@ -46,6 +48,7 @@ export function AppHeader({
   launcherUpdate,
   showPackSwitcher,
   packs,
+  profiles = [],
   activePackId,
   packSwitcherDisabled,
   profileActiveCount,
@@ -57,6 +60,7 @@ export function AppHeader({
   onToggleRuntime,
   onUpdate,
   onPackChange,
+  onProfileChange,
   onOpenProfileDirectory,
   onMinimize,
   onToggleMaximize,
@@ -69,24 +73,43 @@ export function AppHeader({
           ? <img className="brand-avatar" src={githubAuthStatus.avatarUrl} alt="" />
           : <div className="brand-mark"><Layers3 size={21} strokeWidth={2.2} /></div>}
         <div>
-          <div className="brand-name">DSH Launcher</div>
+          <button
+            className={`brand-github-link ${githubAuthStatus.authenticated ? 'configured' : ''}`}
+            type="button"
+            title={githubAuthStatus.authenticated ? `GitHub：${githubAuthStatus.login ?? ''}` : '登录 GitHub'}
+            onClick={onGitHubAccount}
+          >
+            {githubAuthStatus.authenticated ? githubAuthStatus.login : '点击登录 GitHub'}
+          </button>
           <div className="brand-subtitle">DeepSeek Harness 管理器</div>
         </div>
       </div>
       <div className="header-center">
         {showPackSwitcher ? (
           <div className="header-management-context">
+            <button
+              className={`credential-button header-api-button ${credentialStatus.configured || customApiCount > 0 ? 'configured' : ''}`}
+              type="button"
+              title="配置 DeepSeek 与自定义模型 API"
+              onClick={onCredential}
+            >
+              <KeyRound size={17} />
+              <span>API 配置</span>
+              <span className="credential-state">{customApiCount > 0 ? `${customApiCount} 个自定义` : credentialStatus.configured ? '已配置' : '未配置'}</span>
+            </button>
             <label className="header-pack-switcher">
               <Package size={16} />
-              <span>整合包</span>
+              <span>Profile / 整合包</span>
               <select
-                aria-label="切换整合包"
-                value={activePackId ?? ''}
+                aria-label="切换 Profile"
+                value={profiles.length > 0 ? profileName : (activePackId ?? '')}
                 disabled={packSwitcherDisabled}
-                onChange={event => onPackChange(event.target.value)}
+                onChange={event => profiles.length > 0 && onProfileChange ? onProfileChange(event.target.value) : onPackChange(event.target.value)}
               >
-                <option value="">默认配置</option>
-                {packs.map(pack => <option key={pack.id} value={pack.id}>{pack.name}</option>)}
+                {profiles.length > 0
+                  ? profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.name}</option>)
+                  : <option value="">默认配置</option>}
+                {profiles.length === 0 && packs.map(pack => <option key={pack.id} value={pack.id}>{pack.name}</option>)}
               </select>
             </label>
             <div className="header-management-stats" aria-label="配置概况">
@@ -95,33 +118,25 @@ export function AppHeader({
               <span><strong>{installedSkillCount}</strong> Skill</span>
               <button type="button" onClick={onOpenProfileDirectory} title={profileDirectory} aria-label="打开配置目录"><Folder size={15} /></button>
             </div>
-            <div className="header-runtime-status" title={runtime.running ? `${runtime.applicationAddonName ?? 'DSH'} 运行中 · PID ${runtime.pid}` : activeRuntimeReplacement ? `${activeRuntimeReplacement.name} 等待启动` : dshInstalled ? 'DSH 尚未启动' : 'DSH 尚未安装'}>
+            {runtime.running && <div className="header-runtime-status" title={`${runtime.applicationAddonName ?? 'DSH'} 运行中 · PID ${runtime.pid}`}>
               <span className={`status-dot ${runtime.running ? 'running' : ''}`} />
-              <span>{runtime.running ? '运行中' : activeRuntimeReplacement ? '等待启动' : dshInstalled ? '未启动' : '未安装'}</span>
-            </div>
+              <span>运行中</span>
+            </div>}
           </div>
         ) : (
           <div className="header-context">
             <span className="context-label">配置</span>
             <strong>{profileName}</strong>
-            <ChevronRight size={14} />
-            <span className={`status-dot ${runtime.running ? 'running' : ''}`} />
-            <span>{runtime.running ? `${runtime.applicationAddonName ?? 'DSH'} 运行中 · PID ${runtime.pid}` : activeRuntimeReplacement ? `${activeRuntimeReplacement.name} 等待启动` : dshInstalled ? '尚未启动' : '尚未安装'}</span>
+            {runtime.running && <>
+              <ChevronRight size={14} />
+              <span className="status-dot running" />
+              <span>{`${runtime.applicationAddonName ?? 'DSH'} 运行中 · PID ${runtime.pid}`}</span>
+            </>}
           </div>
         )}
       </div>
       <div className="header-actions">
-        <button
-          className={`github-account-button ${githubAuthStatus.authenticated ? 'configured' : ''}`}
-          type="button"
-          title={githubAuthStatus.authenticated ? `GitHub：${githubAuthStatus.login}` : '登录 GitHub'}
-          onClick={onGitHubAccount}
-        >
-          <GitFork size={17} />
-          <span>{githubAuthStatus.authenticated ? githubAuthStatus.login : 'GitHub'}</span>
-          <span className="credential-state">{githubAuthStatus.authenticated ? '已登录' : '未登录'}</span>
-        </button>
-        <button
+        {!showPackSwitcher && <button
           className={`credential-button ${credentialStatus.configured || customApiCount > 0 ? 'configured' : ''}`}
           type="button"
           title="配置 DeepSeek 与自定义模型 API"
@@ -130,7 +145,7 @@ export function AppHeader({
           <KeyRound size={17} />
           <span>API 配置</span>
           <span className="credential-state">{customApiCount > 0 ? `${customApiCount} 个自定义` : credentialStatus.configured ? '已配置' : '未配置'}</span>
-        </button>
+        </button>}
         {launcherUpdate && (launcherUpdate.state === 'update-available' || launcherUpdate.state === 'downloading' || launcherUpdate.state === 'downloaded') && (
           <button
             className={`launcher-update-button ${launcherUpdate.state === 'downloaded' ? 'ready' : ''}`}

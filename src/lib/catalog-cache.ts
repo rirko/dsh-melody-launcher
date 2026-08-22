@@ -1,7 +1,15 @@
 import type { CatalogIndexEntry, CatalogRepositoryAnalysis } from '../types'
 
-// v6：聚合仓库会合并根目录的应用加载项与子模块组件；淘汰旧的覆盖式分类缓存。
-const STORAGE_KEY = 'dsh-launcher.catalog-analysis.v6'
+// v7：Release 可执行资产加入分析结果；旧检测结果必须重新获取。
+const STORAGE_KEY = 'dsh-launcher.catalog-analysis.v7'
+const LEGACY_STORAGE_KEYS = [
+  'dsh-launcher.catalog-analysis.v1',
+  'dsh-launcher.catalog-analysis.v2',
+  'dsh-launcher.catalog-analysis.v3',
+  'dsh-launcher.catalog-analysis.v4',
+  'dsh-launcher.catalog-analysis.v5',
+  'dsh-launcher.catalog-analysis.v6',
+]
 const INDEX_STORAGE_KEY = 'dsh-launcher.catalog-index.v1'
 const memoryCache = new Map<string, CatalogCacheEntry>()
 
@@ -37,6 +45,19 @@ function writeStorage(entries: Record<string, CatalogCacheEntry>): void {
   }
 }
 
+function clearLegacyStorage(): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    for (const key of LEGACY_STORAGE_KEYS) localStorage.removeItem(key)
+  } catch {
+    // Ignore unavailable storage.
+  }
+}
+
+// Do this once when the cache module is loaded so an already-running launcher
+// does not retain stale analysis after upgrading to the Release-aware format.
+clearLegacyStorage()
+
 export function readCatalogAnalysisCache(
   repository: string,
   defaultBranch: string,
@@ -65,7 +86,10 @@ export function writeCatalogAnalysisCache(
 export function clearCatalogAnalysisCache(): void {
   memoryCache.clear()
   try {
-    if (typeof localStorage !== 'undefined') localStorage.removeItem(STORAGE_KEY)
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY)
+      clearLegacyStorage()
+    }
   } catch {
     // Ignore unavailable storage.
   }

@@ -161,6 +161,23 @@ describe('mergeStoredSettings', () => {
     expect(mergeStoredSettings(baseSettings, { uiTheme: 'berry' }).uiTheme).toBe('berry')
     expect(mergeStoredSettings(baseSettings, { uiTheme: 'neon' as never }).uiTheme).toBe('forest')
   })
+
+  it('migrates legacy settings with automatic runtime version selection', () => {
+    const defaults = defaultSettings({
+      homeDirectory: '/home/tester',
+      documentsDirectory: '/home/tester/Documents',
+      platform: 'linux',
+    })
+    const merged = mergeStoredSettings(defaults, { profileName: 'web' })
+    expect(merged.dshVersion).toBeNull()
+    expect(merged.nodeVersion).toBeNull()
+  })
+
+  it('keeps valid explicitly selected runtime versions', () => {
+    const merged = mergeStoredSettings(baseSettings, { dshVersion: 'v0.1.0-rc.7', nodeVersion: '22.19.0' })
+    expect(merged.dshVersion).toBe('v0.1.0-rc.7')
+    expect(merged.nodeVersion).toBe('22.19.0')
+  })
 })
 
 describe('usesOnDemandDsh', () => {

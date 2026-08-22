@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it } from 'vitest'
-import { collectCommandOutput, type CommandProcess } from '../electron/command'
+import { collectCommandOutput, runCommand, type CommandProcess } from '../electron/command'
 
 /** 一个只实现 collectCommandOutput 所需接口的子进程替身。 */
 function fakeProcess() {
@@ -64,5 +64,22 @@ describe('collectCommandOutput', () => {
     const pending = collectCommandOutput(child)
     emitter.emit('error', new Error('ENOENT'))
     await expect(pending).rejects.toThrow('ENOENT')
+  })
+})
+
+describe('runCommand execution log', () => {
+  it('records the command, output, working directory and exit code', async () => {
+    const seen: Array<[string, string]> = []
+    const result = await runCommand(process.execPath, ['-e', 'process.stdout.write("command-ok")'], {
+      cwd: process.cwd(),
+      env: process.env,
+      onOutput: (text, level) => seen.push([level, text]),
+    })
+
+    expect(result.exitCode).toBe(0)
+    expect(seen.some(([level, text]) => level === 'info' && text.includes('命令：'))).toBe(true)
+    expect(seen.some(([, text]) => text.includes('工作目录：'))).toBe(true)
+    expect(seen.some(([, text]) => text.includes('command-ok'))).toBe(true)
+    expect(seen.some(([level, text]) => level === 'info' && text.includes('命令退出：0'))).toBe(true)
   })
 })

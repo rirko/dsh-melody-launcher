@@ -5,6 +5,16 @@ export interface SpawnedProcessTracker {
   track(child: ChildProcess): void
 }
 
+/** 将命令参数格式化为可读、可复制的日志文本；不记录环境变量中的密钥。 */
+export function formatCommandLine(executable: string, args: string[]): string {
+  const quote = (value: string): string => {
+    if (value.length === 0) return '""'
+    if (!/[\s"&|<>^()%!]/.test(value)) return value
+    return `"${value.replace(/"/g, '""')}"`
+  }
+  return [executable, ...args].map(quote).join(' ')
+}
+
 let processTracker: SpawnedProcessTracker | null = null
 const localProcesses = new Set<ChildProcess>()
 

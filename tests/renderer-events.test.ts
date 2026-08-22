@@ -16,6 +16,10 @@ describe('normalizeOutputText', () => {
   it('leaves interior whitespace alone', () => {
     expect(normalizeOutputText('  indented line')).toBe('  indented line')
   })
+
+  it('turns carriage-return progress refreshes into visible terminal lines', () => {
+    expect(normalizeOutputText('fetching 10%\rfetching 20%\r')).toBe('fetching 10%\nfetching 20%')
+  })
 })
 
 describe('createRendererEvents', () => {

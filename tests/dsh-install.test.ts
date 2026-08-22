@@ -171,8 +171,33 @@ describe('managed DSH installation', () => {
     })
     expect(packageManagerProgress('npm http fetch GET 200 https://registry.npmjs.org/react', 28)).toEqual({
       percent: 35,
-      message: '正在下载所需文件',
+      message: '正在解析 npm 依赖（已请求 1 项）',
       indeterminate: true,
+    })
+    expect(packageManagerProgress('npm http fetch GET 200 https://registry.npmjs.org/one\nnpm http fetch GET 200 https://registry.npmjs.org/two', 35, 1)).toEqual({
+      percent: 37,
+      message: '正在解析 npm 依赖（已请求 3 项）',
+      indeterminate: true,
+    })
+    expect(packageManagerProgress('npm silly placeDep ROOT demo@1.0.0 OK', 50)).toEqual({
+      percent: 78,
+      message: '正在整理 npm 依赖（已整理 1 项）',
+    })
+    expect(packageManagerProgress(
+      'npm silly placeDep ROOT one@1.0.0 OK\nnpm silly placeDep ROOT two@1.0.0 OK',
+      78,
+      0,
+      24,
+    )).toEqual({
+      percent: 79,
+      message: '正在整理 npm 依赖（已整理 26 项）',
+    })
+    expect(packageManagerProgress(
+      'npm http fetch GET 200 https://registry.npmjs.org/one\nnpm silly placeDep ROOT one@1.0.0 OK',
+      35,
+    )).toEqual({
+      percent: 78,
+      message: '正在整理 npm 依赖（已整理 1 项）',
     })
   })
 

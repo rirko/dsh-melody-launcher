@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLauncherApi } from '../api/client'
 import { DSH_REPOSITORY, EMPTY_DSH_INSTALLATION, EMPTY_RUNTIME_STATE, MAX_LOG_LINES } from '../constants'
 import { errorText } from '../lib/format'
@@ -7,6 +7,7 @@ import { reorderProfilePlugins } from '../lib/profile-order'
 import type {
   ApplicationInstallResult,
   AppSettings,
+  CatalogAnalysisProgress,
   CredentialStatus,
   CustomApiProvider,
   CustomApiProviderInput,
@@ -14,6 +15,7 @@ import type {
   DshUpdateStatus,
   GitHubAuthStatus,
   InstallProgress,
+  LauncherApi,
   InstalledPreset,
   InstalledSkill,
   InstalledApplicationAddon,
@@ -21,11 +23,13 @@ import type {
   LauncherUpdateStatus,
   ManagedPlugin,
   PackStatus,
+  ProfileSummary,
   PluginTrialResult,
   PresetInstallResult,
   ProfileState,
   RepositoryInstallResult,
   RuntimeOutput,
+  RuntimeEnvironmentState,
   RuntimeState,
   SkillInstallResult,
 } from '../types'
@@ -54,6 +58,7 @@ export function useLauncherStore() {
   const [runtime, setRuntime] = useState<RuntimeState>(EMPTY_RUNTIME_STATE)
   const [dshInstallation, setDshInstallation] = useState<DshInstallationStatus>(EMPTY_DSH_INSTALLATION)
   const [dshUpdate, setDshUpdate] = useState<DshUpdateStatus | null>(null)
+  const [runtimeEnvironment, setRuntimeEnvironment] = useState<RuntimeEnvironmentState | null>(null)
   const [launcherUpdate, setLauncherUpdate] = useState<LauncherUpdateStatus | null>(null)
   const [launcherUpdateProgress, setLauncherUpdateProgress] = useState<LauncherUpdateProgress | null>(null)
   const [installProgress, setInstallProgress] = useState<InstallProgress | null>(null)
@@ -75,9 +80,13 @@ export function useLauncherStore() {
     oauthAvailable: false,
     rateLimit: null,
   })
+  const githubAuthRefreshVersion = useRef(0)
   const [logs, setLogs] = useState<RuntimeOutput[]>([])
+  const progressLogBuckets = useRef<Record<string, { phase: InstallProgress['phase']; bucket: number; message: string }>>({})
+  const catalogProgressLogState = useRef<Record<string, string>>({})
   const [selectedPlugin, setSelectedPlugin] = useState<string | null>(null)
   const [packs, setPacks] = useState<PackStatus[]>([])
+  const [profiles, setProfiles] = useState<ProfileSummary[]>([])
   const [packSnapshotsAvailable, setPackSnapshotsAvailable] = useState(false)
   const [loading, setLoading] = useState(true)
   const activeRuntimeReplacement = installedApplications.find(
@@ -92,6 +101,14 @@ export function useLauncherStore() {
       : next.plugins[0]?.packageName ?? null)
   }, [])
 
+  const appendRuntimeLog = useCallback((entry: Omit<RuntimeOutput, 'timestamp'>) => {
+    setLogs(current => {
+      const previous = current[current.length - 1]
+      if (previous && previous.channel === entry.channel && previous.level === entry.level && previous.text === entry.text) return current
+      return [...current.slice(-(MAX_LOG_LINES - 1)), { ...entry, timestamp: new Date().toISOString() }]
+    })
+  }, [])
+
   useEffect(() => {
     let disposed = false
     void Promise.all([
@@ -104,11 +121,12 @@ export function useLauncherStore() {
       api.readInstalledApplications(),
       api.readInstalledPresets(),
       api.listPacks(),
+      api.listProfiles(),
       api.packHasSnapshot(),
       api.readPluginTrials(),
       api.listCustomApiProviders().catch(() => [] as CustomApiProvider[]),
     ])
-      .then(([nextSettings, nextProfile, nextRuntime, nextCredentialStatus, nextDshInstallation, nextInstalledSkills, nextInstalledApplications, nextInstalledPresets, nextPacks, nextPackSnapshot, nextPluginTrials, nextCustomApiProviders]) => {
+      .then(([nextSettings, nextProfile, nextRuntime, nextCredentialStatus, nextDshInstallation, nextInstalledSkills, nextInstalledApplications, nextInstalledPresets, nextPacks, nextProfiles, nextPackSnapshot, nextPluginTrials, nextCustomApiProviders]) => {
         setSettings(nextSettings)
         setProfile(nextProfile)
         setRuntime(nextRuntime)
@@ -119,6 +137,7 @@ export function useLauncherStore() {
         setInstalledPresets(nextInstalledPresets)
         setSelectedPlugin(nextProfile.plugins[0]?.packageName ?? null)
         setPacks(nextPacks)
+        setProfiles(nextProfiles)
         setPackSnapshotsAvailable(nextPackSnapshot)
         setPluginTrials(Object.fromEntries(nextPluginTrials.map(result => [pluginTrialStateKey(result.profileName, result.packageName), result])))
         setCustomApiProviders(nextCustomApiProviders)
@@ -127,16 +146,25 @@ export function useLauncherStore() {
       .finally(() => setLoading(false))
 
     // GitHub 凭据状态独立加载；读取失败时短暂重试，避免一次 IPC/启动时序问题把已登录账号卡成未登录。
-    const refreshGitHubAuth = async (attempt = 0): Promise<void> => {
+    const refreshGitHubAuth = async (attempt = 0, refreshVersion?: number): Promise<void> => {
       if (disposed) return
+      const version = refreshVersion ?? ++githubAuthRefreshVersion.current
       try {
         const next = await api.getGitHubAuthStatus()
-        if (!disposed) setGitHubAuthStatus(next)
+        if (!disposed && version === githubAuthRefreshVersion.current) setGitHubAuthStatus(next)
+        // safeStorage can become available just after the first IPC call.
+        // Retry a transient unauthenticated read so a valid encrypted session
+        // is not presented as logged out until the next window focus event.
+        if (!next.authenticated && !disposed && attempt < 2) {
+          const delay = attempt === 0 ? 250 : 1_000
+          await new Promise<void>(resolve => window.setTimeout(resolve, delay))
+          await refreshGitHubAuth(attempt + 1, version)
+        }
       } catch {
         if (disposed || attempt >= 2) return
         const delay = attempt === 0 ? 250 : 1_000
         await new Promise<void>(resolve => window.setTimeout(resolve, delay))
-        await refreshGitHubAuth(attempt + 1)
+        await refreshGitHubAuth(attempt + 1, version)
       }
     }
     void refreshGitHubAuth()
@@ -147,6 +175,10 @@ export function useLauncherStore() {
     void api.checkDshUpdate()
       .then(next => { if (!disposed) setDshUpdate(next) })
       .catch(() => { /* 主进程已把网络失败转换为状态；演示 API 也不应阻塞启动 */ })
+
+    void api.readRuntimeEnvironment()
+      .then(next => { if (!disposed) setRuntimeEnvironment(next) })
+      .catch(() => { /* 版本索引失败不阻塞其他页面 */ })
 
     // 启动器自更新：同样后台检测；发现新版本后自动开始下载，UI 提示由 AppHeader 的更新按钮承载。
     void api.checkLauncherUpdate()
@@ -161,16 +193,72 @@ export function useLauncherStore() {
       })
       .catch(() => { /* 主进程已把网络失败转换为 error 状态 */ })
 
+    const handleInstallProgress = (progress: InstallProgress) => {
+        setInstallProgress(progress)
+        const key = `${progress.kind}:${progress.repository}`
+        const bucket = Math.floor(progress.percent / 10)
+        const previous = progressLogBuckets.current[key]
+        const waitingHeartbeat = progress.message.startsWith('安装中 · 已等待')
+        const shouldLog = !previous
+          || previous.phase !== progress.phase
+          || previous.bucket !== bucket
+          || (waitingHeartbeat && previous.message !== progress.message)
+          || progress.phase === 'error'
+          || progress.phase === 'complete'
+        if (shouldLog) {
+          progressLogBuckets.current[key] = { phase: progress.phase, bucket, message: progress.message }
+          const channel: RuntimeOutput['channel'] = progress.kind === 'dsh' ? 'runtime' : 'plugin'
+          const size = progress.downloadedBytes != null
+            ? ` · ${progress.downloadedBytes}${progress.totalBytes != null ? `/${progress.totalBytes}` : ''} B`
+            : ''
+          const entry: RuntimeOutput = {
+            channel,
+            level: progress.phase === 'error' ? 'error' : progress.phase === 'complete' ? 'success' : 'info',
+            text: `[${progress.repository}] ${progress.message} · ${progress.percent}%${size}`,
+            timestamp: new Date().toISOString(),
+          }
+          appendRuntimeLog(entry)
+        }
+      }
+
+      const handleCatalogAnalysisProgress = (progress: CatalogAnalysisProgress) => {
+        const signature = `${progress.phase}:${progress.completed}:${progress.message}`
+        if (catalogProgressLogState.current[progress.repository] === signature) return
+        catalogProgressLogState.current[progress.repository] = signature
+        appendRuntimeLog({
+          channel: 'plugin',
+          level: progress.phase === 'error' ? 'error' : progress.phase === 'complete' ? 'success' : 'info',
+          text: `[${progress.repository}] ${progress.message} · ${progress.completed}/${progress.total}`,
+        })
+      }
+
     const unsubscribers = [
-      api.onRuntimeOutput(output => setLogs(current => [...current.slice(-(MAX_LOG_LINES - 1)), output])),
+      api.onRuntimeOutput(output => appendRuntimeLog(output)),
       api.onRuntimeState(setRuntime),
-      api.onInstallProgress(setInstallProgress),
+      api.onInstallProgress(handleInstallProgress),
+      api.onCatalogAnalysisProgress(handleCatalogAnalysisProgress),
+      api.onDshMarketProgress(progress => handleInstallProgress({
+        repository: progress.name ? `dsh-market:${progress.name}` : 'dsh-market',
+        kind: 'plugin',
+        phase: progress.phase === 'loading' || progress.phase === 'checking' ? 'preparing' : progress.phase === 'resolving' ? 'resolving' : progress.phase,
+        percent: progress.percent ?? 0,
+        message: progress.message,
+        downloadedBytes: progress.downloadedBytes ?? undefined,
+        totalBytes: progress.totalBytes ?? undefined,
+      })),
       api.onLauncherUpdateProgress(progress => {
         setLauncherUpdateProgress(progress)
         setLauncherUpdate(current => current ? { ...current, state: progress.phase === 'applying' ? 'applying' : 'downloading' } : current)
       }),
       api.onPluginTrialEvent(result => {
         setPluginTrials(current => ({ ...current, [pluginTrialStateKey(result.profileName, result.packageName)]: result }))
+        appendRuntimeLog({
+          channel: 'test',
+          level: result.phase === 'failed' ? 'error' : result.phase === 'passed' ? 'success' : 'info',
+          text: result.phase === 'running'
+            ? `插件试运行：${result.packageName}（来源 Profile：${result.profileName}）`
+            : result.message,
+        })
       }),
     ]
     return () => {
@@ -248,11 +336,21 @@ export function useLauncherStore() {
 
   const beginInstall = useCallback((progress: InstallProgress) => {
     setInstallProgress(progress)
-  }, [])
+    appendRuntimeLog({
+      channel: progress.kind === 'dsh' ? 'runtime' : 'plugin',
+      level: 'info',
+      text: `[${progress.repository}] ${progress.message} · ${progress.percent}%`,
+    })
+  }, [appendRuntimeLog])
 
   const finishInstall = useCallback((repository: string, succeeded = false, message = '安装失败') => {
     setInstallProgress(current => finalizeInstallProgress(current, repository, succeeded, message))
-  }, [])
+    appendRuntimeLog({
+      channel: repository === DSH_REPOSITORY ? 'runtime' : 'plugin',
+      level: succeeded ? 'success' : 'error',
+      text: `[${repository}] ${succeeded ? '安装完成' : message}`,
+    })
+  }, [appendRuntimeLog])
 
   const installDsh = useCallback(async (): Promise<RepositoryInstallResult | undefined> => {
     setInstallProgress({
@@ -293,6 +391,97 @@ export function useLauncherStore() {
     const result = await installDsh()
     return result !== undefined
   }, [installDsh])
+
+  const applyRuntimeEnvironment = useCallback(async (next: RuntimeEnvironmentState) => {
+    setRuntimeEnvironment(next)
+    setSettings(await api.getSettings())
+    setDshInstallation(await api.detectDshInstallation())
+  }, [api])
+
+  const refreshRuntimeEnvironment = useCallback(async (refresh = false): Promise<boolean> => {
+    const next = await run('runtime-environment-read', () => api.readRuntimeEnvironment(refresh), {
+      onError: error => showToast({ kind: 'error', message: errorText(error) }),
+    })
+    if (!next) return false
+    setRuntimeEnvironment(next)
+    return true
+  }, [api, run, showToast])
+
+  const installDshVersion = useCallback(async (version: string): Promise<boolean> => {
+    const next = await run(`runtime-dsh-install:${version}`, () => api.installDshVersion(version), {
+      success: `DSH ${version} 已安装并设为当前版本。`,
+      onError: error => {
+        const message = errorText(error)
+        setInstallProgress({ repository: version.replace(/^v/i, ''), kind: 'dsh', phase: 'error', percent: 0, message, indeterminate: false })
+        showToast({ kind: 'error', message })
+      },
+    })
+    if (!next) return false
+    await applyRuntimeEnvironment(next)
+    return true
+  }, [api, applyRuntimeEnvironment, run, showToast])
+
+  const selectDshVersion = useCallback(async (version: string): Promise<boolean> => {
+    const next = await run(`runtime-dsh-select:${version}`, () => api.selectDshVersion(version), {
+      success: `DSH ${version} 已设为当前启动版本。`,
+      onError: error => showToast({ kind: 'error', message: errorText(error) }),
+    })
+    if (!next) return false
+    await applyRuntimeEnvironment(next)
+    return true
+  }, [api, applyRuntimeEnvironment, run, showToast])
+
+  const removeDshVersion = useCallback(async (version: string): Promise<boolean> => {
+    const next = await run(`runtime-dsh-remove:${version}`, () => api.removeDshVersion(version), {
+      success: `DSH ${version} 已删除。`,
+      onError: error => showToast({ kind: 'error', message: errorText(error) }),
+    })
+    if (!next) return false
+    await applyRuntimeEnvironment(next)
+    return true
+  }, [api, applyRuntimeEnvironment, run, showToast])
+
+  const installNodeVersion = useCallback(async (version: string): Promise<boolean> => {
+    const next = await run(`runtime-node-install:${version}`, () => api.installNodeVersion(version), {
+      success: `Node.js ${version} 已安装并设为当前版本。`,
+      onError: error => {
+        const message = errorText(error)
+        setInstallProgress({ repository: version.replace(/^v/i, ''), kind: 'dsh', phase: 'error', percent: 0, message, indeterminate: false })
+        showToast({ kind: 'error', message })
+      },
+    })
+    if (!next) return false
+    await applyRuntimeEnvironment(next)
+    return true
+  }, [api, applyRuntimeEnvironment, run, showToast])
+
+  const cancelRuntimeDownload = useCallback(async (): Promise<void> => {
+    try {
+      await api.cancelRuntimeEnvironmentOperation()
+    } catch (error) {
+      showToast({ kind: 'error', message: errorText(error) })
+    }
+  }, [api, appendRuntimeLog, showToast])
+
+  const selectNodeVersion = useCallback(async (version: string | null): Promise<boolean> => {
+    const next = await run(`runtime-node-select:${version ?? 'system'}`, () => api.selectNodeVersion(version), {
+      success: version ? `Node.js ${version} 已设为当前运行环境。` : '已恢复使用系统 Node.js。',
+      onError: error => showToast({ kind: 'error', message: errorText(error) }),
+    })
+    if (!next) return false
+    await applyRuntimeEnvironment(next)
+    return true
+  }, [api, applyRuntimeEnvironment, run, showToast])
+
+  const removeNodeVersion = useCallback(async (version: string): Promise<boolean> => {
+    const next = await run(`runtime-node-remove:${version}`, () => api.removeNodeVersion(version), {
+      success: `Node.js ${version} 已删除。`,
+      onError: error => showToast({ kind: 'error', message: errorText(error) }),
+    })
+    if (!next) return false
+    await applyRuntimeEnvironment(next)
+    return true
+  }, [api, applyRuntimeEnvironment, run, showToast])
 
   /** 启动器自更新：检测到新版本后自动开始后台下载（幂等，已有临时文件则跳过）。 */
   const downloadLauncherUpdate = useCallback(async (): Promise<LauncherUpdateStatus | null> => {
@@ -441,7 +630,7 @@ export function useLauncherStore() {
 
   const uninstallPlugin = useCallback(async (plugin: ManagedPlugin) => {
     const next = await run(plugin.packageName, () => api.uninstallPlugin(plugin.packageName), {
-      success: `${plugin.displayName} 已卸载。`,
+      success: `${plugin.displayName} 已从本机完全卸载。`,
     })
     if (!next) return
     setProfile(next)
@@ -475,6 +664,56 @@ export function useLauncherStore() {
     })
     if (next) setPacks(next)
   }, [api, run, showToast])
+
+  const refreshProfiles = useCallback(async () => {
+    const next = await api.listProfiles()
+    setProfiles(next)
+    return next
+  }, [api])
+
+  const createProfile = useCallback(async (request: Parameters<LauncherApi['createProfile']>[0]) => {
+    const next = await run(`profile-create:${request.name}`, () => api.createProfile(request), { success: `Profile「${request.name}」已创建。` })
+    if (next) await refreshProfiles()
+    return next
+  }, [api, refreshProfiles, run])
+
+  const cloneProfile = useCallback(async (sourceName: string, targetName: string, description?: string) => {
+    const next = await run(`profile-clone:${targetName}`, () => api.cloneProfile(sourceName, targetName, description), { success: `Profile「${targetName}」已克隆。` })
+    if (next) await refreshProfiles()
+    return next
+  }, [api, refreshProfiles, run])
+
+  const switchProfile = useCallback(async (profileName: string, options?: { fillMissing?: boolean }) => {
+    const target = profiles.find(item => item.id === profileName)
+    const fillMissing = options?.fillMissing ?? (target && target.missingDependencies.length > 0
+      ? (typeof window !== 'undefined' && window.confirm(`Profile「${profileName}」缺少 ${target.missingDependencies.length} 项依赖，是否从来源记录补齐后切换？`))
+      : false)
+    if (target && target.missingDependencies.length > 0 && !fillMissing) {
+      // The confirmation dialog is the cancellation boundary for dependency
+      // repair. Clear any stale progress left by an earlier interrupted
+      // installer so Profile controls are immediately usable again.
+      setInstallProgress(null)
+      return undefined
+    }
+    const next = await run(`profile-switch:${profileName}`, async () => {
+      const result = await api.switchProfile(profileName, { fillMissing })
+      setSettings(result)
+      await refreshProfile()
+      await refreshProfiles()
+      return result
+    }, { success: `已切换到 Profile「${profileName}」。` })
+    // 依赖补齐由主进程复用安装进度事件；如果安装在准备阶段失败，
+    // 某些旧版本/第三方安装器可能来不及发送 error 终态。切换请求已经
+    // 结束后清除残留进度，避免 Profile 下拉框和导出菜单永久处于写锁状态。
+    setInstallProgress(null)
+    return next
+  }, [api, profiles, refreshProfiles, refreshProfile, run])
+
+  const deleteProfile = useCallback(async (profileName: string) => {
+    const next = await run(`profile-delete:${profileName}`, () => api.deleteProfile(profileName), { success: `Profile「${profileName}」已删除。` })
+    if (next !== undefined) await refreshProfiles()
+    return next !== undefined
+  }, [api, refreshProfiles, run])
 
   const refreshPackSnapshots = useCallback(async () => {
     try {
@@ -524,6 +763,12 @@ export function useLauncherStore() {
     const path = await run(`pack-export:${packId}`, () => api.exportPack(packId))
     if (path) showToast({ kind: 'success', message: `整合包已导出到 ${path}` })
     return path ?? null
+  }, [api, run, showToast])
+
+  const exportProfile = useCallback(async (profileName: string, mode: Parameters<LauncherApi['exportProfile']>[1], options?: Parameters<LauncherApi['exportProfile']>[2]): Promise<string | null> => {
+    const result = await run(`profile-export:${profileName}:${mode}`, () => api.exportProfile(profileName, mode, options))
+    if (result) showToast({ kind: 'success', message: mode === 'repository' ? `Profile 已同步到 ${result}` : `Profile 已导出到 ${result}` })
+    return result ?? null
   }, [api, run, showToast])
 
   const addPackPlugin = useCallback(async (packId: string, packageName: string): Promise<boolean> => {
@@ -642,6 +887,7 @@ export function useLauncherStore() {
     runtime,
     dshInstallation,
     dshUpdate,
+    runtimeEnvironment,
     launcherUpdate,
     launcherUpdateProgress,
     installProgress,
@@ -659,6 +905,7 @@ export function useLauncherStore() {
     selectedPlugin,
     selected: profile?.plugins.find(plugin => plugin.packageName === selectedPlugin) ?? null,
     packs,
+    profiles,
     packSnapshotsAvailable,
     busy,
     toast,
@@ -680,6 +927,14 @@ export function useLauncherStore() {
     finishInstall,
     toggleRuntime,
     updateDsh,
+    refreshRuntimeEnvironment,
+    installDshVersion,
+    selectDshVersion,
+    removeDshVersion,
+    installNodeVersion,
+    cancelRuntimeDownload,
+    selectNodeVersion,
+    removeNodeVersion,
     downloadLauncherUpdate,
     applyLauncherUpdate,
     saveSettings,
@@ -687,7 +942,11 @@ export function useLauncherStore() {
     clearApiKey,
     saveCustomApi,
     removeCustomApi,
-    setGitHubAuthStatus,
+    setGitHubAuthStatus: (next: GitHubAuthStatus) => {
+      // A manual login/logout supersedes any status request already in flight.
+      githubAuthRefreshVersion.current += 1
+      setGitHubAuthStatus(next)
+    },
     togglePlugin,
     toggleSkill,
     toggleApplication,
@@ -697,11 +956,17 @@ export function useLauncherStore() {
     uninstallPlugin,
     trialPlugin,
     refreshPacks,
+    refreshProfiles,
+    createProfile,
+    cloneProfile,
+    switchProfile,
+    deleteProfile,
     refreshPackSnapshots,
     activatePack,
     deactivatePack,
     removePack,
     exportPack,
+    exportProfile,
     addPackPlugin,
     addPackPreset,
     addPackSkill,

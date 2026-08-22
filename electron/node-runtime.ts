@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto'
 import { createReadStream, existsSync } from 'node:fs'
 import { mkdir, open, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
-import { spawnCommand, trackSpawnedProcess, withExecutableDirectoryOnPath } from './process'
+import { formatCommandLine, spawnCommand, trackSpawnedProcess, withExecutableDirectoryOnPath } from './process'
+import type { RuntimeVersionCandidate } from '../src/types'
 
 export const NODE_RUNTIME_VERSION = 'v24.19.0'
 export const PNPM_VERSION = '11.21.0'
@@ -24,11 +25,15 @@ export interface PnpmRuntime {
 export interface NodeRuntimeProgress {
   percent: number
   message: string
+  downloadedBytes?: number
+  totalBytes?: number
 }
 
 type ProgressListener = (progress: NodeRuntimeProgress) => void
+type OutputListener = (level: 'info' | 'error', text: string) => void
 
-let installationPromise: Promise<NodeRuntime> | null = null
+/** 同一版本只允许一个下载任务；不同版本可以并行准备。 */
+const installationPromises = new Map<string, Promise<NodeRuntime>>()
 let pnpmInstallationPromise: Promise<PnpmRuntime> | null = null
 
 /**
@@ -42,7 +47,7 @@ let pnpmInstallationPromise: Promise<PnpmRuntime> | null = null
  */
 type RuntimeLayout = 'bin-directory' | 'distribution-root'
 
-function runtimePaths(root: string, managed: boolean, layout: RuntimeLayout): NodeRuntime {
+export function runtimePaths(root: string, managed: boolean, layout: RuntimeLayout): NodeRuntime {
   if (process.platform === 'win32') {
     return {
       root,
@@ -102,9 +107,22 @@ export function findSystemNodeRuntime(environment: NodeJS.ProcessEnv = process.e
   return null
 }
 
-export function nodeArchiveName(architecture = process.arch): string {
-  const archiveArchitecture = architecture === 'arm64' ? 'arm64' : 'x64'
-  return `node-${NODE_RUNTIME_VERSION}-win-${archiveArchitecture}.zip`
+export function normalizeNodeVersion(version: string): string {
+  const normalized = version.trim()
+  return normalized.startsWith('v') ? normalized : `v${normalized}`
+}
+
+export function managedNodeVersionRoot(runtimeRoot: string, version: string): string {
+  return path.join(runtimeRoot, 'versions', normalizeNodeVersion(version))
+}
+
+export function nodeArchiveName(versionOrArchitecture = NODE_RUNTIME_VERSION, architecture = process.arch): string {
+  // 保留旧的 nodeArchiveName('x64') 调用约定，同时支持 nodeArchiveName('v22.14.0', 'x64')。
+  const isArchitecture = versionOrArchitecture === 'x64' || versionOrArchitecture === 'arm64'
+  const version = isArchitecture ? NODE_RUNTIME_VERSION : versionOrArchitecture
+  const selectedArchitecture = isArchitecture ? versionOrArchitecture : architecture
+  const archiveArchitecture = selectedArchitecture === 'arm64' ? 'arm64' : 'x64'
+  return `node-${normalizeNodeVersion(version)}-win-${archiveArchitecture}.zip`
 }
 
 export function parseNodeArchiveChecksum(checksums: string, archiveName: string): string | null {
@@ -115,18 +133,48 @@ export function parseNodeArchiveChecksum(checksums: string, archiveName: string)
   return null
 }
 
-export async function findManagedNodeRuntime(runtimeRoot: string): Promise<NodeRuntime | null> {
-  if (!existsSync(runtimeRoot)) return null
+function versionFromNodeDirectory(directory: string): string | null {
+  const match = directory.match(/^node-(v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)-win-(?:x64|arm64)$/i)
+  return match ? normalizeNodeVersion(match[1]) : null
+}
+
+export interface ManagedNodeVersion {
+  version: string
+  runtime: NodeRuntime
+  root: string
+  source: 'launcher' | 'legacy'
+}
+
+export async function findManagedNodeRuntimes(runtimeRoot: string): Promise<ManagedNodeVersion[]> {
+  if (!existsSync(runtimeRoot)) return []
   const entries = await readdir(runtimeRoot, { withFileTypes: true })
-  const directories = entries
-    .filter(entry => entry.isDirectory() && entry.name.startsWith('node-v'))
-    .map(entry => entry.name)
-    .sort((a, b) => b.localeCompare(a, 'en'))
-  for (const directory of directories) {
-    const runtime = runtimePaths(path.join(runtimeRoot, directory), true, 'distribution-root')
-    if (isCompleteRuntime(runtime)) return runtime
+  const roots: Array<{ root: string; source: 'launcher' | 'legacy' }> = []
+  const versionsRoot = path.join(runtimeRoot, 'versions')
+  const versionEntries = await readdir(versionsRoot, { withFileTypes: true }).catch(() => [])
+  for (const entry of versionEntries) {
+    if (entry.isDirectory()) roots.push({ root: path.join(versionsRoot, entry.name), source: 'launcher' })
   }
-  return null
+  for (const entry of entries) {
+    if (entry.isDirectory() && entry.name.startsWith('node-v')) roots.push({ root: path.join(runtimeRoot, entry.name), source: 'legacy' })
+  }
+  const found: ManagedNodeVersion[] = []
+  for (const item of roots) {
+    const runtime = runtimePaths(item.root, true, 'distribution-root')
+    const version = item.source === 'launcher'
+      ? (/^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/i.test(path.basename(item.root)) ? normalizeNodeVersion(path.basename(item.root)) : null)
+      : versionFromNodeDirectory(path.basename(item.root))
+    if (version && isCompleteRuntime(runtime)) found.push({ version, runtime, root: item.root, source: item.source })
+  }
+  return found.sort((left, right) => right.version.localeCompare(left.version, 'en'))
+}
+
+export async function findManagedNodeRuntime(runtimeRoot: string, requestedVersion?: string | null): Promise<NodeRuntime | null> {
+  const runtimes = await findManagedNodeRuntimes(runtimeRoot)
+  if (requestedVersion) {
+    const normalized = normalizeNodeVersion(requestedVersion)
+    return runtimes.find(item => item.version === normalized)?.runtime ?? null
+  }
+  return runtimes[0]?.runtime ?? null
 }
 
 async function sha256(filePath: string): Promise<string> {
@@ -135,14 +183,14 @@ async function sha256(filePath: string): Promise<string> {
   return hash.digest('hex')
 }
 
-async function downloadFile(url: string, target: string, onProgress: (ratio: number) => void): Promise<void> {
+async function downloadFile(url: string, target: string, onProgress: (ratio: number, downloadedBytes: number, totalBytes: number | null) => void): Promise<void> {
   const existingSize = existsSync(target) ? (await stat(target)).size : 0
   const response = await fetch(url, {
     redirect: 'follow',
     headers: existingSize > 0 ? { Range: `bytes=${existingSize}-` } : undefined,
   })
   if (response.status === 416 && existingSize > 0) {
-    onProgress(1)
+    onProgress(1, existingSize, existingSize)
     return
   }
   if (!response.ok || !response.body) throw new Error(`下载 Node.js 运行环境失败（HTTP ${response.status}）。`)
@@ -157,7 +205,11 @@ async function downloadFile(url: string, target: string, onProgress: (ratio: num
     for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
       await file.write(chunk)
       received += chunk.byteLength
-      onProgress(Number.isFinite(total) && total > 0 ? Math.min(received / total, 1) : 0)
+      onProgress(
+        Number.isFinite(total) && total > 0 ? Math.min(received / total, 1) : 0,
+        received,
+        Number.isFinite(total) && total > 0 ? total : null,
+      )
     }
   } finally {
     await file.close()
@@ -171,22 +223,29 @@ async function waitForExit(child: ReturnType<typeof spawn>): Promise<number> {
   })
 }
 
-async function installManagedNodeRuntime(runtimeRoot: string, onProgress?: ProgressListener): Promise<NodeRuntime> {
+export async function installManagedNodeRuntime(
+  runtimeRoot: string,
+  version = NODE_RUNTIME_VERSION,
+  onProgress?: ProgressListener,
+  onOutput?: OutputListener,
+): Promise<NodeRuntime> {
   if (process.platform !== 'win32') {
     throw new Error('未检测到 Node.js。自动准备运行环境目前仅支持 Windows。')
   }
 
-  const archiveName = nodeArchiveName()
+  const normalizedVersion = normalizeNodeVersion(version)
+  const archiveName = nodeArchiveName(normalizedVersion)
   const extractedName = archiveName.slice(0, -4)
-  const finalRoot = path.join(runtimeRoot, extractedName)
+  const finalRoot = managedNodeVersionRoot(runtimeRoot, normalizedVersion)
   const existing = runtimePaths(finalRoot, true, 'distribution-root')
   if (isCompleteRuntime(existing)) return existing
 
   const nonce = `${process.pid}-${Date.now()}`
   const archivePath = path.join(runtimeRoot, archiveName)
   const stagingRoot = path.join(runtimeRoot, `.node-runtime-${nonce}`)
-  const baseUrl = `https://nodejs.org/dist/${NODE_RUNTIME_VERSION}`
+  const baseUrl = `https://nodejs.org/dist/${normalizedVersion}`
   await mkdir(runtimeRoot, { recursive: true })
+  await mkdir(path.dirname(finalRoot), { recursive: true })
   await mkdir(stagingRoot, { recursive: true })
 
   try {
@@ -200,11 +259,11 @@ async function installManagedNodeRuntime(runtimeRoot: string, onProgress?: Progr
     if (actualChecksum !== expectedChecksum) {
       onProgress?.({ percent: 8, message: '正在下载 Node.js 便携运行环境' })
       let lastProgress = -1
-      const reportDownload = (ratio: number) => {
+      const reportDownload = (ratio: number, downloadedBytes: number, totalBytes: number | null) => {
         const percent = 8 + Math.round(ratio * 67)
         if (percent !== lastProgress) {
           lastProgress = percent
-          onProgress?.({ percent, message: `正在下载 Node.js ${NODE_RUNTIME_VERSION}` })
+          onProgress?.({ percent, message: `正在下载 Node.js ${normalizedVersion}`, downloadedBytes, totalBytes: totalBytes ?? undefined })
         }
       }
       await downloadFile(`${baseUrl}/${archiveName}`, archivePath, reportDownload)
@@ -226,9 +285,16 @@ async function installManagedNodeRuntime(runtimeRoot: string, onProgress?: Progr
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     }))
+    onOutput?.('info', `命令：${formatCommandLine('tar.exe', ['-xf', archivePath, '-C', stagingRoot])}\n工作目录：${runtimeRoot}`)
     let extractionError = ''
-    extractor.stderr.on('data', chunk => { extractionError += chunk.toString('utf8') })
+    extractor.stdout.on('data', chunk => onOutput?.('info', chunk.toString('utf8')))
+    extractor.stderr.on('data', chunk => {
+      const text = chunk.toString('utf8')
+      extractionError += text
+      onOutput?.('error', text)
+    })
     const exitCode = await waitForExit(extractor)
+    onOutput?.(exitCode === 0 ? 'info' : 'error', `命令退出：${exitCode}`)
     if (exitCode !== 0) throw new Error(`解压 Node.js 运行环境失败：${extractionError.trim() || `代码 ${exitCode}`}`)
 
     const stagedRoot = path.join(stagingRoot, extractedName)
@@ -238,45 +304,74 @@ async function installManagedNodeRuntime(runtimeRoot: string, onProgress?: Progr
     await rename(stagedRoot, finalRoot)
     const installed = runtimePaths(finalRoot, true, 'distribution-root')
     await rm(archivePath, { force: true })
-    onProgress?.({ percent: 100, message: `Node.js ${NODE_RUNTIME_VERSION} 已就绪` })
+    onProgress?.({ percent: 100, message: `Node.js ${normalizedVersion} 已就绪` })
     return installed
   } finally {
     await rm(stagingRoot, { recursive: true, force: true }).catch(() => undefined)
   }
 }
 
-export async function ensureNodeRuntime(runtimeRoot: string, onProgress?: ProgressListener): Promise<NodeRuntime> {
-  const systemRuntime = findSystemNodeRuntime()
-  if (systemRuntime) return systemRuntime
-  const managedRuntime = await findManagedNodeRuntime(runtimeRoot)
-  if (managedRuntime) return managedRuntime
-  if (!installationPromise) {
-    installationPromise = installManagedNodeRuntime(runtimeRoot, onProgress).finally(() => {
-      installationPromise = null
-    })
+export async function listAvailableNodeVersions(fetchImpl: typeof fetch = fetch): Promise<RuntimeVersionCandidate[]> {
+  const response = await fetchImpl('https://nodejs.org/dist/index.json', { redirect: 'follow' })
+  if (!response.ok) throw new Error(`读取 Node.js 版本列表失败（HTTP ${response.status}）。`)
+  const entries = await response.json() as Array<{ version?: unknown; date?: unknown; lts?: unknown }>
+  return entries
+    .filter(entry => typeof entry.version === 'string')
+    .map(entry => ({
+      version: normalizeNodeVersion(entry.version as string),
+      label: typeof entry.lts === 'string' ? entry.lts : null,
+      lts: typeof entry.lts === 'string' ? entry.lts : entry.lts === false ? false : null,
+      date: typeof entry.date === 'string' ? entry.date : null,
+      prerelease: /-/.test(entry.version as string),
+    }))
+}
+
+export async function ensureNodeRuntime(
+  runtimeRoot: string,
+  onProgress?: ProgressListener,
+  requestedVersion?: string | null,
+  onOutput?: OutputListener,
+): Promise<NodeRuntime> {
+  if (!requestedVersion) {
+    const systemRuntime = findSystemNodeRuntime()
+    if (systemRuntime) return systemRuntime
   }
-  return installationPromise
+  const managedRuntime = await findManagedNodeRuntime(runtimeRoot, requestedVersion)
+  if (managedRuntime) return managedRuntime
+  const version = normalizeNodeVersion(requestedVersion ?? NODE_RUNTIME_VERSION)
+  const key = `${path.resolve(runtimeRoot)}:${version}`.toLowerCase()
+  const existing = installationPromises.get(key)
+  if (existing) return existing
+  const installation = installManagedNodeRuntime(runtimeRoot, version, onProgress, onOutput).finally(() => {
+    installationPromises.delete(key)
+  })
+  installationPromises.set(key, installation)
+  return installation
 }
 
 async function installManagedPnpmRuntime(
   runtimeRoot: string,
   nodeRuntime: NodeRuntime,
   onProgress?: ProgressListener,
+  onOutput?: OutputListener,
 ): Promise<PnpmRuntime> {
   const runtime = { root: runtimeRoot, executable: pnpmExecutable(runtimeRoot) }
   if (await hasRequiredPnpmVersion(runtime)) return runtime
 
   await mkdir(runtimeRoot, { recursive: true })
   onProgress?.({ percent: 10, message: '正在准备 pnpm 插件运行环境' })
-  const child = spawnCommand(nodeRuntime.npm, [
+  const args = [
     'install',
     '--prefix', runtimeRoot,
     '--save-exact',
     '--no-audit',
     '--no-fund',
     '--ignore-scripts',
+    '--loglevel=verbose',
     `pnpm@${PNPM_VERSION}`,
-  ], {
+  ]
+  onOutput?.('info', `命令：${formatCommandLine(nodeRuntime.npm, args)}\n工作目录：${runtimeRoot}`)
+  const child = spawnCommand(nodeRuntime.npm, args, {
     cwd: runtimeRoot,
     env: withExecutableDirectoryOnPath(nodeRuntime.node, {
       ...process.env,
@@ -285,8 +380,14 @@ async function installManagedPnpmRuntime(
     }),
   })
   let diagnostics = ''
-  child.stderr.on('data', chunk => { diagnostics = `${diagnostics}${chunk.toString('utf8')}`.slice(-8_000) })
+  child.stdout.on('data', chunk => onOutput?.('info', chunk.toString('utf8')))
+  child.stderr.on('data', chunk => {
+    const text = chunk.toString('utf8')
+    diagnostics = `${diagnostics}${text}`.slice(-8_000)
+    onOutput?.('error', text)
+  })
   const exitCode = await waitForExit(child)
+  onOutput?.(exitCode === 0 ? 'info' : 'error', `命令退出：${exitCode}`)
   if (exitCode !== 0 || !await hasRequiredPnpmVersion(runtime)) {
     throw new Error(`pnpm 插件运行环境准备失败${diagnostics ? `：${diagnostics.trim()}` : `（代码 ${exitCode}）`}`)
   }
@@ -298,11 +399,12 @@ export async function ensurePnpmRuntime(
   runtimeRoot: string,
   nodeRuntime: NodeRuntime,
   onProgress?: ProgressListener,
+  onOutput?: OutputListener,
 ): Promise<PnpmRuntime> {
   const existing = { root: runtimeRoot, executable: pnpmExecutable(runtimeRoot) }
   if (await hasRequiredPnpmVersion(existing)) return existing
   if (!pnpmInstallationPromise) {
-    pnpmInstallationPromise = installManagedPnpmRuntime(runtimeRoot, nodeRuntime, onProgress).finally(() => {
+    pnpmInstallationPromise = installManagedPnpmRuntime(runtimeRoot, nodeRuntime, onProgress, onOutput).finally(() => {
       pnpmInstallationPromise = null
     })
   }

@@ -13,6 +13,14 @@ const MAX_UNPACKED_BYTES = 100 * 1024 * 1024
 const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 const MAX_ARCHIVE_FILES = 12_000
 
+export interface SkillInstallProgress {
+  percent: number
+  message: string
+  indeterminate?: boolean
+  downloadedBytes?: number
+  totalBytes?: number
+}
+
 async function exists(target: string): Promise<boolean> {
   try {
     await access(target)
@@ -47,12 +55,12 @@ async function downloadArchive(
   repository: string,
   revision: string,
   destination: string,
-  onProgress: (percent: number, message: string) => void,
+  onProgress: (progress: SkillInstallProgress) => void,
   fetchImpl?: typeof fetch,
 ): Promise<void> {
   if (!fetchImpl) {
     const archive = await downloadGitHubArchive(repository, revision, MAX_ARCHIVE_BYTES, (received, total) => {
-      if (total) onProgress(18 + Math.round(Math.min(1, received / total) * 42), `正在下载 Skill ${Math.round(received / total * 100)}%`)
+      if (total) onProgress({ percent: 18 + Math.round(Math.min(1, received / total) * 42), message: `正在下载 Skill ${Math.round(received / total * 100)}%`, downloadedBytes: received, totalBytes: total })
     })
     await writeFile(destination, archive, { flag: 'wx' })
     return
@@ -77,7 +85,7 @@ async function downloadArchive(
       }
       if (!writer.write(Buffer.from(chunk.value))) await once(writer, 'drain')
       if (Number.isFinite(total) && total > 0) {
-        onProgress(18 + Math.round(Math.min(1, received / total) * 42), `正在下载 Skill ${Math.round(received / total * 100)}%`)
+        onProgress({ percent: 18 + Math.round(Math.min(1, received / total) * 42), message: `正在下载 Skill ${Math.round(received / total * 100)}%`, downloadedBytes: received, totalBytes: total })
       }
     }
     writer.end()
@@ -106,7 +114,7 @@ export async function installSkillFromRepository(
   dshHome: string,
   repository: string,
   target: SkillInstallTarget,
-  onProgress: (percent: number, message: string) => void,
+  onProgress: (progress: SkillInstallProgress) => void,
   fetchImpl?: typeof fetch,
 ): Promise<InstalledSkill> {
   if (!isSafeRepositoryName(repository) || !safeRevision(target.revision) || !isSkillName(target.name)) {
@@ -124,9 +132,9 @@ export async function installSkillFromRepository(
   await mkdir(stagingRoot, { recursive: true })
 
   try {
-    onProgress(12, '正在下载 Skill 仓库')
+    onProgress({ percent: 12, message: '正在下载 Skill 仓库', indeterminate: true })
     await downloadArchive(repository, target.revision, zipPath, onProgress, fetchImpl)
-    onProgress(64, '正在核对 Skill 文件')
+    onProgress({ percent: 64, message: '正在核对 Skill 文件' })
     const archive = new AdmZip(zipPath)
     const entries = archive.getEntries()
     if (entries.length > MAX_ARCHIVE_FILES) throw new Error('Skill 仓库文件数量超过安全限制。')
@@ -172,7 +180,7 @@ export async function installSkillFromRepository(
     const parsed = parseSkillDocument(await readFile(stagedSkillFile, 'utf8'))
     if (!parsed || parsed.name !== target.name) throw new Error('下载内容不再是检测时确认的 Skill。')
 
-    onProgress(84, '正在写入 DSH Skill 目录')
+    onProgress({ percent: 84, message: '正在写入 DSH Skill 目录' })
     await mkdir(skillRoot, { recursive: true })
     const destination = target.format === 'bundle'
       ? path.join(skillRoot, target.name)
@@ -195,7 +203,7 @@ export async function installSkillFromRepository(
     await rm(conflicting, { recursive: true, force: true })
     await rm(disabledDestination, { recursive: true, force: true })
     await rm(disabledConflicting, { recursive: true, force: true })
-    onProgress(96, '正在验证本地 Skill')
+    onProgress({ percent: 96, message: '正在验证本地 Skill' })
     return {
       name: parsed.name,
       description: parsed.description,

@@ -5,12 +5,14 @@ import { AppHeader } from './components/AppHeader'
 import { LauncherHome } from './components/LauncherHome'
 import { SideNavigation } from './components/SideNavigation'
 import { DSHCopilotPanel } from './components/DSHCopilotPanel'
+import { RuntimeDrawer } from './components/RuntimeDrawer'
 import { Toast } from './components/Toast'
 import { ConfirmDialog } from './components/dialogs/ConfirmDialog'
 import { CredentialDialog } from './components/dialogs/CredentialDialog'
 import { GitHubAccountDialog } from './components/dialogs/GitHubAccountDialog'
 import { CreatePackDialog } from './components/dialogs/CreatePackDialog'
 import { PackInstallDialog } from './components/dialogs/PackInstallDialog'
+import { ProfileRepositoryImportDialog } from './components/dialogs/ProfileRepositoryImportDialog'
 import { SettingsDialog } from './components/dialogs/SettingsDialog'
 import { UpdateDialog } from './components/dialogs/UpdateDialog'
 import { DSH_REPOSITORY } from './constants'
@@ -21,13 +23,14 @@ import { useLauncherStore } from './hooks/use-launcher-store'
 import { useNavigation } from './hooks/use-navigation'
 import { usePackInstall } from './hooks/use-pack-install'
 import { isInstallProgressActive } from './lib/install-progress'
-import type { CatalogRepositoryAnalysis, ManagedPlugin } from './types'
+import { clampRuntimeDrawerHeight, RUNTIME_DRAWER_AUTO_CLOSE_MS } from './lib/runtime-drawer'
+import type { CatalogRepositoryAnalysis, ManagedPlugin, PackPluginEntry, ProfileRepositoryImportMode, ProfileRepositoryImportPreview, RuntimeDrawerMode } from './types'
 import { DiscoverView } from './views/DiscoverView'
 import { PacksView } from './views/PacksView'
 import { PluginsView } from './views/PluginsView'
-import { RuntimeView } from './views/RuntimeView'
 import { GitHubView } from './views/GitHubView'
 import { DshMarketView } from './views/DshMarketView'
+import { RuntimeEnvironmentView } from './views/RuntimeEnvironmentView'
 
 /**
  * 应用根。
@@ -61,8 +64,23 @@ function LauncherShell() {
   const [credentialOpen, setCredentialOpen] = useState(false)
   const [githubAccountOpen, setGitHubAccountOpen] = useState(false)
   const [createPackOpen, setCreatePackOpen] = useState(false)
+  const [repositoryImportOpen, setRepositoryImportOpen] = useState(false)
+  const [repositoryImportUrl, setRepositoryImportUrl] = useState('')
+  const [repositoryImportPreview, setRepositoryImportPreview] = useState<ProfileRepositoryImportPreview | null>(null)
+  const [repositoryImportBusy, setRepositoryImportBusy] = useState(false)
+  const [repositoryImportError, setRepositoryImportError] = useState<string | null>(null)
   const [updateOpen, setUpdateOpen] = useState(false)
   const [copilotOpen, setCopilotOpen] = useState(false)
+  const [runtimeDrawerMode, setRuntimeDrawerMode] = useState<RuntimeDrawerMode>('hidden')
+  const [runtimeDrawerAutoOpened, setRuntimeDrawerAutoOpened] = useState(false)
+  const [runtimeDrawerHeight, setRuntimeDrawerHeight] = useState(() => {
+    try {
+      const value = Number(localStorage.getItem('dsh-launcher:runtime-drawer-height'))
+      return Number.isFinite(value) && value >= 180 && value <= 760 ? clampRuntimeDrawerHeight(value) : 260
+    } catch {
+      return 260
+    }
+  })
   const [copilotResizing, setCopilotResizing] = useState(false)
   const [copilotWidth, setCopilotWidth] = useState(() => {
     try {
@@ -82,6 +100,7 @@ function LauncherShell() {
   const [confirmingRemoval, setConfirmingRemoval] = useState<ManagedPlugin | null>(null)
   const managerVisited = useRef(false)
   const discoverVisited = useRef(false)
+  const previousManagerViewRef = useRef(navigation.view)
   // 仓库结构检测结果由各视图发起，App 统一持有，避免切页后丢失。
   const [repositoryAnalyses, setRepositoryAnalyses] = useState<Record<string, CatalogRepositoryAnalysis>>({})
 
@@ -95,11 +114,107 @@ function LauncherShell() {
   const installingApplication = installingResource && store.installProgress?.kind === 'application'
   // 安装会写入 Profile、Skill 或应用注册表；跨页时仍需阻止这些写操作。
   const profileMutationLocked = installingResource
+  // The selector itself must not be latched by a stale install-progress event.
+  // The main-process mutation guard remains authoritative while a real
+  // installer is still active; only an in-flight Profile switch disables it.
+  const profileSwitcherLocked = store.busy?.startsWith('profile-switch:') === true
   const runtimeBusy = store.busy === BUSY.runtime || installingResource || installingApplication || Boolean(store.busy?.startsWith('application'))
+  const runtimeActivity = Boolean(store.runtime.running || isInstallProgressActive(store.installProgress))
+  const latestRuntimeLog = store.logs.at(-1)
+  const runtimeUpdateKey = [
+    store.busy ?? '',
+    store.runtime.running,
+    store.runtime.pid ?? '',
+    store.runtime.startedAt ?? '',
+    store.runtime.url ?? '',
+    store.runtime.port ?? '',
+    store.runtime.applicationAddonName ?? '',
+    store.runtime.launchMode ?? '',
+    store.runtime.lastFailure?.failedAt ?? '',
+    store.installProgress?.repository ?? '',
+    store.installProgress?.phase ?? '',
+    store.installProgress?.percent ?? '',
+    store.installProgress?.message ?? '',
+    store.installProgress?.downloadedBytes ?? '',
+    store.installProgress?.totalBytes ?? '',
+    store.logs.length,
+    latestRuntimeLog?.timestamp ?? '',
+  ].join('|')
+  const runtimeActivityRef = useRef(false)
+  const runtimeActivityInitializedRef = useRef(false)
+  const runtimeLogRef = useRef<string | null>(null)
+  const runtimeLogInitializedRef = useRef(false)
+
+  const revealRuntimeDrawer = () => {
+    if (runtimeDrawerMode === 'expanded') return
+    if (runtimeDrawerMode === 'hidden') setRuntimeDrawerAutoOpened(true)
+    setRuntimeDrawerMode(current => current === 'expanded' ? current : 'half')
+  }
+
+  const changeRuntimeDrawerMode = (mode: RuntimeDrawerMode) => {
+    setRuntimeDrawerAutoOpened(false)
+    setRuntimeDrawerMode(mode)
+  }
+
+  const cancelRuntimeDrawerAutoClose = () => {
+    setRuntimeDrawerAutoOpened(false)
+  }
+
+  useEffect(() => {
+    const previousView = previousManagerViewRef.current
+    if (previousView !== navigation.view && runtimeDrawerMode === 'expanded') {
+      setRuntimeDrawerMode('half')
+      setRuntimeDrawerAutoOpened(false)
+    }
+    previousManagerViewRef.current = navigation.view
+  }, [navigation.view, runtimeDrawerMode])
+
+  useEffect(() => {
+    if (store.loading) return
+    if (!runtimeActivityInitializedRef.current) {
+      runtimeActivityRef.current = runtimeActivity
+      runtimeActivityInitializedRef.current = true
+      return
+    }
+    if (runtimeActivity && !runtimeActivityRef.current) revealRuntimeDrawer()
+    runtimeActivityRef.current = runtimeActivity
+  }, [runtimeActivity, store.loading])
+
+  // Some plugin operations stream directly to the terminal without creating an
+  // InstallProgress record. Treat a new runtime log entry as activity as well.
+  useEffect(() => {
+    if (store.loading) return
+    const timestamp = latestRuntimeLog?.timestamp ?? null
+    if (!runtimeLogInitializedRef.current) {
+      runtimeLogInitializedRef.current = true
+      runtimeLogRef.current = timestamp
+      return
+    }
+    if (timestamp && timestamp !== runtimeLogRef.current) revealRuntimeDrawer()
+    runtimeLogRef.current = timestamp
+  }, [latestRuntimeLog?.timestamp, store.loading])
+
+  useEffect(() => {
+    if (!runtimeDrawerAutoOpened || runtimeDrawerMode !== 'half') return
+    const timer = window.setTimeout(() => {
+      setRuntimeDrawerMode(current => current === 'half' ? 'hidden' : current)
+      setRuntimeDrawerAutoOpened(false)
+    }, RUNTIME_DRAWER_AUTO_CLOSE_MS)
+    return () => window.clearTimeout(timer)
+  }, [runtimeDrawerAutoOpened, runtimeDrawerMode, runtimeUpdateKey])
+
+  const updateRuntimeDrawerHeight = (height: number) => {
+    const next = clampRuntimeDrawerHeight(height)
+    setRuntimeDrawerHeight(next)
+    try {
+      localStorage.setItem('dsh-launcher:runtime-drawer-height', String(next))
+    } catch {
+      // 高度只在本地可用时持久化。
+    }
+  }
 
   const toggleRuntime = async () => {
-    // 刚启动时自动切到日志视图，让用户看到启动过程。
-    if (await store.toggleRuntime() === 'started') navigation.setView('runtime')
+    if (await store.toggleRuntime() === 'started') revealRuntimeDrawer()
   }
 
   const openHarness = () => {
@@ -120,6 +235,40 @@ function LauncherShell() {
     const path = await api.pickPackFile()
     if (!path) return
     await packInstall.startImport(path)
+  }
+
+  const openRepositoryImport = () => {
+    setRepositoryImportOpen(true)
+    setRepositoryImportUrl('')
+    setRepositoryImportPreview(null)
+    setRepositoryImportError(null)
+  }
+
+  const analyzeRepositoryImport = async () => {
+    setRepositoryImportBusy(true)
+    setRepositoryImportError(null)
+    try {
+      setRepositoryImportPreview(await api.analyzeProfileRepository(repositoryImportUrl))
+    } catch (error) {
+      setRepositoryImportError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setRepositoryImportBusy(false)
+    }
+  }
+
+  const confirmRepositoryImport = async (mode: ProfileRepositoryImportMode, name?: string, overwrite?: boolean, resolutions?: Record<string, PackPluginEntry>) => {
+    setRepositoryImportBusy(true)
+    setRepositoryImportError(null)
+    try {
+      await api.importProfileRepository(repositoryImportUrl, { mode, name, overwrite, resolutions })
+      await Promise.all([store.refreshProfiles(), store.refreshPacks(), store.refreshProfile()])
+      setRepositoryImportOpen(false)
+      store.showToast({ kind: 'success', message: '已创建新的 Profile，当前 Profile 未自动切换。' })
+    } catch (error) {
+      setRepositoryImportError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setRepositoryImportBusy(false)
+    }
   }
 
   if (store.loading || !store.settings || !store.profile) {
@@ -151,12 +300,20 @@ function LauncherShell() {
             dshUpdate={store.dshUpdate}
             installProgress={store.installProgress?.repository === DSH_REPOSITORY ? store.installProgress : null}
             busy={runtimeBusy}
+            packs={store.packs}
+            profiles={store.profiles}
+            activePackId={settings.activePackId}
+            profileSwitcherDisabled={profileSwitcherLocked}
             installingDsh={installingDsh}
             onCredential={openApiConfig}
             githubAuthStatus={store.githubAuthStatus}
             activeRuntimeReplacement={store.activeRuntimeReplacement}
             onGitHubAccount={() => setGitHubAccountOpen(true)}
             onManage={navigation.showManager}
+            onPackChange={packId => {
+              void (packId ? store.activatePack(packId) : store.deactivatePack())
+            }}
+            onProfileChange={profileName => { void store.switchProfile(profileName) }}
             onToggleRuntime={toggleRuntime}
             onUpdateDsh={() => { void store.updateDsh() }}
             onOpenHarness={openHarness}
@@ -179,10 +336,12 @@ function LauncherShell() {
             githubAuthStatus={store.githubAuthStatus}
             activeRuntimeReplacement={store.activeRuntimeReplacement}
             launcherUpdate={store.launcherUpdate}
-            showPackSwitcher={navigation.view === 'plugins'}
+            // 启动项管理的顶栏作为所有管理标签页的统一工作区壳层。
+            showPackSwitcher={true}
             packs={store.packs}
+            profiles={store.profiles}
             activePackId={settings.activePackId}
-            packSwitcherDisabled={profileMutationLocked}
+            packSwitcherDisabled={profileSwitcherLocked}
             profileActiveCount={profile.activeBundles.length}
             profileDisabledCount={profile.disabledCount}
             installedSkillCount={store.installedSkills.length}
@@ -194,6 +353,7 @@ function LauncherShell() {
             onPackChange={packId => {
               void (packId ? store.activatePack(packId) : store.deactivatePack())
             }}
+            onProfileChange={profileName => { void store.switchProfile(profileName) }}
             onOpenProfileDirectory={() => { void api.openPath(profile.profileDir) }}
             onMinimize={minimizeWindow}
             onToggleMaximize={toggleMaximizeWindow}
@@ -205,13 +365,15 @@ function LauncherShell() {
               profile={profile}
               runtime={store.runtime}
               profileName={settings.profileName}
-              packs={store.packs}
-              activePackId={settings.activePackId}
+            packs={store.packs}
+            profiles={store.profiles}
+            activePackId={settings.activePackId}
               collapsed={sidebarCollapsed}
-              profileMutationLocked={profileMutationLocked}
-              onPackChange={packId => {
-                void (packId ? store.activatePack(packId) : store.deactivatePack())
-              }}
+              profileMutationLocked={profileSwitcherLocked}
+            onPackChange={packId => {
+              void (packId ? store.activatePack(packId) : store.deactivatePack())
+            }}
+            onProfileChange={profileName => { void store.switchProfile(profileName) }}
               onToggleCollapsed={() => {
                 setSidebarCollapsed(current => {
                   const next = !current
@@ -227,6 +389,7 @@ function LauncherShell() {
               onChange={navigation.setView}
             />
             <main className="workspace">
+              <div className="workspace-content">
               {navigation.view === 'plugins' && (
                 <PluginsView
                   profile={profile}
@@ -254,7 +417,7 @@ function LauncherShell() {
                   onOpenRepository={url => void api.openExternal(url)}
                   onToggleRuntime={toggleRuntime}
                   onOpenHarness={openHarness}
-                  onOpenRuntimeSettings={() => navigation.setView('runtime')}
+                  onOpenRuntimeSettings={() => changeRuntimeDrawerMode('expanded')}
                   onUninstall={setConfirmingRemoval}
                   onTrialPlugin={(packageName, profileName) => { void store.trialPlugin(packageName, profileName) }}
                   onAdaptPlugin={(packageName, profileName) => { setCopilotOpen(true); void ai.adaptPlugin(packageName, profileName) }}
@@ -313,32 +476,38 @@ function LauncherShell() {
                 />
               </div>}
               {navigation.view === 'dsh-market' && <DshMarketView onProfileChanged={store.refreshProfile} />}
-              {navigation.view === 'runtime' && (
-                <RuntimeView
-                  runtime={store.runtime}
-                  settings={settings}
-                  logs={store.logs}
-                  busy={runtimeBusy}
-                  onToggleRuntime={toggleRuntime}
-                  onOpenHarness={openHarness}
-                  onClearLogs={store.clearLogs}
-                  onOpenSettings={() => setSettingsOpen(true)}
-                  onRepairRuntime={() => { setCopilotOpen(true); void ai.repairRuntime(settings.profileName) }}
-                  aiActive={ai.active}
-                  activeRuntimeReplacement={store.activeRuntimeReplacement}
+              {navigation.view === 'environment' && (
+                <RuntimeEnvironmentView
+                  state={store.runtimeEnvironment}
+                  busy={profileMutationLocked || Boolean(store.busy)}
+                  onRefresh={() => { void store.refreshRuntimeEnvironment(true) }}
+                  onInstallDsh={store.installDshVersion}
+                  onSelectDsh={store.selectDshVersion}
+                  onRemoveDsh={store.removeDshVersion}
+                  onInstallNode={store.installNodeVersion}
+                  onSelectNode={store.selectNodeVersion}
+                  onRemoveNode={store.removeNodeVersion}
+                  onOpenDshFolder={() => { void api.openDshFolder() }}
+                  onOpenNodeFolder={() => { void api.openNodeFolder() }}
                 />
               )}
               {navigation.view === 'packs' && (
                 <PacksView
                   packs={store.packs}
+                  profiles={store.profiles}
                   profile={profile}
                   busy={profileMutationLocked ? 'profile-write-lock' : store.busy}
                   onRefresh={() => { void store.refreshPacks(); void store.refreshPackSnapshots() }}
                   onCreate={() => setCreatePackOpen(true)}
                   onImport={() => void handlePackImport()}
+                  onImportRepository={openRepositoryImport}
                   onActivate={packId => void store.activatePack(packId)}
                   onDeactivate={() => void store.deactivatePack()}
+                  onSwitchProfile={profileName => { void store.switchProfile(profileName) }}
+                  onCreateProfile={(name, cloneFrom) => { void (cloneFrom ? store.cloneProfile(cloneFrom, name) : store.createProfile({ name })) }}
+                  onDeleteProfile={profileName => { if (window.confirm(`确定删除 Profile「${profileName}」吗？`)) void store.deleteProfile(profileName) }}
                   onExport={packId => void store.exportPack(packId)}
+                  onExportProfile={(profileName, mode) => { void store.exportProfile(profileName, mode) }}
                   onRemove={packId => void store.removePack(packId)}
                   onAddPlugin={(packId, packageName) => void store.addPackPlugin(packId, packageName)}
                   onAddPreset={(packId, presetName) => void store.addPackPreset(packId, presetName)}
@@ -365,6 +534,26 @@ function LauncherShell() {
                   onError={message => store.showToast({ kind: 'error', message })}
                 />
               )}
+              </div>
+              <RuntimeDrawer
+                mode={runtimeDrawerMode}
+                height={runtimeDrawerHeight}
+                onModeChange={changeRuntimeDrawerMode}
+                onHeightChange={updateRuntimeDrawerHeight}
+                onUserInteraction={cancelRuntimeDrawerAutoClose}
+                runtime={store.runtime}
+                settings={settings}
+                logs={store.logs}
+                installProgress={store.installProgress}
+                busy={runtimeBusy}
+                onToggleRuntime={toggleRuntime}
+                onPauseDownload={() => { void store.cancelRuntimeDownload() }}
+                onOpenHarness={openHarness}
+                onClearLogs={store.clearLogs}
+                onRepairRuntime={() => { setCopilotOpen(true); void ai.repairRuntime(settings.profileName) }}
+                aiActive={ai.active}
+                activeRuntimeReplacement={store.activeRuntimeReplacement}
+              />
             </main>
             <DSHCopilotPanel
               state={copilot}
@@ -479,6 +668,17 @@ function LauncherShell() {
           onClose={packInstall.reset}
         />
       )}
+      <ProfileRepositoryImportDialog
+        open={repositoryImportOpen}
+        url={repositoryImportUrl}
+        preview={repositoryImportPreview}
+        busy={repositoryImportBusy}
+        error={repositoryImportError}
+        onUrlChange={value => { setRepositoryImportUrl(value); setRepositoryImportPreview(null); setRepositoryImportError(null) }}
+        onAnalyze={() => void analyzeRepositoryImport()}
+        onConfirm={(mode, name, overwrite) => void confirmRepositoryImport(mode, name, overwrite)}
+        onClose={() => { if (!repositoryImportBusy) setRepositoryImportOpen(false) }}
+      />
       {updateOpen && store.launcherUpdate && (
         <UpdateDialog
           status={store.launcherUpdate}

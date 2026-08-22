@@ -50,6 +50,7 @@ import type {
   PresetInstallResult,
   PresetInstallTarget,
   ProfileState,
+  ReleaseAnalysis,
   RepositoryInstallResult,
   SkillInstallResult,
   SkillInstallTarget,
@@ -147,6 +148,31 @@ function analysisBadge(analysis: CatalogRepositoryAnalysis): { className: string
   }
   if (analysis.kind === 'dsh') return { className: 'dsh', label: 'DSH 本体' }
   return { className: 'invalid', label: '无效' }
+}
+
+function ReleaseExecutableNotice({
+  releaseAnalysis,
+  onOpenRepository,
+}: {
+  releaseAnalysis?: ReleaseAnalysis | null
+  onOpenRepository: (url: string) => void
+}) {
+  if (releaseAnalysis?.state !== 'found' || releaseAnalysis.assets.length === 0) return null
+  return (
+    <span className="analysis-release" role="status">
+      <Download size={12} />
+      <strong>检测到可安装的可执行程序</strong>
+      {releaseAnalysis.releaseTag && <em>{releaseAnalysis.releaseTag}</em>}
+      <span className="analysis-release-assets">
+        {releaseAnalysis.assets.slice(0, 4).map(asset => (
+          <button type="button" key={asset.url} onClick={() => onOpenRepository(asset.url)} title={`${asset.name}${asset.size != null ? ` · ${formatBytes(asset.size)}` : ''}`}>
+            {asset.name}
+          </button>
+        ))}
+        {releaseAnalysis.assets.length > 4 && <small>还有 {releaseAnalysis.assets.length - 4} 个</small>}
+      </span>
+    </span>
+  )
 }
 
 function catalogIndexBadge(entry: CatalogIndexEntry): { className: string; label: string } {
@@ -875,6 +901,10 @@ export function DiscoverView({
                   {isChecking && <CatalogAnalysisSteps progress={analysisProgress[repo.fullName]} />}
                   {analysis && <div className={`repository-analysis-note ${analysis.kind}`}>
                     {analysis.summary}
+                    <ReleaseExecutableNotice
+                      releaseAnalysis={analysis.pluginAnalysis?.releaseAnalysis}
+                      onOpenRepository={onOpenRepository}
+                    />
                     {analysis.warnings.map(warning => <span className="analysis-warning" key={warning}>{warning}</span>)}
                     {analysis.sync && (
                       <span className={`analysis-sync ${analysis.sync.state}`}>

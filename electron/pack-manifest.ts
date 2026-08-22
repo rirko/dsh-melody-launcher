@@ -20,13 +20,33 @@ import type { SkillInstallReceipt } from './skill-receipts'
 
 /** 压缩包内的清单文件名（导出 / 导入共用）。 */
 export const PACK_MANIFEST_FILENAME = 'dsh-pack.yaml'
+export const PROFILE_MANIFEST_FILENAME = 'dsh-profile.yaml'
 
 const PACK_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._ -]{0,63}$/
 const PACK_VERSION_RE = /^\d+\.\d+\.\d+/
+const DSH_VERSION_RE = /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
 const PACK_COMMIT_RE = /^[0-9a-f]{7,40}$/i
 const PACK_DESCRIPTION_MAX = 500
 const PACK_PROFILE_PREFIX = 'pack-'
 const PACK_BUILD_KEY_RE = /^(?:@[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+|[A-Za-z0-9._-]+)@[0-9A-Za-z][0-9A-Za-z._+-]{0,127}$/
+
+export function normalizePackDshVersion(value: string): string {
+  return value.trim().replace(/^v/i, '')
+}
+
+export function isValidPackDshVersion(value: unknown): value is string {
+  return typeof value === 'string' && DSH_VERSION_RE.test(value.trim())
+}
+
+/** 当前版本导入必须带 DSH 版本；底层 zip 工具仍可兼容读取旧清单。 */
+export function assertPackDshVersion(manifest: PackManifest): string {
+  if (!isValidPackDshVersion(manifest.dshVersion)) {
+    throw new Error('整合包缺少有效的 dshVersion，请使用包含 DSH 版本号的整合包重新导出。')
+  }
+  const normalized = normalizePackDshVersion(manifest.dshVersion)
+  manifest.dshVersion = normalized
+  return normalized
+}
 
 /** 合法的分支名：非空、1-160 位、不含 ..，仅允许 URL 安全字符。 */
 function safeBranch(value: string): boolean {
@@ -197,6 +217,12 @@ function parsePackPlugin(item: unknown, index: number): PackPluginEntry {
     throw new Error(`plugins[${index}] 的 packageName 缺失或格式非法。`)
   }
   const entry: PackPluginEntry = { packageName }
+  if (raw.targetId !== undefined) {
+    if (typeof raw.targetId !== 'string' || raw.targetId.length === 0 || raw.targetId.length > 240 || raw.targetId.includes('..') || raw.targetId.includes('\\')) {
+      throw new Error(`plugins[${index}] 的 targetId 格式非法。`)
+    }
+    entry.targetId = raw.targetId
+  }
   if (raw.repository !== undefined) {
     if (typeof raw.repository !== 'string' || !isSafeRepositoryName(raw.repository)) {
       throw new Error(`plugins[${index}] 的 repository 格式非法。`)
@@ -214,6 +240,10 @@ function parsePackPlugin(item: unknown, index: number): PackPluginEntry {
       throw new Error(`plugins[${index}] 的 subdirectory 格式非法。`)
     }
     entry.subdirectory = raw.subdirectory
+  }
+  if (raw.defaultBranch !== undefined) {
+    if (typeof raw.defaultBranch !== 'string' || !safeBranch(raw.defaultBranch)) throw new Error(`plugins[${index}] 的 defaultBranch 格式非法。`)
+    entry.defaultBranch = raw.defaultBranch
   }
   if (raw.commit !== undefined) {
     if (typeof raw.commit !== 'string' || !safeCommit(raw.commit)) {
@@ -250,7 +280,7 @@ function parsePackPlugin(item: unknown, index: number): PackPluginEntry {
 }
 
 /** 解析并校验 dsh-pack.yaml 文本，非法时抛出含中文描述的错误。未知字段忽略。 */
-export function parsePackManifest(text: string): PackManifest {
+export function parsePackManifest(text: string, options: { requireDshVersion?: boolean } = {}): PackManifest {
   let data: unknown
   try {
     data = parse(text)
@@ -271,6 +301,12 @@ export function parsePackManifest(text: string): PackManifest {
   if (typeof raw.version !== 'string' || !PACK_VERSION_RE.test(raw.version)) {
     throw new Error('整合包 version 缺失或非法（须为 semver，如 1.0.0）。')
   }
+  if (raw.dshVersion !== undefined && !isValidPackDshVersion(raw.dshVersion)) {
+    throw new Error('整合包 dshVersion 非法（须为 DSH 精确版本，如 0.1.0-rc.7）。')
+  }
+  if (options.requireDshVersion && raw.dshVersion === undefined) {
+    throw new Error('整合包缺少 dshVersion，请使用包含 DSH 版本号的整合包重新导出。')
+  }
   if (!Array.isArray(raw.plugins)) {
     throw new Error('整合包 plugins 必须是数组。')
   }
@@ -279,6 +315,7 @@ export function parsePackManifest(text: string): PackManifest {
     name: raw.name,
     description: raw.description,
     version: raw.version,
+    ...(typeof raw.dshVersion === 'string' ? { dshVersion: normalizePackDshVersion(raw.dshVersion) } : {}),
     plugins: raw.plugins.map((item, index) => parsePackPlugin(item, index)),
   }
   if (typeof raw.author === 'string' && raw.author) manifest.author = raw.author
@@ -305,6 +342,12 @@ export function serializePackManifest(manifest: PackManifest): string {
     version: manifest.version,
     plugins: manifest.plugins,
   }
+  if (manifest.dshVersion !== undefined) {
+    if (!isValidPackDshVersion(manifest.dshVersion)) {
+      throw new Error('整合包 dshVersion 非法（须为 DSH 精确版本，如 0.1.0-rc.7）。')
+    }
+    output.dshVersion = normalizePackDshVersion(manifest.dshVersion)
+  }
   if (manifest.author) output.author = manifest.author
   if (manifest.presets !== undefined) output.presets = manifest.presets
   if (manifest.skills !== undefined) output.skills = manifest.skills
@@ -323,6 +366,8 @@ function manifestNameFromPackId(packId: string): string {
 
 function receiptToPluginEntry(receipt: PluginInstallReceipt): PackPluginEntry {
   const entry: PackPluginEntry = { packageName: receipt.packageName }
+  if (receipt.targetId) entry.targetId = receipt.targetId
+  if (receipt.defaultBranch) entry.defaultBranch = receipt.defaultBranch
   if (receipt.source === 'github' || receipt.source === 'archive-subdirectory') {
     entry.source = 'github'
     if (receipt.repository) entry.repository = receipt.repository
@@ -346,6 +391,7 @@ export function buildManifestFromReceipts(
   presetReceipts: PresetInstallReceipt[] = [],
   skillReceipts: SkillInstallReceipt[] = [],
   applicationAddons: InstalledApplicationAddon[] = [],
+  dshVersion?: string,
 ): PackManifest {
   const plugins = receipts.map(receiptToPluginEntry)
   const presets = presetReceipts.map(receipt => ({
@@ -376,10 +422,14 @@ export function buildManifestFromReceipts(
   if (presetReceipts.length > 0) extra.push(`${presetReceipts.length} 个预设`)
   if (skillReceipts.length > 0) extra.push(`${skillReceipts.length} 个技能`)
   if (applicationAddons.length > 0) extra.push(`${applicationAddons.length} 个应用`)
+  if (dshVersion !== undefined && !isValidPackDshVersion(dshVersion)) {
+    throw new Error('整合包 dshVersion 非法（须为 DSH 精确版本，如 0.1.0-rc.7）。')
+  }
   return {
     name: manifestNameFromPackId(packId),
     description: `由 DSH Launcher 从已安装插件导出（${receipts.length} 个插件${extra.length > 0 ? `、${extra.join('、')}` : ''}）。`,
     version: '1.0.0',
+    ...(dshVersion !== undefined ? { dshVersion: normalizePackDshVersion(dshVersion) } : {}),
     plugins,
     ...(presetReceipts.length > 0 ? { presets } : {}),
     ...(skillReceipts.length > 0 ? { skills } : {}),

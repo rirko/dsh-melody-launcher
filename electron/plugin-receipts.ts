@@ -10,6 +10,8 @@ export interface PluginInstallReceipt {
   subdirectory: string | null
   version: string | null
   commit: string
+  defaultBranch?: string
+  targetId?: string
   installedAt: string
 }
 interface ReceiptFile {

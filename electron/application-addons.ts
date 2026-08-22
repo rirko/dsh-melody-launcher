@@ -54,6 +54,7 @@ export interface ApplicationAddonManagerOptions {
   emitProgress: (progress: InstallProgress) => void
   isRuntimeRunning: () => boolean
   githubFetch?: typeof fetch
+  packageStoreRoot?: string
   runCommand?: (executable: string, args: string[], options: CommandOptions) => Promise<CommandResult>
 }
 
@@ -172,6 +173,8 @@ export function createApplicationAddonManager(options: ApplicationAddonManagerOp
       phase: 'preparing',
       percent: 5 + Math.round(progress.percent * 0.08),
       message: progress.message,
+      downloadedBytes: progress.downloadedBytes,
+      totalBytes: progress.totalBytes,
     })
   })
 
@@ -182,6 +185,8 @@ export function createApplicationAddonManager(options: ApplicationAddonManagerOp
       phase: 'preparing',
       percent: 13 + Math.round(progress.percent * 0.07),
       message: progress.message,
+      downloadedBytes: progress.downloadedBytes,
+      totalBytes: progress.totalBytes,
     })
   })
 
@@ -233,6 +238,8 @@ export function createApplicationAddonManager(options: ApplicationAddonManagerOp
           pnpmRuntime.executable,
           withExecutableDirectoryOnPath(nodeRuntime.node, {
             ...process.env,
+            ...(options.packageStoreRoot ? { npm_config_store_dir: options.packageStoreRoot, NPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
+            ...(options.packageStoreRoot ? { pnpm_config_store_dir: options.packageStoreRoot, PNPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
             FORCE_COLOR: '0',
             NPM_CONFIG_UPDATE_NOTIFIER: 'false',
           }),

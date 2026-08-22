@@ -117,10 +117,16 @@ export function PluginsView({
     }
   }, [selected?.packageName])
 
-  const pluginNamesKey = profile.plugins.map(plugin => plugin.packageName).join('\n')
+  // ProfileState.plugins is already sorted from dsh.profile.bundles by the
+  // main process. Include the order and enabled state in the key so importing
+  // a Profile with the same plugin set but a different sequence also resets
+  // the local display state.
+  const pluginOrderKey = profile.plugins
+    .map(plugin => `${plugin.packageName}:${plugin.enabled ? 'on' : 'off'}:${plugin.order ?? ''}`)
+    .join('\n')
   useEffect(() => {
-    setPluginDisplayOrder(current => reconcilePluginDisplayOrder(current, profile.plugins.map(plugin => plugin.packageName)))
-  }, [profileName, pluginNamesKey])
+    setPluginDisplayOrder(profile.plugins.map(plugin => plugin.packageName))
+  }, [profileName, pluginOrderKey])
 
   const active = profile.plugins.filter(plugin => plugin.enabled)
   const inactive = profile.plugins.filter(plugin => !plugin.enabled)
@@ -185,6 +191,11 @@ export function PluginsView({
           <p>调整加载顺序、启停状态，并从下方查看选中资源的简介。</p>
         </div>
         <div className="management-title-actions">
+          <label className="search-field management-header-search">
+            <Search size={15} />
+            <input value={filter} onChange={event => setFilter(event.target.value)} placeholder="筛选资源" aria-label="筛选 Plugin、Skill、加载项或预设" />
+            {filter && <button type="button" onClick={() => setFilter('')} aria-label="清除筛选"><X size={14} /></button>}
+          </label>
           <button className="secondary-button" type="button" onClick={onRefresh}><RefreshCw size={17} />刷新</button>
           <button className="secondary-button accent" type="button" onClick={onBrowse}><Download size={17} />获取资源</button>
         </div>
@@ -255,6 +266,9 @@ export function PluginsView({
               <option value="web">DSH Web</option>
               {runtimeAddons.map(addon => <option key={addon.id} value={`addon:${addon.id}`}>{addon.name}</option>)}
             </select>
+            <button type="button" className="icon-button" onClick={runtime.url ? onOpenHarness : onOpenRuntimeSettings} title={runtime.url ? '打开 Harness' : '打开运行与日志'} aria-label={runtime.url ? '打开 Harness' : '打开运行与日志'}>
+              <ExternalLink size={15} />
+            </button>
             <button
               type="button"
               className={`management-runtime-action ${runtime.running ? 'stop' : ''}`}
@@ -264,16 +278,6 @@ export function PluginsView({
               {runtimeBusy ? <LoaderCircle className="spin" size={15} /> : runtime.running ? <CircleCheck size={15} /> : <Play size={15} fill="currentColor" />}
               {runtime.running ? '停止' : '启动'}
             </button>
-            <button type="button" className="icon-button" onClick={runtime.url ? onOpenHarness : onOpenRuntimeSettings} title={runtime.url ? '打开 Harness' : '打开运行与日志'} aria-label={runtime.url ? '打开 Harness' : '打开运行与日志'}>
-              <ExternalLink size={15} />
-            </button>
-          </div>
-          <div className="management-search-control">
-            <label className="search-field compact">
-              <Search size={15} />
-              <input value={filter} onChange={event => setFilter(event.target.value)} placeholder="筛选 Plugin、Skill、加载项或预设" />
-              {filter && <button type="button" onClick={() => setFilter('')} aria-label="清除筛选"><X size={14} /></button>}
-            </label>
           </div>
           <section className="skill-list-panel" aria-label="Skill、应用加载项与预设管理">
             <div className="resource-tabs" role="tablist" aria-label="资源类型">
@@ -326,13 +330,6 @@ export function PluginsView({
 
     </div>
   )
-}
-
-function reconcilePluginDisplayOrder(current: string[], incoming: string[]): string[] {
-  const available = new Set(incoming)
-  const retained = current.filter(packageName => available.has(packageName))
-  const retainedSet = new Set(retained)
-  return [...retained, ...incoming.filter(packageName => !retainedSet.has(packageName))]
 }
 
 function applyActiveOrderToDisplay(current: string[], activeOrder: string[]): string[] {
@@ -611,7 +608,7 @@ function PluginDetails({ plugin, profileName, trial, busy, locked, aiActive, ada
           </div>
         )}
         {plugin.repository && <button type="button" className="secondary-button full" onClick={() => onOpenRepository(plugin.repository!)}><FolderGit2 size={16} />查看仓库<ExternalLink size={14} /></button>}
-        {!plugin.builtin && <button type="button" className="danger-button full" disabled={locked} onClick={() => onUninstall(plugin)}><Trash2 size={16} />从此配置卸载</button>}
+        {!plugin.builtin && <button type="button" className="danger-button full" disabled={locked} onClick={() => onUninstall(plugin)}><Trash2 size={16} />卸载插件</button>}
       </div>
     </aside>
   )

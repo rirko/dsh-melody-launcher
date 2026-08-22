@@ -28,6 +28,7 @@ export interface DshMarketOptions {
   runCommand?: (executable: string, args: string[], options: CommandOptions) => Promise<CommandResult>
   emitProgress: (progress: DshMarketProgress) => void
   emitOutput: (level: OutputLevel, text: string) => void
+  packageStoreRoot?: string
 }
 
 interface RegistryPlugin {
@@ -148,6 +149,7 @@ export function createDshMarketService(options: DshMarketOptions) {
   const execute = options.runCommand ?? runCommand
   let catalogCache: Registry | null = null
   let catalogValidator: string | null = null
+  let registryLoading: Promise<Registry> | null = null
   let updatesCache: { at: number; data: Record<string, DshMarketUpdateStatus> } | null = null
   let active = false
 
@@ -156,22 +158,32 @@ export function createDshMarketService(options: DshMarketOptions) {
   }
 
   async function loadRegistry(): Promise<Registry> {
-    const headers: Record<string, string> = { accept: 'application/json', 'user-agent': 'dsh-melody-launcher/dsh-market' }
-    if (catalogValidator) headers['if-none-match'] = catalogValidator
-    let last: unknown
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      try {
-        const response = await fetchImpl(REGISTRY_URL, { headers, signal: AbortSignal.timeout(15_000) })
-        if (response.status === 304 && catalogCache) return catalogCache
-        if (!response.ok) throw new Error(`HTTP ${response.status}`)
-        const data = normalizeRegistry(await response.json() as Registry)
-        catalogCache = data
-        catalogValidator = response.headers.get('etag')
-        return data
-      } catch (error) { last = error }
+    if (registryLoading) return registryLoading
+
+    const request = (async (): Promise<Registry> => {
+      const headers: Record<string, string> = { accept: 'application/json', 'user-agent': 'dsh-melody-launcher/dsh-market' }
+      if (catalogValidator) headers['if-none-match'] = catalogValidator
+      let last: unknown
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const response = await fetchImpl(REGISTRY_URL, { headers, signal: AbortSignal.timeout(15_000) })
+          if (response.status === 304 && catalogCache) return catalogCache
+          if (!response.ok) throw new Error(`HTTP ${response.status}`)
+          const data = normalizeRegistry(await response.json() as Registry)
+          catalogCache = data
+          catalogValidator = response.headers.get('etag')
+          return data
+        } catch (error) { last = error }
+      }
+      if (catalogCache) return catalogCache
+      throw new Error(`dsh-market 目录获取失败：${last instanceof Error ? last.message : String(last)}`)
+    })()
+    registryLoading = request
+    try {
+      return await request
+    } finally {
+      if (registryLoading === request) registryLoading = null
     }
-    if (catalogCache) return catalogCache
-    throw new Error(`dsh-market 目录获取失败：${last instanceof Error ? last.message : String(last)}`)
   }
 
   async function readInstalled(settings: AppSettings): Promise<{ map: Record<string, string>; records: InstalledRecord[] }> {
@@ -234,39 +246,63 @@ export function createDshMarketService(options: DshMarketOptions) {
       ? settings.launchArgs.slice(0, packageIndex + 1)
       : path.basename(executable).toLowerCase().startsWith('dsh') ? [] : ['--yes', DSH_PACKAGE_NAME]
     const commandArgs = [...prefix, 'plugin', '--profile', settings.profileName, ...args]
+    const commandEnv = {
+      ...process.env,
+      DSH_HOME: settings.dshHome,
+      FORCE_COLOR: '0',
+      CI: 'true',
+      ...(options.packageStoreRoot ? {
+        npm_config_store_dir: options.packageStoreRoot,
+        NPM_CONFIG_STORE_DIR: options.packageStoreRoot,
+        pnpm_config_store_dir: options.packageStoreRoot,
+        PNPM_CONFIG_STORE_DIR: options.packageStoreRoot,
+      } : {}),
+    }
+    const dshEnv = withExecutableDirectoryOnPath(pnpm.executable, withExecutableDirectoryOnPath(node.node, commandEnv))
+    const handleOutput = (text: string, level: OutputLevel) => {
+      options.emitOutput(level, text)
+      const match = /downloaded\s+(\d+)\s+of\s+(\d+)/i.exec(text)
+      if (match) progress(name, 'downloading', `正在下载 ${match[1]} / ${match[2]} 个包`, Math.min(82, 20 + Math.round(Number(match[1]) / Number(match[2]) * 60)))
+      else if (/build|prepare|prepack/i.test(text)) progress(name, 'building', '正在执行插件构建步骤', 84)
+      else progress(name, 'downloading', '正在下载插件及依赖', null)
+    }
+    const runDshPlugin = () => execute(executable, commandArgs, {
+      cwd: settings.workspace,
+      env: dshEnv,
+      onOutput: handleOutput,
+    })
     options.emitOutput('info', `dsh-market 插件操作：${args.join(' ')}`)
     progress(name, 'resolving', '正在解析精选插件来源', 12)
-    let result = await execute(executable, commandArgs, {
-      cwd: settings.workspace,
-      env: withExecutableDirectoryOnPath(pnpm.executable, withExecutableDirectoryOnPath(node.node, {
-        ...process.env, DSH_HOME: settings.dshHome, FORCE_COLOR: '0', CI: 'true',
-      })),
-      onOutput: (text, level) => {
-        options.emitOutput(level, text)
-        const match = /downloaded\s+(\d+)\s+of\s+(\d+)/i.exec(text)
-        if (match) progress(name, 'downloading', `正在下载 ${match[1]} / ${match[2]} 个包`, Math.min(82, 20 + Math.round(Number(match[1]) / Number(match[2]) * 60)))
-        else if (/build|prepare|prepack/i.test(text)) progress(name, 'building', '正在执行插件构建步骤', 84)
-        else progress(name, 'downloading', '正在下载插件及依赖', null)
-      },
-    })
+    let result = await runDshPlugin()
+    // Existing Profiles may still have node_modules linked to the system pnpm
+    // store. Move the links to the launcher's shared store before retrying the
+    // DSH command; otherwise pnpm refuses to touch the Profile at all.
+    if (result.exitCode !== 0 && /ERR_PNPM_UNEXPECTED_STORE/i.test(result.output)) {
+      const profilePath = path.join(settings.dshHome, 'profiles', settings.profileName)
+      options.emitOutput('info', '检测到 Profile 使用旧 pnpm store，正在迁移依赖后自动重试。')
+      progress(name, 'resolving', '正在迁移 Profile 依赖到启动器插件池', 78)
+      const migrate = await execute(pnpm.executable, ['install'], {
+        cwd: profilePath,
+        env: dshEnv,
+        onOutput: (text, level) => options.emitOutput(level, text),
+      })
+      if (migrate.exitCode !== 0) {
+        throw new Error(`插件依赖迁移失败（代码 ${migrate.exitCode}）：${migrate.output.slice(-800)}`)
+      }
+      progress(name, 'resolving', 'Profile 依赖已迁移，正在重试插件操作', 80)
+      result = await runDshPlugin()
+    }
     // Keep dsh-market's recovery behavior: an ignored build approval or a
     // transient network failure gets exactly one automatic retry.
     if (result.exitCode !== 0 && /ERR_PNPM_IGNORED_BUILDS/i.test(result.output)) {
       const approved = await approveAllIgnoredBuilds(path.join(settings.dshHome, 'profiles', settings.profileName, 'pnpm-workspace.yaml'), result.output)
       if (approved.length > 0) {
         progress(name, 'building', `已允许 ${approved.length} 个构建脚本，正在重试`, 86)
-        result = await execute(executable, commandArgs, {
-          cwd: settings.workspace,
-          env: withExecutableDirectoryOnPath(pnpm.executable, withExecutableDirectoryOnPath(node.node, { ...process.env, DSH_HOME: settings.dshHome, FORCE_COLOR: '0', CI: 'true' })),
-          onOutput: (text, level) => options.emitOutput(level, text),
-        })
+        result = await runDshPlugin()
       }
     } else if (result.exitCode !== 0 && /ERR_PNPM_FETCH_5\d\d|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i.test(result.output)) {
       progress(name, 'resolving', '网络临时失败，按 dsh-market 规则自动重试一次', 18)
-      result = await execute(executable, commandArgs, {
-        cwd: settings.workspace,
-        env: withExecutableDirectoryOnPath(pnpm.executable, withExecutableDirectoryOnPath(node.node, { ...process.env, DSH_HOME: settings.dshHome, FORCE_COLOR: '0', CI: 'true' })),
-      })
+      result = await runDshPlugin()
     }
     return result
   }
@@ -340,16 +376,32 @@ export function createDshMarketService(options: DshMarketOptions) {
     return result
   }
 
-  return {
-    isBusy: () => active,
-    load: async (): Promise<DshMarketCatalog> => {
-      const catalog = await buildCatalog()
-      const updates = await checkUpdates(false)
-      return { ...catalog, plugins: catalog.plugins.map(plugin => {
+  function applyUpdateStatuses(catalog: DshMarketCatalog, updates: Record<string, DshMarketUpdateStatus>): DshMarketCatalog {
+    return {
+      ...catalog,
+      plugins: catalog.plugins.map(plugin => {
         const installed = Object.entries(updates).find(([name]) => name === plugin.name || name === plugin.npm)
         const status = installed?.[1]
         return status ? { ...plugin, updateAvailable: status.updateAvailable, updateVersion: status.latest } : plugin
-      }) }
+      }),
+    }
+  }
+
+  return {
+    isBusy: () => active,
+    load: async (): Promise<DshMarketCatalog> => {
+      try {
+        const catalog = await buildCatalog()
+        // Reading the catalog must stay local and fast. Remote npm/GitHub update
+        // checks are intentionally triggered only by the explicit "检查更新"
+        // action, otherwise a slow registry can hold the whole Market page open.
+        const result = applyUpdateStatuses(catalog, updatesCache?.data ?? {})
+        progress('', 'complete', 'DSH Market 目录读取完成', 100)
+        return result
+      } catch (error) {
+        progress('', 'error', error instanceof Error ? error.message : 'DSH Market 目录读取失败', null)
+        throw error
+      }
     },
     install: (name: string) => mutate(name, 'install'),
     update: (name: string) => mutate(name, 'update'),

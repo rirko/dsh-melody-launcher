@@ -102,6 +102,9 @@ export interface GitHubAuthService {
   listRecentPullRequests(): Promise<GitHubPullRequestSummary[]>
   getStarStatus(repository: string): Promise<boolean>
   setStar(repository: string, starred: boolean): Promise<boolean>
+  createRepository(input: { name: string; description?: string; private?: boolean }): Promise<{ fullName: string; htmlUrl: string; defaultBranch: string }>
+  upsertRepositoryFile(repository: string, filePath: string, content: string | Uint8Array, message: string, branch?: string): Promise<void>
+  readRepositoryFile(repository: string, filePath: string, branch?: string): Promise<Uint8Array>
   fetch(input: string | URL | Request, init?: RequestInit): Promise<Response>
 }
 
@@ -219,15 +222,21 @@ export function createGitHubAuthService(options: GitHubAuthOptions): GitHubAuthS
     if (loaded) return session
     if (loading) return loading
     loading = (async () => {
+      let cacheReadComplete = false
       try {
+        // Electron may report safeStorage as unavailable briefly during app
+        // startup. Do not cache that transient state as a permanent logout;
+        // the next status request should retry reading the encrypted file.
         if (!options.cipher.isAvailable()) return null
         const encrypted = await readFile(options.filePath)
         session = validateStoredSession(JSON.parse(options.cipher.decrypt(encrypted)))
         if (!session) await rm(options.filePath, { force: true })
+        cacheReadComplete = true
       } catch {
         session = null
+        cacheReadComplete = true
       } finally {
-        loaded = true
+        if (cacheReadComplete) loaded = true
       }
       return session
     })()
@@ -316,6 +325,9 @@ export function createGitHubAuthService(options: GitHubAuthOptions): GitHubAuthS
 
         if (credentialRejected) {
           // Only a confirmed /user 401 may clear the encrypted session file.
+          // An older request must not clear a newer session created while the
+          // verification request was in flight.
+          if (session !== current) return response
           await clear()
           return response
         }
@@ -344,6 +356,11 @@ export function createGitHubAuthService(options: GitHubAuthOptions): GitHubAuthS
     const match = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(value.trim())
     if (!match) throw new Error('GitHub 仓库名称无效。')
     return { owner: match[1], repo: match[2] }
+  }
+
+  const repositoryApiUrl = (repository: string, suffix = '') => {
+    const { owner, repo } = parseRepository(repository)
+    return `${GITHUB_API_ROOT}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}${suffix}`
   }
 
   return {
@@ -509,6 +526,63 @@ export function createGitHubAuthService(options: GitHubAuthOptions): GitHubAuthS
         throw new Error(`${starred ? '添加' : '取消'}仓库星标失败（HTTP ${response.status}）。`)
       }
       return starred
+    },
+
+    async createRepository(input) {
+      const name = input.name.trim()
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(name)) throw new Error('GitHub Profile 仓库名称无效。')
+      const response = await authorizedFetch(`${GITHUB_API_ROOT}/user/repos`, {
+        method: 'POST',
+        headers: { Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description: input.description ?? '', private: input.private === true, auto_init: true }),
+      })
+      const body = await response.json().catch(() => null) as { full_name?: unknown; html_url?: unknown; default_branch?: unknown } | null
+      if (response.status === 422) {
+        // A repository created by an older launcher may not be recorded in
+        // profile.yaml yet. Resolve the name only after GitHub confirms the
+        // create conflict, keeping the normal create path to one request.
+        const existingResponse = await authorizedFetch(`${GITHUB_API_ROOT}/user/repos?per_page=100&affiliation=owner&sort=created`, {
+          headers: { Accept: 'application/vnd.github+json' },
+        })
+        const existing = existingResponse.ok
+          ? await existingResponse.json().catch(() => null) as Array<{ name?: unknown; full_name?: unknown; html_url?: unknown; default_branch?: unknown }>
+          : []
+        const found = Array.isArray(existing) ? existing.find(item => typeof item.name === 'string' && item.name.toLowerCase() === name.toLowerCase()) : null
+        if (found && typeof found.full_name === 'string' && typeof found.html_url === 'string') {
+          return { fullName: found.full_name, htmlUrl: found.html_url, defaultBranch: typeof found.default_branch === 'string' && found.default_branch ? found.default_branch : 'main' }
+        }
+      }
+      if (!response.ok || typeof body?.full_name !== 'string' || typeof body.html_url !== 'string') {
+        throw new Error(`创建 GitHub Profile 仓库失败（HTTP ${response.status}）。`)
+      }
+      return { fullName: body.full_name, htmlUrl: body.html_url, defaultBranch: typeof body.default_branch === 'string' ? body.default_branch : 'main' }
+    },
+
+    async upsertRepositoryFile(repository, filePath, content, message, branch) {
+      const normalized = filePath.replace(/\\/g, '/').replace(/^\/+/, '')
+      if (!normalized || normalized.split('/').some(part => part === '.' || part === '..' || part === '')) throw new Error('GitHub 文件路径无效。')
+      const encodedPath = normalized.split('/').map(encodeURIComponent).join('/')
+      const url = repositoryApiUrl(repository, `/contents/${encodedPath}`)
+      const current = await authorizedFetch(`${url}${branch ? `?ref=${encodeURIComponent(branch)}` : ''}`, { headers: { Accept: 'application/vnd.github+json' } })
+      const currentBody = await current.json().catch(() => null) as { sha?: unknown } | null
+      if (!current.ok && current.status !== 404) throw new Error(`读取 GitHub Profile 文件失败（HTTP ${current.status}）。`)
+      const bytes = typeof content === 'string' ? Buffer.from(content, 'utf8') : Buffer.from(content)
+      const response = await authorizedFetch(url, {
+        method: 'PUT',
+        headers: { Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, content: bytes.toString('base64'), ...(typeof currentBody?.sha === 'string' ? { sha: currentBody.sha } : {}), ...(branch ? { branch } : {}) }),
+      })
+      if (!response.ok) throw new Error(`写入 GitHub Profile 文件失败（HTTP ${response.status}）。`)
+    },
+
+    async readRepositoryFile(repository, filePath, branch) {
+      const normalized = filePath.replace(/\\/g, '/').replace(/^\/+/, '')
+      if (!normalized || normalized.split('/').some(part => part === '.' || part === '..' || part === '')) throw new Error('GitHub 文件路径无效。')
+      const encodedPath = normalized.split('/').map(encodeURIComponent).join('/')
+      const response = await authorizedFetch(`${repositoryApiUrl(repository, `/contents/${encodedPath}`)}${branch ? `?ref=${encodeURIComponent(branch)}` : ''}`, { headers: { Accept: 'application/vnd.github+json' } })
+      const body = await response.json().catch(() => null) as { content?: unknown; encoding?: unknown } | null
+      if (!response.ok || body?.encoding !== 'base64' || typeof body.content !== 'string') throw new Error(`读取 GitHub Profile 文件失败（HTTP ${response.status}）。`)
+      return Uint8Array.from(Buffer.from(body.content.replace(/\s+/g, ''), 'base64'))
     },
 
     fetch: authorizedFetch,

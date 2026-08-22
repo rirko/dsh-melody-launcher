@@ -6,7 +6,9 @@ import {
   NODE_RUNTIME_VERSION,
   PNPM_VERSION,
   findManagedNodeRuntime,
+  findManagedNodeRuntimes,
   findSystemNodeRuntime,
+  managedNodeVersionRoot,
   nodeArchiveName,
   parseNodeArchiveChecksum,
   pnpmExecutable,
@@ -48,6 +50,11 @@ describe('node runtime', () => {
   it('selects the official Windows archive for the current architecture', () => {
     expect(nodeArchiveName('x64')).toBe(`node-${NODE_RUNTIME_VERSION}-win-x64.zip`)
     expect(nodeArchiveName('arm64')).toBe(`node-${NODE_RUNTIME_VERSION}-win-arm64.zip`)
+  })
+
+  it('builds an archive name for an explicitly selected Node.js version', () => {
+    expect(nodeArchiveName('v22.19.0', 'x64')).toBe('node-v22.19.0-win-x64.zip')
+    expect(nodeArchiveName('22.19.0', 'arm64')).toBe('node-v22.19.0-win-arm64.zip')
   })
 
   it('reads the archive checksum from Node.js SHASUMS256.txt', () => {
@@ -157,6 +164,21 @@ describe('node runtime discovery', () => {
     const found = await findManagedNodeRuntime(runtimeRoot)
 
     expect(found?.root).toBe(path.join(runtimeRoot, 'node-v24.19.0-win-x64'))
+  })
+
+  it('discovers launcher-managed versions under the versions directory', async () => {
+    const runtimeRoot = await makeTemporaryDirectory()
+    const selectedVersion = 'v22.19.0'
+    const versionRoot = managedNodeVersionRoot(runtimeRoot, selectedVersion)
+    await createExecutables(path.join(versionRoot, DISTRIBUTION_BIN))
+
+    const versions = await findManagedNodeRuntimes(runtimeRoot)
+
+    expect(versions).toHaveLength(1)
+    expect(versions[0]?.version).toBe(selectedVersion)
+    expect(versions[0]?.source).toBe('launcher')
+    expect(versions[0]?.root).toBe(versionRoot)
+    expect((await findManagedNodeRuntime(runtimeRoot, selectedVersion))?.root).toBe(versionRoot)
   })
 
   it('ignores an incomplete managed distribution', async () => {

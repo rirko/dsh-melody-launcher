@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildWindowsBatchCommand,
+  formatCommandLine,
   spawnCommand,
   withExecutableDirectoryOnPath,
 } from '../electron/process'
@@ -16,6 +17,11 @@ afterEach(async () => {
 })
 
 describe('Windows batch command launching', () => {
+  it('formats a readable command line for execution logs', () => {
+    expect(formatCommandLine('C:\\Program Files\\nodejs\\node.exe', ['-e', 'console.log("ok")', 'plain']))
+      .toBe('"C:\\Program Files\\nodejs\\node.exe" -e "console.log(""ok"")" plain')
+  })
+
   it('quotes the executable path and every argument', () => {
     expect(buildWindowsBatchCommand('C:\\Program Files\\nodejs\\npx.cmd', ['hello world', 'a&b']))
       .toBe('""C:\\Program Files\\nodejs\\npx.cmd" "hello world" "a&b""')

@@ -2,6 +2,10 @@ import path from 'node:path'
 import type {
   PluginInstallSource,
   PluginInstallTarget,
+  ReleaseAnalysis,
+  ReleaseExecutableAsset,
+  ReleaseExecutableKind,
+  ReleaseExecutablePlatform,
   RepositoryAnalysis,
 } from '../src/types'
 import { isSafePackageName, isSafeRepositoryName, repositoryFullNameFromSpecifier } from './profile'
@@ -36,42 +40,157 @@ const GITHUB_HEADERS = {
 
 const RELEASE_LOOKUP_LIMIT = 10
 
+interface ReleaseLookup {
+  analysis: ReleaseAnalysis
+  tarballUrl: string | null
+  version: string | null
+}
+
+interface ReleaseRecord {
+  draft?: unknown
+  prerelease?: unknown
+  tag_name?: unknown
+  name?: unknown
+  published_at?: unknown
+  assets?: unknown
+}
+
+function releaseAssetKind(name: string): {
+  kind: ReleaseExecutableKind
+  platform: ReleaseExecutablePlatform
+} | null {
+  const lower = name.toLowerCase()
+  if (/\.exe$/.test(lower)) return { kind: 'exe', platform: 'windows' }
+  if (/\.msi$/.test(lower)) return { kind: 'msi', platform: 'windows' }
+  if (/\.dmg$/.test(lower)) return { kind: 'dmg', platform: 'macos' }
+  if (/\.pkg$/.test(lower)) return { kind: 'pkg', platform: 'macos' }
+  if (/\.appimage$/.test(lower)) return { kind: 'appimage', platform: 'linux' }
+  if (/\.deb$/.test(lower)) return { kind: 'deb', platform: 'linux' }
+  if (/\.rpm$/.test(lower)) return { kind: 'rpm', platform: 'linux' }
+  if (/\.app\.zip$/.test(lower)) return { kind: 'archive', platform: 'macos' }
+  if (/\.(?:bin|run)$/.test(lower)) return { kind: 'binary', platform: 'unknown' }
+  if (/\.(?:bat|cmd|ps1|sh)$/.test(lower)) {
+    return { kind: 'script', platform: /\.(?:bat|cmd|ps1)$/.test(lower) ? 'windows' : 'linux' }
+  }
+  if (/\.jar$/.test(lower)) return { kind: 'jar', platform: 'cross-platform' }
+
+  // Generic archives are only executable candidates when the filename identifies
+  // a platform or a portable/standalone build. This avoids treating source archives
+  // and the Plugin `.tgz` package as desktop executables.
+  if (/\.(?:zip|7z|tar|tar\.gz|tar\.xz)$/.test(lower)
+    && /(?:win(?:32|64)?|windows|mac(?:os)?|darwin|linux|appimage|portable|standalone|desktop|binary|installer|setup)/i.test(lower)) {
+    const platform: ReleaseExecutablePlatform = /win|windows/i.test(lower)
+      ? 'windows'
+      : /mac|darwin/i.test(lower)
+        ? 'macos'
+        : /linux|appimage/i.test(lower)
+          ? 'linux'
+          : 'unknown'
+    return { kind: 'archive', platform }
+  }
+  return null
+}
+
+function releaseAsset(
+  asset: unknown,
+  releaseTag: string,
+  releaseName: string | null,
+  publishedAt: string | null,
+): ReleaseExecutableAsset | null {
+  if (!asset || typeof asset !== 'object') return null
+  const record = asset as { name?: unknown; browser_download_url?: unknown; size?: unknown; content_type?: unknown }
+  if (typeof record.name !== 'string' || typeof record.browser_download_url !== 'string') return null
+  const identified = releaseAssetKind(record.name)
+  if (!identified) return null
+  return {
+    name: record.name,
+    url: record.browser_download_url,
+    size: typeof record.size === 'number' && Number.isFinite(record.size) ? record.size : null,
+    contentType: typeof record.content_type === 'string' ? record.content_type : null,
+    platform: identified.platform,
+    kind: identified.kind,
+    releaseTag,
+    releaseName,
+    publishedAt,
+  }
+}
+
 /**
- * 查找仓库官方 Release tgz。
+ * 查找仓库最新稳定 Release，同时识别官方 tgz 和可直接下载的可执行资产。
  *
  * 源码型插件（如 dsh-super-injector）的 `lib/` 不在 GitHub 源码树里，
  * 直接 `dsh plugin add <源码目录>` 会装出缺少入口的坏包。Release tgz
- * 是官方构建产物，应优先于 github 源安装。
+ * 是官方构建产物，应优先于 github 源安装；其他安装包只上报为可执行资产，
+ * 不会被误送进 DSH Plugin 的 pnpm 安装流程。
  */
-async function resolveReleaseTarball(
+async function resolveLatestRelease(
   repository: string,
   fetchImpl: typeof fetch,
-): Promise<{ tarballUrl: string; version: string } | null> {
+): Promise<ReleaseLookup> {
   const repositoryPath = repository.split('/').map(encodeURIComponent).join('/')
   const response = await requestWithRetry(
     `https://api.github.com/repos/${repositoryPath}/releases?per_page=${RELEASE_LOOKUP_LIMIT}`,
     { headers: GITHUB_HEADERS },
     fetchImpl,
   )
-  if (!response.ok) return null
+  if (!response.ok) {
+    return {
+      analysis: { state: response.status === 404 ? 'none' : 'unavailable', releaseTag: null, releaseName: null, publishedAt: null, assets: [] },
+      tarballUrl: null,
+      version: null,
+    }
+  }
   const releases: unknown = await response.json().catch(() => null)
-  if (!Array.isArray(releases)) return null
+  if (!Array.isArray(releases)) {
+    return {
+      analysis: { state: 'unavailable', releaseTag: null, releaseName: null, publishedAt: null, assets: [] },
+      tarballUrl: null,
+      version: null,
+    }
+  }
+  let latestStable: { tag: string; name: string | null; publishedAt: string | null; assets: ReleaseExecutableAsset[] } | null = null
+  let tarball: { url: string; version: string } | null = null
   for (const release of releases) {
     if (!release || typeof release !== 'object') continue
-    const record = release as { draft?: unknown; prerelease?: unknown; tag_name?: unknown; assets?: unknown }
+    const record = release as ReleaseRecord
     if (record.draft === true || record.prerelease === true) continue
-    if (!Array.isArray(record.assets)) continue
-    const tgz = record.assets.find((asset): asset is { browser_download_url: string } => {
+    const tag = typeof record.tag_name === 'string' ? record.tag_name : ''
+    if (!tag) continue
+    const releaseName = typeof record.name === 'string' ? record.name : null
+    const publishedAt = typeof record.published_at === 'string' ? record.published_at : null
+    const releaseAssets = Array.isArray(record.assets) ? record.assets : []
+    const assets = releaseAssets
+      .map(asset => releaseAsset(asset, tag, releaseName, publishedAt))
+      .filter((asset): asset is ReleaseExecutableAsset => Boolean(asset))
+    if (!latestStable) latestStable = { tag, name: releaseName, publishedAt, assets }
+    const tgz = releaseAssets.find((asset): asset is { browser_download_url: string } => {
       if (!asset || typeof asset !== 'object') return false
       const url = (asset as { browser_download_url?: unknown }).browser_download_url
       return typeof url === 'string' && /\.(tgz|tar\.gz)$/i.test(url)
     })
-    if (!tgz) continue
-    const version = typeof record.tag_name === 'string' ? record.tag_name.replace(/^v/i, '') : ''
-    if (!version) continue
-    return { tarballUrl: tgz.browser_download_url, version }
+    if (!tarball && tgz) {
+      const version = tag.replace(/^v/i, '')
+      if (version) tarball = { url: tgz.browser_download_url, version }
+    }
   }
-  return null
+  if (latestStable) {
+    return {
+      analysis: {
+        state: latestStable.assets.length > 0 ? 'found' : 'none',
+        releaseTag: latestStable.tag,
+        releaseName: latestStable.name,
+        publishedAt: latestStable.publishedAt,
+        assets: latestStable.assets,
+      },
+      tarballUrl: tarball?.url ?? null,
+      version: tarball?.version ?? null,
+    }
+  }
+  return {
+    analysis: { state: 'none', releaseTag: null, releaseName: null, publishedAt: null, assets: [] },
+    tarballUrl: null,
+    version: null,
+  }
 }
 
 async function requestWithRetry(url: string, init: RequestInit, fetchImpl: typeof fetch): Promise<Response> {
@@ -188,6 +307,11 @@ async function analyzePublishedRootPlugin(
     ? published.gitHead
     : defaultBranch
   const buildScripts = lifecycleScripts(rootManifest, 'npm')
+  const releaseLookup = await resolveLatestRelease(repository, fetchImpl).catch(() => ({
+    analysis: { state: 'unavailable' as const, releaseTag: null, releaseName: null, publishedAt: null, assets: [] },
+    tarballUrl: null,
+    version: null,
+  }))
   return {
     repository,
     defaultBranch,
@@ -206,6 +330,7 @@ async function analyzePublishedRootPlugin(
       buildScripts,
       nodeRange: published.engines?.node ?? rootManifest.engines?.node ?? null,
     }],
+    releaseAnalysis: releaseLookup.analysis,
   }
 }
 
@@ -385,20 +510,25 @@ export async function analyzeRepository(
 
   const installTargets = uniqueTargets(targets)
 
-  // 源码型 github 插件优先使用官方 Release tgz，避免装出缺少 lib/ 的坏包。
+  // 源码型 github 插件优先使用官方 Release tgz，避免装出缺少 lib/ 的坏包；
+  // 同一次请求也用于识别 Release 中的可安装可执行程序。
   let resolvedTargets = installTargets
-  if (installTargets.some(target => target.source === 'github')) {
-    const release = await resolveReleaseTarball(repository, fetchImpl).catch(() => null)
-    if (release) {
+  const releaseLookup = installTargets.length > 0
+    ? await resolveLatestRelease(repository, fetchImpl).catch(() => ({
+      analysis: { state: 'unavailable' as const, releaseTag: null, releaseName: null, publishedAt: null, assets: [] },
+      tarballUrl: null,
+      version: null,
+    }))
+    : null
+  if (installTargets.some(target => target.source === 'github') && releaseLookup?.tarballUrl) {
       resolvedTargets = installTargets.map(target => target.source === 'github'
         ? {
             ...target,
             source: 'release' as const,
-            tarballUrl: release.tarballUrl,
-            version: release.version,
+            tarballUrl: releaseLookup.tarballUrl!,
+            version: releaseLookup.version,
           }
         : target)
-    }
   }
 
   if (resolvedTargets.length > 0) {
@@ -410,6 +540,7 @@ export async function analyzeRepository(
         ? `检测到可安装的 ${resolvedTargets[0].packageName}。`
         : `检测到 ${resolvedTargets.length} 个可安装组件，请选择需要的组件。`,
       targets: resolvedTargets,
+      releaseAnalysis: releaseLookup?.analysis ?? null,
     }
   }
 

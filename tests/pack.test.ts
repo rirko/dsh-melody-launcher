@@ -114,6 +114,7 @@ function makeSettings(dshHome: string, profileName = 'web') {
   let current: AppSettings = {
     ...defaultSettings({ homeDirectory: os.homedir(), documentsDirectory: os.homedir() }),
     dshHome,
+    dshVersion: '0.1.0-rc.7',
     profileName,
   }
   const saveSettings = vi.fn(async (next: AppSettings) => { current = next; return current })
@@ -186,7 +187,7 @@ function receipt(packageName: string, profileName: string, source: PluginInstall
 
 async function writeZip(env: Awaited<ReturnType<typeof makeEnv>>, fileName: string, manifest: PackManifest, bodies: Map<string, string>): Promise<string> {
   const zipPath = path.join(env.root, fileName)
-  await writeFile(zipPath, Buffer.from(buildPackZip(manifest, bodies)))
+  await writeFile(zipPath, Buffer.from(buildPackZip({ ...manifest, dshVersion: manifest.dshVersion ?? '0.1.0-rc.7' }, bodies)))
   return zipPath
 }
 

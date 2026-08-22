@@ -36,7 +36,7 @@ async function fixture() {
     presetReceiptsPath: path.join(root, 'preset-receipts.json'),
     skillReceiptsPath: path.join(root, 'skill-receipts.json'),
   }
-  let settings: AppSettings = { ...defaultSettings({ homeDirectory: os.homedir(), documentsDirectory: os.homedir() }), dshHome, profileName: 'web', activePackId: null }
+  let settings: AppSettings = { ...defaultSettings({ homeDirectory: os.homedir(), documentsDirectory: os.homedir() }), dshHome, dshVersion: '0.1.0-rc.7', profileName: 'web', activePackId: null }
   let profile: ProfileState = {
     initialized: true,
     profileDir: path.join(dshHome, 'profiles', 'web'),
@@ -87,7 +87,7 @@ async function fixture() {
 
 function record(id: string, plugins: PackRecord['plugins']): PackRecord {
   const now = new Date().toISOString()
-  return { id, name: id, description: 'test', version: '1.0.0', source: 'created', installedAt: now, updatedAt: now, state: 'complete', plugins }
+  return { id, name: id, description: 'test', version: '1.0.0', dshVersion: '0.1.0-rc.7', source: 'created', installedAt: now, updatedAt: now, state: 'complete', plugins }
 }
 
 describe('shared Profile Pack switching', () => {
@@ -192,6 +192,7 @@ describe('shared Profile Pack switching', () => {
       'name: Incoming Pack',
       'description: A shared profile manifest',
       'version: 1.0.0',
+      'dshVersion: 0.1.0-rc.7',
       'plugins:',
       '  - packageName: alpha',
       '    source: npm',

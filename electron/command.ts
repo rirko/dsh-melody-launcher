@@ -1,4 +1,4 @@
-import { spawnCommand } from './process'
+import { formatCommandLine, spawnCommand } from './process'
 
 /**
  * 「启动子进程 → 转发输出 → 收集输出 → 等待退出码」这套流程原本在
@@ -25,6 +25,8 @@ export interface CollectOptions {
 export interface CommandOptions extends CollectOptions {
   cwd: string
   env: NodeJS.ProcessEnv
+  /** 进程启动后回调，供运行环境取消当前下载。 */
+  onSpawn?: (child: ReturnType<typeof spawnCommand>) => void
 }
 
 export interface CommandResult {
@@ -60,6 +62,23 @@ export async function runCommand(
   args: string[],
   options: CommandOptions,
 ): Promise<CommandResult> {
-  const child = spawnCommand(executable, args, { cwd: options.cwd, env: options.env })
-  return collectCommandOutput(child, options)
+  const commandLine = formatCommandLine(executable, args)
+  options.onOutput?.(`命令：${commandLine}\n工作目录：${options.cwd}`, 'info')
+  let child
+  try {
+    child = spawnCommand(executable, args, { cwd: options.cwd, env: options.env })
+    options.onSpawn?.(child)
+  } catch (error) {
+    options.onOutput?.(`命令启动失败：${error instanceof Error ? error.message : String(error)}`, 'error')
+    throw error
+  }
+  let result: CommandResult
+  try {
+    result = await collectCommandOutput(child, options)
+  } catch (error) {
+    options.onOutput?.(`命令执行异常：${error instanceof Error ? error.message : String(error)}`, 'error')
+    throw error
+  }
+  options.onOutput?.(`命令退出：${result.exitCode}`, result.exitCode === 0 ? 'info' : 'error')
+  return result
 }

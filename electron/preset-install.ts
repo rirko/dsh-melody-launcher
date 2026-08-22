@@ -16,6 +16,14 @@ const MAX_ARCHIVE_FILES = 12_000
 /** DSH agent-preset 的清单文件：目录存在此文件即视为已安装该预设。 */
 const PRESET_MANIFEST = 'preset.yml'
 
+export interface PresetInstallProgress {
+  percent: number
+  message: string
+  indeterminate?: boolean
+  downloadedBytes?: number
+  totalBytes?: number
+}
+
 async function exists(target: string): Promise<boolean> {
   try {
     await access(target)
@@ -66,12 +74,12 @@ async function downloadArchive(
   repository: string,
   revision: string,
   destination: string,
-  onProgress: (percent: number, message: string) => void,
+  onProgress: (progress: PresetInstallProgress) => void,
   fetchImpl?: typeof fetch,
 ): Promise<void> {
   if (!fetchImpl) {
     const archive = await downloadGitHubArchive(repository, revision, MAX_ARCHIVE_BYTES, (received, total) => {
-      if (total) onProgress(18 + Math.round(Math.min(1, received / total) * 42), `正在下载预设 ${Math.round(received / total * 100)}%`)
+      if (total) onProgress({ percent: 18 + Math.round(Math.min(1, received / total) * 42), message: `正在下载预设 ${Math.round(received / total * 100)}%`, downloadedBytes: received, totalBytes: total })
     })
     await writeFile(destination, archive, { flag: 'wx' })
     return
@@ -96,7 +104,7 @@ async function downloadArchive(
       }
       if (!writer.write(Buffer.from(chunk.value))) await once(writer, 'drain')
       if (Number.isFinite(total) && total > 0) {
-        onProgress(18 + Math.round(Math.min(1, received / total) * 42), `正在下载预设 ${Math.round(received / total * 100)}%`)
+        onProgress({ percent: 18 + Math.round(Math.min(1, received / total) * 42), message: `正在下载预设 ${Math.round(received / total * 100)}%`, downloadedBytes: received, totalBytes: total })
       }
     }
     writer.end()
@@ -130,7 +138,7 @@ export async function installPresetFromRepository(
   dshHome: string,
   repository: string,
   target: PresetInstallTarget,
-  onProgress: (percent: number, message: string) => void,
+  onProgress: (progress: PresetInstallProgress) => void,
   fetchImpl?: typeof fetch,
 ): Promise<InstalledPreset> {
   if (!isSafeRepositoryName(repository) || !safeRevision(target.revision) || !isSkillName(target.name)) {
@@ -148,9 +156,9 @@ export async function installPresetFromRepository(
   await mkdir(stagingRoot, { recursive: true })
 
   try {
-    onProgress(12, '正在下载预设仓库')
+    onProgress({ percent: 12, message: '正在下载预设仓库', indeterminate: true })
     await downloadArchive(repository, target.revision, zipPath, onProgress, fetchImpl)
-    onProgress(64, '正在核对预设文件')
+    onProgress({ percent: 64, message: '正在核对预设文件' })
     const archive = new AdmZip(zipPath)
     const entries = archive.getEntries()
     if (entries.length > MAX_ARCHIVE_FILES) throw new Error('预设仓库文件数量超过安全限制。')
@@ -182,12 +190,12 @@ export async function installPresetFromRepository(
     const manifest = path.join(staged, PRESET_MANIFEST)
     if (!await exists(manifest)) throw new Error('下载内容缺少 preset.yml，不再是最初确认的预设。')
 
-    onProgress(84, '正在写入 DSH 预设目录')
+    onProgress({ percent: 84, message: '正在写入 DSH 预设目录' })
     await mkdir(presetRoot, { recursive: true })
     const destination = path.join(presetRoot, target.name)
     assertInside(presetRoot, destination)
     await replacePath(staged, destination)
-    onProgress(96, '正在验证本地预设')
+    onProgress({ percent: 96, message: '正在验证本地预设' })
     return { name: target.name, path: destination, enabled: true }
   } finally {
     await rm(zipPath, { force: true }).catch(() => undefined)

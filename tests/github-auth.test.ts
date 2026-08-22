@@ -78,6 +78,19 @@ describe('GitHub account service', () => {
     await expect(reloaded.getStatus()).resolves.toMatchObject({ authenticated: false })
   })
 
+  it('safeStorage 暂时不可用时不缓存为永久未登录', async () => {
+    const filePath = path.join(temporaryRoot, 'github-auth.bin')
+    let available = true
+    const first = createGitHubAuthService({ filePath, cipher: { ...cipher, isAvailable: () => available }, fetchImpl: (async () => userResponse('startup-user')) as typeof fetch })
+    await first.loginWithToken('github_pat_startup_token_1234567890')
+
+    available = false
+    const reloaded = createGitHubAuthService({ filePath, cipher: { ...cipher, isAvailable: () => available }, fetchImpl: (async () => userResponse('startup-user')) as typeof fetch })
+    await expect(reloaded.getStatus()).resolves.toMatchObject({ authenticated: false })
+    available = true
+    await expect(reloaded.getStatus()).resolves.toMatchObject({ authenticated: true, login: 'startup-user' })
+  })
+
   it('shares the initial session read across concurrent status and GitHub requests', async () => {
     const filePath = path.join(temporaryRoot, 'github-auth.bin')
     const first = createGitHubAuthService({ filePath, cipher, fetchImpl: (async () => userResponse('concurrent-user')) as typeof fetch })

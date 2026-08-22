@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { parseDocument } from 'yaml'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   clearDeepSeekApiKey,
@@ -47,6 +48,34 @@ describe('DeepSeek credential management', () => {
     content = await readFile(credentialsFile, 'utf8')
     expect(content).toContain('OPENAI_API_KEY: openai-secret')
     expect(content).not.toContain('DEEPSEEK_API_KEY')
+  })
+
+  it('reads and updates the versioned refs format without flattening metadata', async () => {
+    const credentialsFile = path.join(temporaryHome, '.credentials.yaml')
+    await writeFile(credentialsFile, `version: 1
+refs:
+  DEEPSEEK_API_KEY: modern-secret
+  OTHER_TOKEN: other-secret
+records:
+  DEEPSEEK_API_KEY:
+    provider: local
+`, 'utf8')
+
+    await expect(getDeepSeekCredentialStatus(temporaryHome)).resolves.toEqual({ configured: true })
+    await setDeepSeekApiKey(temporaryHome, 'updated-secret')
+    let content = await readFile(credentialsFile, 'utf8')
+    expect(content).toContain('version: 1')
+    expect(content).toContain('DEEPSEEK_API_KEY: updated-secret')
+    expect(content).toContain('records:')
+    expect(content).toContain('OTHER_TOKEN: other-secret')
+
+    await clearDeepSeekApiKey(temporaryHome)
+    content = await readFile(credentialsFile, 'utf8')
+    expect(content).toContain('version: 1')
+    expect(content).toContain('records:')
+    const parsed = parseDocument(content).toJS() as { refs?: Record<string, string>; records?: Record<string, unknown> }
+    expect(parsed.refs?.DEEPSEEK_API_KEY).toBeUndefined()
+    expect(parsed.records?.DEEPSEEK_API_KEY).toBeDefined()
   })
 
   it('rejects blank keys and malformed credential documents', async () => {

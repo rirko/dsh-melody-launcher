@@ -7,7 +7,7 @@ import { DSH_PACKAGE_NAME } from '../src/constants'
 import type { AppSettings, PluginTrialResult } from '../src/types'
 import { resolveNodeExecutable, type NodeRuntime, type PnpmRuntime } from './node-runtime'
 import { findAvailableWebPort } from './runtime'
-import { spawnCommand, withExecutableDirectoryOnPath } from './process'
+import { formatCommandLine, spawnCommand, withExecutableDirectoryOnPath } from './process'
 
 const TRIAL_PROFILE_NAME = 'trial'
 const TRIAL_TIMEOUT_MS = 45_000
@@ -329,7 +329,7 @@ export function createPluginTrialManager(options: PluginTrialManagerOptions): Pl
           }),
         ),
       )
-      const commandLine = `${launch.executable} ${launch.args.join(' ')}`
+      const commandLine = formatCommandLine(launch.executable, launch.args)
       if (cancelRequested) throw new Error('插件试运行已取消。')
       options.emitOutput('info', `隔离启动：${commandLine}`)
       child = spawnProcess(launch.executable, launch.args, { cwd, env: environment })

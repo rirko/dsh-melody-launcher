@@ -428,6 +428,21 @@ describe('remove with profileName', () => {
     ])
     expect(removePluginReceipt).toHaveBeenCalledWith(expect.any(String), 'web', 'some-plugin')
   })
+
+  it('未指定 Profile 时清理本机所有 Profile 中的插件', async () => {
+    await mkdir(path.join(settings.dshHome, 'profiles', 'web'), { recursive: true })
+    await mkdir(path.join(settings.dshHome, 'profiles', 'tui'), { recursive: true })
+    vi.mocked(readProfile).mockImplementation(async (_dshHome, profileName) => profileState(profileName, 'some-plugin'))
+    const { installer, calls } = createTestInstaller()
+
+    await installer.remove('some-plugin')
+
+    const removeCalls = calls.filter(call => call.args.includes('remove'))
+    expect(removeCalls).toHaveLength(2)
+    expect(removeCalls.map(call => call.args[call.args.indexOf('--profile') + 1])).toEqual(expect.arrayContaining(['web', 'tui']))
+    expect(removePluginReceipt).toHaveBeenCalledWith(expect.any(String), 'web', 'some-plugin')
+    expect(removePluginReceipt).toHaveBeenCalledWith(expect.any(String), 'tui', 'some-plugin')
+  })
 })
 
 describe('analyzeCatalogRepository meta-repo 展开', () => {

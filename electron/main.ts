@@ -1,5 +1,5 @@
 import { app, BrowserWindow, net, safeStorage, shell } from 'electron'
-import { readFile } from 'node:fs/promises'
+import { cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -29,15 +29,18 @@ import {
 import { createProxyAwareFetch } from './network'
 import { createPackManager, type InstallInstaller, type PackInstallTarget, type PackManager } from './pack'
 import { createPluginTrialManager, type PluginTrialManager } from './plugin-trial'
-import { recordPluginInstall } from './plugin-receipts'
+import { readPluginReceipts, recordPluginInstall } from './plugin-receipts'
 import { configureProcessTracker, shutdownTrackedProcesses, withExecutableDirectoryOnPath } from './process'
 import { createProcessSupervisor, type ProcessSupervisor } from './process-supervisor'
 import { readProfile, reorderPlugins, togglePlugin } from './profile'
+import { consolidatePluginPool, createProfileService, ensureProfileWorkspaceConfig, migrateLegacyPacks, type ProfileService } from './profile-service'
 import { installPresetFromDirectory } from './preset-install'
 import { installSkillFromDirectory } from './skill-install'
 import { createRendererEvents } from './renderer-events'
 import { createRuntimeController, type RuntimeController } from './runtime'
+import { createRuntimeVersionService, type RuntimeVersionService } from './runtime-versions'
 import { createSettingsStore, defaultSettings, type SettingsStore } from './settings'
+import { recoverLegacyCredentials } from './dsh-credentials-compat'
 
 /**
  * 应用入口与装配根。
@@ -68,6 +71,9 @@ interface Services {
   applicationAddons: ApplicationAddonManager
   catalogSync: CatalogSyncService
   dshMarket: DshMarketService
+  runtimeVersions: RuntimeVersionService
+  profiles: ProfileService
+  profilePoolReady: Promise<void>
 }
 
 // app.getPath 依赖 app 就绪，因此服务在 whenReady 之后才装配。
@@ -102,6 +108,8 @@ function createServices(): Services {
     onFlush: result => events.output('plugin', result.submitted > 0 ? 'success' : 'error', result.message),
   })
 
+  let settings: SettingsStore
+
   /**
    * 准备 Node.js 运行环境，并把下载进度写进日志。
    * 进度每跨越 10% 记一条，避免刷屏。
@@ -111,14 +119,14 @@ function createServices(): Services {
     onProgress?: (progress: NodeRuntimeProgress) => void,
   ): Promise<NodeRuntime> => {
     let lastBucket = -1
-    return ensureNodeRuntime(managedNodeRoot, progress => {
+    return settings.read().then(currentSettings => ensureNodeRuntime(managedNodeRoot, progress => {
       const bucket = Math.floor(progress.percent / 10)
       if (bucket !== lastBucket || progress.percent === 100) {
         lastBucket = bucket
         events.output(source, 'info', `${progress.message}（${progress.percent}%）`)
       }
       onProgress?.(progress)
-    })
+    }, currentSettings.nodeVersion, (level, text) => events.output(source, level, text)))
   }
 
   const preparePnpmRuntime = (
@@ -134,10 +142,10 @@ function createServices(): Services {
         events.output(source, 'info', `${progress.message}（${progress.percent}%）`)
       }
       onProgress?.(progress)
-    })
+    }, (level, text) => events.output(source, level, text))
   }
 
-  const settings = createSettingsStore({
+  settings = createSettingsStore({
     filePath: path.join(userData, 'settings.json'),
     createDefaults: () => defaultSettings({
       dshHomeFromEnvironment: process.env.DSH_HOME,
@@ -153,6 +161,7 @@ function createServices(): Services {
   })
 
   let applicationAddons: ApplicationAddonManager
+  let installer: Installer
   const runtime = createRuntimeController({
     readSettings: () => settings.read(),
     prepareNodeRuntime: () => prepareNodeRuntime('runtime'),
@@ -161,6 +170,158 @@ function createServices(): Services {
     emitState: state => events.runtimeState(state),
     openExternal: url => void shell.openExternal(url),
     resolveApplicationLaunchPlan: () => applicationAddons.launchPlan(),
+    legacyCredentialsBackupRoot: path.join(userData, 'dsh-credentials-compat'),
+  })
+  const profileService = createProfileService({
+    dshHome: () => settings.read().then(value => value.dshHome),
+    readSettings: () => settings.read(),
+    saveSettings: next => settings.save(next),
+    pluginReceiptsPath,
+    registryPath: path.join(userData, 'packs.json'),
+    manifestRoot: path.join(userData, 'pack-manifests'),
+    packBodiesRoot: () => settings.read().then(value => path.join(value.dshHome, '.dsh-launcher-pack-bodies')),
+    isRuntimeRunning: () => runtime.isRunning(),
+    fillMissingDependencies: async (profileName, missing) => {
+      const current = await settings.read()
+      const receipts = await readPluginReceipts(pluginReceiptsPath)
+      const pluginStoreRoot = path.join(userData, 'plugin-store')
+      const profileRoot = path.join(current.dshHome, 'profiles')
+      const targetProfileDir = path.join(profileRoot, profileName)
+      // A link-only repair must never auto-install DSH peer packages from npm.
+      // Normalize legacy/imported Profiles before invoking pnpm so unpublished
+      // preview peers remain supplied by the selected DSH runtime.
+      await ensureProfileWorkspaceConfig(targetProfileDir)
+
+      // Legacy/imported Profiles can contain only `*` dependency ranges even
+      // though another Profile already has the exact local source. Reuse that
+      // source before asking pnpm for offline registry metadata; this preserves
+      // one physical plugin body while keeping each Profile's link layer and
+      // activation order independent.
+      const sourceSpecs = new Map<string, string>()
+      const siblingEntries = await readdir(profileRoot, { withFileTypes: true }).catch(() => [])
+      for (const sibling of siblingEntries) {
+        if (!sibling.isDirectory() || sibling.name === profileName) continue
+        const siblingManifestPath = path.join(profileRoot, sibling.name, 'package.json')
+        let siblingManifest: { dependencies?: Record<string, unknown> } | null = null
+        try {
+          siblingManifest = JSON.parse(await readFile(siblingManifestPath, 'utf8')) as { dependencies?: Record<string, unknown> }
+        } catch {
+          continue
+        }
+        for (const packageName of missing) {
+          if (sourceSpecs.has(packageName)) continue
+          const candidate = siblingManifest.dependencies?.[packageName]
+          if (typeof candidate !== 'string' || candidate.trim() === '' || candidate.trim() === '*') continue
+          if (candidate.startsWith('file:')) {
+            const rawPath = candidate.slice('file:'.length)
+            const sourcePath = path.isAbsolute(rawPath) ? rawPath : path.resolve(path.dirname(siblingManifestPath), rawPath)
+            try {
+              const sourceManifest = JSON.parse(await readFile(path.join(sourcePath, 'package.json'), 'utf8')) as { version?: unknown }
+              const version = typeof sourceManifest.version === 'string' && sourceManifest.version.trim()
+                ? sourceManifest.version.trim().replace(/[^0-9A-Za-z._+-]/g, '_')
+                : 'local'
+              const sharedSource = path.join(current.dshHome, '.dsh-launcher-plugin-bodies', ...packageName.split('/'), version)
+              if (path.resolve(sourcePath) !== path.resolve(sharedSource)) {
+                await mkdir(path.dirname(sharedSource), { recursive: true })
+                try {
+                  await readFile(path.join(sharedSource, 'package.json'), 'utf8')
+                } catch {
+                  await cp(sourcePath, sharedSource, { recursive: true })
+                }
+              }
+              sourceSpecs.set(packageName, `file:${sharedSource}`)
+            } catch {
+              // Stale file references are not reusable sources.
+            }
+          } else if (/^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(candidate.trim())) {
+            sourceSpecs.set(packageName, candidate.trim())
+          }
+        }
+      }
+
+      if (sourceSpecs.size > 0) {
+        const targetManifestPath = path.join(targetProfileDir, 'package.json')
+        try {
+          const targetManifest = JSON.parse(await readFile(targetManifestPath, 'utf8')) as { dependencies?: Record<string, string> }
+          const dependencies = { ...(targetManifest.dependencies ?? {}) }
+          const repaired: string[] = []
+          for (const packageName of missing) {
+            const currentSpec = dependencies[packageName]
+            const sourceSpec = sourceSpecs.get(packageName)
+            if (!sourceSpec || (currentSpec && currentSpec !== '*' && !/[<>=*^~]/.test(currentSpec))) continue
+            dependencies[packageName] = sourceSpec
+            repaired.push(`${packageName} → ${sourceSpec}`)
+          }
+          if (repaired.length > 0) {
+            await writeFile(targetManifestPath, `${JSON.stringify({ ...targetManifest, dependencies }, null, 2)}\n`, 'utf8')
+            events.output('plugin', 'info', `已从其他 Profile 复用 ${repaired.length} 个插件来源：${repaired.join('、')}`)
+          }
+        } catch {
+          // The subsequent pnpm command reports a precise manifest error.
+        }
+      }
+
+      let offlineNode: NodeRuntime | null = null
+      let offlinePnpm: PnpmRuntime | null = null
+      let offlineInstallAttempted = false
+      for (const packageName of missing) {
+        const receipt = receipts.find(item => item.profileName === profileName && item.packageName === packageName)
+        if (!receipt) {
+          // A cloned/imported Profile may have no launcher receipt while its
+          // exact package is already present in the shared pnpm store. Try an
+          // offline link-only install before asking the user to source it.
+          if (!offlineInstallAttempted) {
+            offlineInstallAttempted = true
+            offlineNode ??= await prepareNodeRuntime('plugin')
+            offlinePnpm ??= await preparePnpmRuntime('plugin', offlineNode)
+            const result = await runCommand(offlinePnpm.executable, ['install', '--dir', targetProfileDir, '--offline', '--no-frozen-lockfile', '--config.auto-install-peers=false', '--store-dir', pluginStoreRoot], {
+              cwd: targetProfileDir,
+              env: withExecutableDirectoryOnPath(offlinePnpm.executable, withExecutableDirectoryOnPath(offlineNode.node, {
+                ...process.env,
+                DSH_HOME: current.dshHome,
+                npm_config_store_dir: pluginStoreRoot,
+                NPM_CONFIG_STORE_DIR: pluginStoreRoot,
+                pnpm_config_store_dir: pluginStoreRoot,
+                PNPM_CONFIG_STORE_DIR: pluginStoreRoot,
+                CI: 'true',
+              })),
+              onOutput: (text, level) => events.output('plugin', level, text),
+            })
+            if (result.exitCode !== 0) throw new Error(`插件「${packageName}」无法从共享插件池补齐，请检查来源记录。`)
+          }
+          continue
+        }
+        const repository = receipt.repository.match(/^(?:https?:\/\/github\.com\/|github:)?([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)/i)?.[1]
+        if (receipt.source === 'npm') {
+          await installer.installNpmPackage({ packageName, version: receipt.version ?? undefined }, profileName)
+        } else if (repository) {
+          await installer.installPluginTarget({
+            repository,
+            defaultBranch: receipt.defaultBranch ?? 'main',
+            targetId: receipt.targetId ?? `${packageName}:.`,
+            ...(receipt.commit ? { commit: receipt.commit } : {}),
+          }, profileName)
+        } else {
+          throw new Error(`插件「${packageName}」的来源记录无效，无法自动补齐。`)
+        }
+      }
+      // Keep the selected DSH home/profile invariant explicit for future
+      // installers that consult settings while repairing links.
+      if (current.dshHome !== (await settings.read()).dshHome) throw new Error('DSH_HOME 在补齐依赖期间发生变化。')
+    },
+  })
+
+  const runtimeVersions = createRuntimeVersionService({
+    dshRoot: managedDshRoot,
+    nodeRoot: managedNodeRoot,
+    readSettings: () => settings.read(),
+    saveSettings: next => settings.save(next),
+    prepareNodeRuntime: onProgress => prepareNodeRuntime('plugin', onProgress),
+    preparePnpmRuntime: (nodeRuntime, onProgress) => preparePnpmRuntime('plugin', nodeRuntime, onProgress),
+    isRuntimeRunning: () => runtime.isRunning(),
+    emitOutput: (level, text) => events.output('plugin', level, text),
+    emitProgress: progress => events.installProgress(progress),
+    githubFetch: githubAuth.fetch,
   })
 
   applicationAddons = createApplicationAddonManager({
@@ -173,15 +334,17 @@ function createServices(): Services {
     emitProgress: progress => events.installProgress(progress),
     isRuntimeRunning: () => runtime.isRunning(),
     githubFetch: githubAuth.fetch,
+    packageStoreRoot: path.join(userData, 'plugin-store'),
   })
 
-  const installer = createInstaller({
+  installer = createInstaller({
     readSettings: () => settings.read(),
     saveSettings: next => settings.save(next),
     prepareNodeRuntime: onProgress => prepareNodeRuntime('plugin', onProgress),
     preparePnpmRuntime: (nodeRuntime, onProgress) => preparePnpmRuntime('plugin', nodeRuntime, onProgress),
     pluginSourceRoot,
     pluginReceiptsPath,
+    packageStoreRoot: path.join(userData, 'plugin-store'),
     presetReceiptsPath,
     skillReceiptsPath,
     skillSourceRoot,
@@ -199,6 +362,7 @@ function createServices(): Services {
     prepareNodeRuntime: () => prepareNodeRuntime('plugin'),
     preparePnpmRuntime: node => preparePnpmRuntime('plugin', node),
     fetchImpl: githubAuth.fetch,
+    packageStoreRoot: path.join(userData, 'plugin-store'),
     emitProgress: progress => events.dshMarketProgress(progress),
     emitOutput: (level, text) => events.output('plugin', level, text),
   })
@@ -209,7 +373,7 @@ function createServices(): Services {
     preparePnpmRuntime: nodeRuntime => preparePnpmRuntime('plugin', nodeRuntime),
     trialRoot: path.join(userData, 'plugin-trials'),
     resultsPath: path.join(userData, 'plugin-trial-results.json'),
-    emitOutput: (level, text) => events.output('plugin', level, text),
+    emitOutput: (level, text) => events.output('test', level, text),
     emitResult: result => events.pluginTrial(result),
     isRuntimeRunning: () => runtime.isRunning(),
     isInstallerBusy: () => installer.isBusy(),
@@ -220,6 +384,7 @@ function createServices(): Services {
     filePath: path.join(userData, 'copilot-sessions.json'),
     runtimeRoot: path.join(userData, ACP_RUNTIME_DIRNAME),
     snapshotRoot: path.join(userData, 'ai-snapshots'),
+    packageStoreRoot: path.join(userData, 'plugin-store'),
     readSettings: () => settings.read(),
     readApiKey: dshHome => readDeepSeekApiKey(dshHome),
     prepareNodeRuntime: () => prepareNodeRuntime('ai'),
@@ -239,6 +404,7 @@ function createServices(): Services {
 
   const aiInstaller = createAiInstaller({
     readSettings: () => settings.read(),
+    packageStoreRoot: path.join(userData, 'plugin-store'),
     prepareNodeRuntime: () => prepareNodeRuntime('ai'),
     preparePnpmRuntime: nodeRuntime => preparePnpmRuntime('ai', nodeRuntime),
     acpRuntimeRoot: path.join(userData, ACP_RUNTIME_DIRNAME),
@@ -269,14 +435,19 @@ function createServices(): Services {
     const commandArgs = buildPluginCommandArgs(current, executable, ['add', `file:${localDirectory}`], target.profileName)
     const result = await runCommand(executable, commandArgs, {
       cwd: current.workspace,
-      env: withExecutableDirectoryOnPath(
-        pnpmRuntime.executable,
-        withExecutableDirectoryOnPath(nodeRuntime.node, {
-          ...process.env,
-          DSH_HOME: current.dshHome,
-          FORCE_COLOR: '0',
-        }),
+        env: withExecutableDirectoryOnPath(
+          pnpmRuntime.executable,
+          withExecutableDirectoryOnPath(nodeRuntime.node, {
+            ...process.env,
+            DSH_HOME: current.dshHome,
+            npm_config_store_dir: path.join(app.getPath('userData'), 'plugin-store'),
+            NPM_CONFIG_STORE_DIR: path.join(app.getPath('userData'), 'plugin-store'),
+            pnpm_config_store_dir: path.join(app.getPath('userData'), 'plugin-store'),
+            PNPM_CONFIG_STORE_DIR: path.join(app.getPath('userData'), 'plugin-store'),
+            FORCE_COLOR: '0',
+          }),
       ),
+      onOutput: (text, level) => events.output('plugin', level, text),
     })
     if (result.exitCode !== 0) throw new Error(`插件安装失败（代码 ${result.exitCode}），请查看运行日志。`)
     let version: string | null = null
@@ -349,6 +520,7 @@ function createServices(): Services {
     emitEvent: event => events.packProgress(event),
     isRuntimeRunning: () => runtime.isRunning(),
     isInstallerBusy: () => installer.isBusy(),
+    unifiedProfiles: true,
   })
 
   const launcherUpdater = createLauncherUpdater({
@@ -365,7 +537,21 @@ function createServices(): Services {
     .then(current => healCredentialsLock(current.dshHome, path.join(userData, CREDENTIALS_LOCK_DIRNAME)))
     .catch(() => { /* 设置未就绪可忽略，锁会在下次 AI 会话前置处理 */ })
 
-  return { settings, pluginReceiptsPath, runtime, installer, launcherUpdater, pluginTrial, aiInstaller, copilot, packManager: packManager!, githubAuth, applicationAddons, catalogSync, dshMarket }
+  const profilePoolReady = migrateLegacyPacks({
+    dshHome: () => settings.read().then(value => value.dshHome),
+    readSettings: () => settings.read(),
+    saveSettings: next => settings.save(next),
+    pluginReceiptsPath,
+    registryPath: path.join(userData, 'packs.json'),
+    manifestRoot: path.join(userData, 'pack-manifests'),
+    isRuntimeRunning: () => runtime.isRunning(),
+  }).then(async () => {
+    const current = await settings.read()
+    const result = await consolidatePluginPool(current.dshHome)
+    if (result.dependencies > 0) events.output('plugin', 'info', `已将 ${result.dependencies} 个 Profile 插件依赖归并到共享插件池。`)
+  }).catch(error => events.output('plugin', 'error', `旧整合包/插件池迁移失败：${error instanceof Error ? error.message : String(error)}`))
+
+  return { settings, pluginReceiptsPath, runtime, installer, launcherUpdater, pluginTrial, aiInstaller, copilot, packManager: packManager!, githubAuth, applicationAddons, catalogSync, dshMarket, runtimeVersions, profiles: profileService, profilePoolReady }
 }
 
 function openMainWindow(): void {
@@ -379,6 +565,9 @@ function openMainWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  await recoverLegacyCredentials(path.join(app.getPath('userData'), 'dsh-credentials-compat')).catch(error => {
+    console.error('[credentials] 旧版 DSH 凭据恢复失败。', error)
+  })
   try {
     processSupervisor = await createProcessSupervisor({
       root: path.join(app.getPath('userData'), 'process-supervisor'),
@@ -394,6 +583,7 @@ app.whenReady().then(async () => {
     getWindow,
     setWindowMode: (mode: WindowMode) => applyWindowMode(mainWindow, mode),
   })
+  await services.profilePoolReady
   openMainWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) openMainWindow()

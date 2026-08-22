@@ -1,6 +1,6 @@
 import { AppWindow, Box, CircleStop, Download, ExternalLink, GitFork, KeyRound, LoaderCircle, Maximize2, Minus, Play, RefreshCw, Settings, X } from 'lucide-react'
 import packageMetadata from '../../package.json'
-import type { AppSettings, DshInstallationStatus, DshUpdateStatus, GitHubAuthStatus, InstallProgress, InstalledApplicationAddon, ProfileState, RuntimeState } from '../types'
+import type { AppSettings, DshInstallationStatus, DshUpdateStatus, GitHubAuthStatus, InstallProgress, InstalledApplicationAddon, PackStatus, ProfileState, ProfileSummary, RuntimeState } from '../types'
 
 /** 启动页：无边框小窗口，只暴露最少的几个动作。 */
 
@@ -12,12 +12,18 @@ interface LauncherHomeProps {
   dshUpdate: DshUpdateStatus | null
   installProgress: InstallProgress | null
   busy: boolean
+  packs: PackStatus[]
+  profiles: ProfileSummary[]
+  activePackId: string | null | undefined
+  profileSwitcherDisabled: boolean
   installingDsh: boolean
   githubAuthStatus: GitHubAuthStatus
   activeRuntimeReplacement: InstalledApplicationAddon | null
   onCredential: () => void
   onGitHubAccount: () => void
   onManage: () => void
+  onPackChange: (packId: string) => void
+  onProfileChange: (profileName: string) => void
   onToggleRuntime: () => void
   onUpdateDsh: () => void
   onOpenHarness: () => void
@@ -34,12 +40,18 @@ export function LauncherHome({
   dshUpdate,
   installProgress,
   busy,
+  packs,
+  profiles,
+  activePackId,
+  profileSwitcherDisabled,
   installingDsh,
   githubAuthStatus,
   activeRuntimeReplacement,
   onCredential,
   onGitHubAccount,
   onManage,
+  onPackChange,
+  onProfileChange,
   onToggleRuntime,
   onUpdateDsh,
   onOpenHarness,
@@ -48,6 +60,7 @@ export function LauncherHome({
   onClose,
 }: LauncherHomeProps) {
   const needsInstallation = !dshInstallation.installed && !activeRuntimeReplacement
+  const profileSelection = profiles.length > 0 ? settings.profileName : (activePackId ?? '')
   const runtimeLabel = busy
     ? installingDsh ? '正在安装' : runtime.running ? '正在停止' : '正在启动'
     : runtime.running ? runtime.url ? '已就绪' : '正在启动'
@@ -111,8 +124,16 @@ export function LauncherHome({
             <span>启动配置</span>
             <label className="launcher-profile-select">
               {activeRuntimeReplacement ? <AppWindow size={15} /> : <Box size={15} />}
-              <select aria-label="启动配置" value={settings.profileName} onChange={() => undefined}>
-                <option value={settings.profileName}>{activeRuntimeReplacement?.name ?? settings.profileName}</option>
+              <select
+                aria-label="启动配置"
+                value={profileSelection}
+                disabled={profileSwitcherDisabled}
+                onChange={event => profiles.length > 0 ? onProfileChange(event.target.value) : onPackChange(event.target.value)}
+              >
+                {profiles.length > 0
+                  ? profiles.map(item => <option key={item.id} value={item.id}>{item.name}</option>)
+                  : <option value="">默认配置</option>}
+                {profiles.length === 0 && packs.map(pack => <option key={pack.id} value={pack.id}>{pack.name}</option>)}
               </select>
             </label>
             {runtime.url ? (

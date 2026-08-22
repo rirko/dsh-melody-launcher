@@ -14,6 +14,10 @@ function credentialsPath(dshHome: string): string {
   return path.join(dshHome, '.credentials.yaml')
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 async function readCredentialSource(dshHome: string): Promise<string | null> {
   try {
     return await readFile(credentialsPath(dshHome), 'utf8')
@@ -30,18 +34,25 @@ function parseCredentials(source: string) {
   }
 
   const value = document.toJS() as unknown
-  if (value === null) return { document, values: {} as Record<string, string> }
-  if (typeof value !== 'object' || Array.isArray(value)) {
+  if (value === null) return { document, values: {} as Record<string, string>, modern: false }
+  if (!isRecord(value)) {
     throw new Error('DSH 凭据文件必须是 Key 与密钥组成的映射。')
   }
 
-  const values = value as Record<string, unknown>
+  // DSH 0.1.1+ stores credentials under refs and keeps metadata such as
+  // version/records at the document root. The launcher must operate on refs
+  // without flattening or validating those metadata fields as secrets.
+  const modern = value.version === 1 && Object.prototype.hasOwnProperty.call(value, 'refs')
+  const values = modern ? value.refs : value
+  if (!isRecord(values)) {
+    throw new Error('DSH 凭据文件的 refs 必须是凭据映射。')
+  }
   for (const [name, secret] of Object.entries(values)) {
     if (!CREDENTIAL_NAME.test(name) || typeof secret !== 'string' || secret.length === 0) {
       throw new Error('DSH 凭据文件包含无效条目，请先在 DSH 中修复后重试。')
     }
   }
-  return { document, values: values as Record<string, string> }
+  return { document, values: values as Record<string, string>, modern }
 }
 
 async function writeCredentialDocument(dshHome: string, content: string): Promise<void> {
@@ -79,8 +90,9 @@ export async function setCredential(dshHome: string, name: string, secret: strin
   const normalized = secret.trim()
   if (!normalized) throw new Error('API Key 不能为空。')
   const source = await readCredentialSource(dshHome)
-  const { document } = parseCredentials(source ?? '{}\n')
-  document.set(name, normalized)
+  const { document, modern } = parseCredentials(source ?? '{}\n')
+  if (modern) document.setIn(['refs', name], normalized)
+  else document.set(name, normalized)
   await writeCredentialDocument(dshHome, document.toString({ lineWidth: 0 }))
 }
 
@@ -88,9 +100,10 @@ export async function removeCredential(dshHome: string, name: string): Promise<b
   assertCredentialName(name)
   const source = await readCredentialSource(dshHome)
   if (source === null) return false
-  const { document, values } = parseCredentials(source)
+  const { document, values, modern } = parseCredentials(source)
   if (!values[name]) return false
-  document.delete(name)
+  if (modern) document.deleteIn(['refs', name])
+  else document.delete(name)
   await writeCredentialDocument(dshHome, document.toString({ lineWidth: 0 }))
   return true
 }

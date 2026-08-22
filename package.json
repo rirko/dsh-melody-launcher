@@ -1,6 +1,6 @@
 {
   "name": "dsh-launcher",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "description": "A local desktop launcher and plugin organizer for DeepSeek Harness.",
   "keywords": [

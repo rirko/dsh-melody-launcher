@@ -6,7 +6,9 @@ import type { RendererChannel } from './app-window'
 
 /** 子进程输出里 CRLF 与尾部空白会让日志面板出现空行。 */
 export function normalizeOutputText(text: string): string {
-  return text.replace(/\r\n/g, '\n').trimEnd()
+  // npm/pnpm 在非 TTY 子进程里仍可能用单独的 CR 刷新进度；转换成换行，
+  // 否则放进 HTML <pre> 后会表现为一条被反复覆盖的“当前状态”。
+  return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trimEnd()
 }
 
 export interface RendererEvents {

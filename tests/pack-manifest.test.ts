@@ -26,6 +26,11 @@ describe('packProfileName', () => {
 })
 
 describe('parsePackManifest', () => {
+  it('当前导入模式要求 dshVersion，并规范化 v 前缀', () => {
+    const base = 'name: A\ndescription: d\nversion: 1.0.0\nplugins: []\n'
+    expect(() => parsePackManifest(base, { requireDshVersion: true })).toThrow('dshVersion')
+    expect(parsePackManifest(`${base}dshVersion: v0.1.0-rc.7\n`, { requireDshVersion: true }).dshVersion).toBe('0.1.0-rc.7')
+  })
   it('解析合法清单并填充缺省 source', () => {
     const manifest = parsePackManifest(`
 name: My Pack
@@ -222,6 +227,12 @@ describe('buildManifestFromReceipts', () => {
   it('生成结果可通过 parsePackManifest 校验（可再导出）', () => {
     const manifest = buildManifestFromReceipts('pack-valid', receipts)
     expect(() => parsePackManifest(serializePackManifest(manifest))).not.toThrow()
+  })
+
+  it('buildManifestFromReceipts 可写入精确 DSH 版本', () => {
+    const manifest = buildManifestFromReceipts('pack-versioned', receipts, [], [], [], '0.1.0-rc.7')
+    expect(manifest.dshVersion).toBe('0.1.0-rc.7')
+    expect(parsePackManifest(serializePackManifest(manifest), { requireDshVersion: true }).dshVersion).toBe('0.1.0-rc.7')
   })
 
   it('local-directory 源 receipt 映射为 source local（离线本体可再带出）', () => {

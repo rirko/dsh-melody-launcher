@@ -1,7 +1,9 @@
 import { EventEmitter } from 'node:events'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { PassThrough } from 'node:stream'
+import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -113,10 +115,10 @@ describe('DSH Web 端口', () => {
 
   it('替换旧端口参数并保留其他参数', () => {
     expect(withDshWebPort('dsh.cmd', ['web', '--port', '4000', '--host', '127.0.0.1'], 3082)).toEqual([
-      'web', '--host', '127.0.0.1', '--port', '3082',
+      'web', '--host', '127.0.0.1', '--no-open', '--port', '3082',
     ])
     expect(withDshWebPort('npx', ['--yes', '@deepseek-ai/dsh', 'web', '--port=4000'], 3083)).toEqual([
-      '--yes', '@deepseek-ai/dsh', 'web', '--port', '3083',
+      '--yes', '@deepseek-ai/dsh', 'web', '--no-open', '--port', '3083',
     ])
   })
 
@@ -153,6 +155,27 @@ describe('DSH Web 端口', () => {
 })
 
 describe('应用加载项运行模式', () => {
+  it('并发启动请求复用同一个启动流程', async () => {
+    const settings = controllerSettings()
+    const child = fakeChild(4150)
+    const spawnProcess = vi.fn(() => child)
+    const runtime = createRuntimeController({
+      readSettings: async () => settings,
+      prepareNodeRuntime: async () => managedNode(),
+      fallbackWorkspace: () => process.cwd(),
+      emitOutput: () => {},
+      emitState: () => {},
+      openExternal: () => {},
+      spawnProcess,
+    })
+
+    const [first, second] = await Promise.all([runtime.start(), runtime.start()])
+    expect(spawnProcess).toHaveBeenCalledTimes(1)
+    expect(first).toMatchObject({ running: true, pid: child.pid })
+    expect(second).toMatchObject({ running: true, pid: child.pid })
+    await runtime.stop()
+  })
+
   it('使用替代宿主入口，并完全绕过设置中的 dsh web', async () => {
     const settings = controllerSettings()
     const nodeRuntime = managedNode()
@@ -249,7 +272,9 @@ describe('应用加载项运行模式', () => {
     main.stdout.write('also at http://localhost:3081\n')
 
     expect(spawnProcess).toHaveBeenCalledTimes(2)
-    expect(openExternal).toHaveBeenCalledTimes(2)
+    // 同一次启动可能输出多个不同格式/端口的本地地址，但浏览器只自动打开一次。
+    expect(openExternal).toHaveBeenCalledTimes(1)
+    expect(openExternal).toHaveBeenCalledWith('http://127.0.0.1:3080')
     expect(spawnProcess.mock.calls[1][1]).toEqual([
       path.join(process.cwd(), 'addons', 'tray', 'main.js'),
     ])
@@ -258,5 +283,48 @@ describe('应用加载项运行模式', () => {
     expect(stopProcess).toHaveBeenCalledTimes(2)
     expect(stopProcess).toHaveBeenCalledWith(main)
     expect(stopProcess).toHaveBeenCalledWith(companion)
+  })
+
+  it('未知 DSH 版本遇到凭据格式错误时只重试一次旧格式', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-launcher-runtime-fallback-'))
+    const dshHome = path.join(root, 'dsh-home')
+    const backupRoot = path.join(root, 'backup')
+    await mkdir(dshHome, { recursive: true })
+    await writeFile(path.join(dshHome, '.credentials.yaml'), 'version: 1\nrefs:\n  TEST_TOKEN: test-secret\n', 'utf8')
+    try {
+      const settings = { ...controllerSettings(), dshHome, dshVersion: null }
+      const first = fakeChild(4301)
+      const second = fakeChild(4302)
+      const children = [first, second]
+      const spawnProcess = vi.fn(() => {
+        const child = children.shift()
+        if (!child) throw new Error('unexpected duplicate launch')
+        return child
+      })
+      const runtime = createRuntimeController({
+        readSettings: async () => settings,
+        prepareNodeRuntime: async () => managedNode(),
+        fallbackWorkspace: () => process.cwd(),
+        emitOutput: () => {},
+        emitState: () => {},
+        openExternal: () => {},
+        spawnProcess,
+        legacyCredentialsBackupRoot: backupRoot,
+      })
+
+      await runtime.start()
+      first.stderr.write('credentials-local: the value for "version" in .credentials.yaml must be a string\n')
+      first.emit('exit', 1)
+      await new Promise(resolve => setTimeout(resolve, 150))
+      expect(spawnProcess).toHaveBeenCalledTimes(2)
+      expect(await readFile(path.join(dshHome, '.credentials.yaml'), 'utf8')).not.toContain('version:')
+
+      second.emit('exit', 0)
+      await new Promise(resolve => setTimeout(resolve, 150))
+      expect(await readFile(path.join(dshHome, '.credentials.yaml'), 'utf8')).toContain('version: 1')
+      await new Promise(resolve => setTimeout(resolve, 150))
+    } finally {
+      await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
+    }
   })
 })

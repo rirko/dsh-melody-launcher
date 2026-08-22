@@ -5,6 +5,7 @@ import type {
   CatalogComponentKind,
   CatalogRepositoryAnalysis,
   RepositoryAnalysis,
+  ReleaseAnalysis,
   SkillRepositoryAnalysis,
 } from '../src/types'
 import { isDshRepository } from './dsh-install'
@@ -159,6 +160,24 @@ function hasPresetComponents(analysis: CatalogRepositoryAnalysis['presetAnalysis
   return Boolean(analysis && analysis.installability === 'ready')
 }
 
+function mergeReleaseAnalyses(
+  ...analyses: Array<ReleaseAnalysis | null | undefined>
+): ReleaseAnalysis | null {
+  const available = analyses.filter((analysis): analysis is ReleaseAnalysis => analysis?.state === 'found' && analysis.assets.length > 0)
+  if (available.length === 0) return analyses.find(Boolean) ?? null
+  if (available.length === 1) return available[0]
+  const assets = [...new Map(
+    available.flatMap(analysis => analysis.assets).map(asset => [asset.url, asset]),
+  ).values()]
+  return {
+    state: 'found',
+    releaseTag: null,
+    releaseName: `${available.length} 个 Release`,
+    publishedAt: null,
+    assets,
+  }
+}
+
 function catalogComponentKinds(analysis: Pick<CatalogRepositoryAnalysis,
   'pluginAnalysis' | 'skillAnalysis' | 'applicationAnalysis' | 'presetAnalysis'>,
 ): CatalogComponentKind[] {
@@ -191,8 +210,15 @@ export function mergeMetaRepositoryAnalysis(
     ? root.applicationAnalysis
     : meta.applicationAnalysis
   const presetAnalysis = hasPresetComponents(meta.presetAnalysis) ? meta.presetAnalysis : root.presetAnalysis
+  const releaseAnalysis = mergeReleaseAnalyses(
+    root.pluginAnalysis?.releaseAnalysis,
+    meta.pluginAnalysis?.releaseAnalysis,
+  )
+  const mergedPluginAnalysis = pluginAnalysis
+    ? { ...pluginAnalysis, releaseAnalysis }
+    : pluginAnalysis
   const componentKinds = catalogComponentKinds({
-    pluginAnalysis,
+    pluginAnalysis: mergedPluginAnalysis,
     skillAnalysis,
     applicationAnalysis,
     presetAnalysis,

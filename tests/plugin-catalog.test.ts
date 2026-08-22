@@ -120,6 +120,77 @@ describe('repository plugin analysis', () => {
       tarballUrl: 'https://example.com/demo-super-injector-0.3.3.tgz',
       version: '0.3.3',
     })
+    expect(analysis.releaseAnalysis).toMatchObject({ state: 'none', releaseTag: 'v0.3.3', assets: [] })
+  })
+
+  it('reports executable assets from the latest stable Release without treating tgz as executable', async () => {
+    const repository = 'demo/desktop-plugin'
+    const manifest = {
+      name: '@demo/desktop-plugin',
+      version: '1.0.0',
+      private: true,
+      dsh: { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web' } },
+    }
+    const analysis = await analyzeRepository(repository, 'main', 'web', mockFetch({
+      [commitUrl(repository)]: json({ sha: commit }),
+      [rawUrl(repository, 'package.json')]: json(manifest),
+      [treeUrl(repository)]: json({ tree: [
+        { path: 'package.json', type: 'blob' },
+        { path: 'cordis.patch.yml', type: 'blob' },
+      ] }),
+      ['https://api.github.com/repos/demo/desktop-plugin/releases?per_page=10']: json([
+        {
+          tag_name: 'v1.1.0',
+          name: 'Desktop 1.1.0',
+          published_at: '2026-08-22T00:00:00Z',
+          draft: false,
+          prerelease: false,
+          assets: [
+            { name: 'desktop-plugin-1.1.0-win-x64.exe', browser_download_url: 'https://example.com/desktop.exe', size: 1234, content_type: 'application/vnd.microsoft.portable-executable' },
+            { name: 'desktop-plugin-1.1.0.tgz', browser_download_url: 'https://example.com/desktop.tgz', size: 2345, content_type: 'application/gzip' },
+            { name: 'desktop-plugin-1.1.0-linux-x64.AppImage', browser_download_url: 'https://example.com/desktop.AppImage', size: 3456, content_type: 'application/octet-stream' },
+          ],
+        },
+        {
+          tag_name: 'v1.2.0-rc.1',
+          draft: false,
+          prerelease: true,
+          assets: [{ name: 'desktop-preview.exe', browser_download_url: 'https://example.com/preview.exe' }],
+        },
+      ]),
+    }))
+
+    expect(analysis.releaseAnalysis).toMatchObject({
+      state: 'found',
+      releaseTag: 'v1.1.0',
+      releaseName: 'Desktop 1.1.0',
+    })
+    expect(analysis.releaseAnalysis?.assets).toEqual([
+      expect.objectContaining({ name: 'desktop-plugin-1.1.0-win-x64.exe', kind: 'exe', platform: 'windows', size: 1234 }),
+      expect.objectContaining({ name: 'desktop-plugin-1.1.0-linux-x64.AppImage', kind: 'appimage', platform: 'linux', size: 3456 }),
+    ])
+    expect(analysis.releaseAnalysis?.assets.some(asset => asset.name.endsWith('.tgz'))).toBe(false)
+  })
+
+  it('keeps plugin detection successful when the Release endpoint has no usable result', async () => {
+    const repository = 'demo/no-release-assets'
+    const analysis = await analyzeRepository(repository, 'main', 'web', mockFetch({
+      [commitUrl(repository)]: json({ sha: commit }),
+      [rawUrl(repository, 'package.json')]: json({
+        name: '@demo/no-release-assets',
+        version: '1.0.0',
+        private: true,
+        dsh: { bundle: { patch: './cordis.patch.yml' } },
+      }),
+      [treeUrl(repository)]: json({ tree: [
+        { path: 'package.json', type: 'blob' },
+        { path: 'cordis.patch.yml', type: 'blob' },
+      ] }),
+      ['https://api.github.com/repos/demo/no-release-assets/releases?per_page=10']: json({ message: 'not found' }, 404),
+    }))
+
+    expect(analysis.installability).toBe('ready')
+    expect(analysis.releaseAnalysis).toMatchObject({ state: 'none', assets: [] })
   })
 
   it('deduplicates package names and ignores scaffold placeholders', async () => {

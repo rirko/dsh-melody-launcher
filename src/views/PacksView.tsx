@@ -1,4 +1,5 @@
 import {
+  ChevronDown,
   Download,
   LoaderCircle,
   Package,
@@ -8,28 +9,34 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { PageHeading } from '../components/PageHeading'
 import { formatRelativeTime } from '../lib/format'
-import type { InstalledApplicationAddon, InstalledPreset, InstalledSkill, ManagedPlugin, PackStatus, ProfileState } from '../types'
+import type { InstalledApplicationAddon, InstalledPreset, InstalledSkill, ManagedPlugin, PackStatus, ProfileExportMode, ProfileState, ProfileSummary } from '../types'
 
 /**
- * 整合包管理页：列表、启停、导出、删除，右侧 inline 详情面板管理包内插件。
+ * Profile / 整合包管理页：Profile 目录是运行环境与可分享清单的唯一实体。
  * 流式创建/导入走 use-pack-install（App 挂载 PackInstallDialog），
  * 这里的一次性动作（启停/导出/删除/包内插件增删改）都委托给 store。
  */
 
 export interface PacksViewProps {
   packs: PackStatus[]
+  profiles?: ProfileSummary[]
   profile: ProfileState
   /** 当前正在忙碌的一次性动作标识（useAsyncAction.busy）。 */
   busy: string | null
   onRefresh: () => void
   onCreate: () => void
   onImport: () => void
+  onImportRepository?: () => void
   onActivate: (packId: string) => void
   onDeactivate: () => void
+  onSwitchProfile?: (profileName: string) => void
+  onCreateProfile?: (name: string, cloneFrom?: string) => void
+  onDeleteProfile?: (profileName: string) => void
   onExport: (packId: string) => void
+  onExportProfile?: (profileName: string, mode: ProfileExportMode) => void
   onRemove: (packId: string) => void
   onAddPlugin: (packId: string, packageName: string) => void
   onAddPreset: (packId: string, presetName: string) => void
@@ -66,14 +73,20 @@ const STATE_LABEL: Record<PackStatus['state'], string> = {
 
 export function PacksView({
   packs,
+  profiles = [],
   profile,
   busy,
   onRefresh,
   onCreate,
   onImport,
+  onImportRepository,
   onActivate,
   onDeactivate,
+  onSwitchProfile,
+  onCreateProfile,
+  onDeleteProfile,
   onExport,
+  onExportProfile,
   onRemove,
   onAddPlugin,
   onAddPreset,
@@ -93,7 +106,6 @@ export function PacksView({
 }: PacksViewProps) {
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
   const [confirmingRemoval, setConfirmingRemoval] = useState<PackStatus | null>(null)
-
   const selectedPack = useMemo(() => {
     if (selectedPackId) {
       const found = packs.find(pack => pack.id === selectedPackId)
@@ -113,29 +125,66 @@ export function PacksView({
   return (
     <div className="page packs-page">
       <PageHeading
-        eyebrow="PACKS"
-        title="整合包"
-        description="把插件列表、启用状态和加载顺序保存成可复用清单。启用整合包会在当前 Profile 中切换开关与顺序。"
+        eyebrow="PROFILES"
+        title="Profile / 整合包"
+        description="每个 Profile 同时代表一个 DSH 运行环境和可导出的整合包，插件、启用状态与加载顺序彼此独立。"
         actions={(
           <>
             <button type="button" className="secondary-button" onClick={onRefresh} disabled={refreshing}>
-              {refreshing ? <LoaderCircle className="spin" size={17} /> : <RefreshCw size={17} />}刷新
+              {refreshing ? <LoaderCircle className="spin" size={17} /> : <RefreshCw size={17} />}刷新 Profile
             </button>
-            <button type="button" className="secondary-button accent" onClick={onCreate} disabled={busy !== null}><PackagePlus size={17} />创建整合包</button>
-            <button type="button" className="primary-command" onClick={onImport} disabled={busy !== null}><Download size={17} />导入整合包</button>
+            <button type="button" className="secondary-button accent" onClick={onCreate} disabled={busy !== null}><PackagePlus size={17} />创建 Profile</button>
+            <button type="button" className="primary-command" onClick={onImport} disabled={busy !== null}><Download size={17} />导入 Profile / 整合包</button>
+            {onImportRepository && <button type="button" className="secondary-button" onClick={onImportRepository} disabled={busy !== null}><Download size={17} />从 GitHub 仓库导入</button>}
           </>
         )}
       />
 
-      <div className="stats-strip packs-stats" aria-label="整合包概况">
-        <div><strong>{packs.length}</strong><span>整合包</span></div>
-        <div><strong>{activeCount}</strong><span>使用中</span></div>
-        <div><strong>{totalPlugins}</strong><span>累计插件</span></div>
+      <div className="stats-strip packs-stats" aria-label="Profile 概况">
+        <div><strong>{profiles.length || packs.length}</strong><span>Profile</span></div>
+        <div><strong>{profiles.filter(item => item.selected).length || activeCount}</strong><span>当前环境</span></div>
+        <div><strong>{profiles.length > 0 ? profiles.reduce((sum, item) => sum + item.pluginCount, 0) : totalPlugins}</strong><span>累计插件</span></div>
       </div>
 
-      {packs.length === 0 ? (
-        <EmptyPacks onCreate={onCreate} onImport={onImport} disabled={busy !== null} />
-      ) : (
+      {profiles.length > 0 && (
+        <section className="profile-environment-panel" aria-label="Profile 环境列表">
+          <div className="profile-environment-heading">
+            <div><strong>运行 Profile</strong><span>每个目录同时是 DSH 运行环境和可分享整合包，当前选择由 profileName 唯一决定</span></div>
+            <button type="button" className="secondary-button accent" disabled={busy !== null} onClick={() => {
+              const name = window.prompt('请输入新的 Profile 名称')?.trim()
+              if (name) onCreateProfile?.(name)
+            }}><Plus size={16} />新建 Profile</button>
+          </div>
+          <div className="profile-environment-list">
+            {profiles.map(item => (
+              <article key={item.id} className={`profile-environment-row ${item.selected ? 'selected' : ''}`}>
+                <div>
+                  <strong>{item.name}</strong>
+                  <small>{item.dshVersion ? `DSH ${item.dshVersion}` : 'DSH 版本未锁定'} · {item.pluginCount} 个插件 · {item.missingDependencies.length > 0 ? `缺少 ${item.missingDependencies.length} 项依赖` : '依赖完整'}</small>
+                </div>
+                <div className="profile-environment-actions">
+                  {item.selected ? <span className="pack-active-badge">当前 Profile</span> : <button type="button" className="install-button" disabled={busy !== null} onClick={() => onSwitchProfile?.(item.id)}>切换</button>}
+                  <ProfileExportMenu
+                    profileName={item.id}
+                    busy={busy}
+                    onExportProfile={onExportProfile}
+                    onExport={() => onExport(item.id)}
+                  />
+                  {!item.selected && <button type="button" className="secondary-button" disabled={busy !== null} onClick={() => onDeleteProfile?.(item.id)}>删除</button>}
+                  {!item.selected && <button type="button" className="secondary-button" disabled={busy !== null} onClick={() => {
+                    const name = window.prompt('请输入克隆后的 Profile 名称')?.trim()
+                    if (name) onCreateProfile?.(name, item.id)
+                  }}>克隆</button>}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {profiles.length === 0 && packs.length === 0 ? (
+        <EmptyPacks onCreate={onCreate} onImport={onImport} onImportRepository={onImportRepository} disabled={busy !== null} />
+      ) : profiles.length === 0 ? (
         <div className="packs-layout">
           <section className="packs-list-panel" aria-label="整合包列表">
             {packs.map(pack => (
@@ -182,7 +231,7 @@ export function PacksView({
             onRemoveApplication={addonId => onRemoveApplication(selectedPack!.id, addonId)}
           />
         </div>
-      )}
+      ) : null}
 
       {confirmingRemoval && (
         <RemovePackDialog
@@ -202,7 +251,7 @@ export function PacksView({
   )
 }
 
-function EmptyPacks({ onCreate, onImport, disabled }: { onCreate: () => void; onImport: () => void; disabled: boolean }) {
+function EmptyPacks({ onCreate, onImport, onImportRepository, disabled }: { onCreate: () => void; onImport: () => void; onImportRepository?: () => void; disabled: boolean }) {
   return (
     <div className="empty-state">
       <div className="empty-icon"><Package size={28} /></div>
@@ -211,6 +260,7 @@ function EmptyPacks({ onCreate, onImport, disabled }: { onCreate: () => void; on
       <div className="empty-state-actions">
       <button type="button" className="primary-command" onClick={onCreate} disabled={disabled}><PackagePlus size={17} />创建整合包</button>
       <button type="button" className="secondary-button accent" onClick={onImport} disabled={disabled}><Download size={17} />导入整合包</button>
+      {onImportRepository && <button type="button" className="secondary-button" onClick={onImportRepository} disabled={disabled}><Download size={17} />从 GitHub 仓库导入</button>}
       </div>
     </div>
   )
@@ -244,7 +294,7 @@ function PackRow({ pack, selected, busy, onSelect, onActivate, onDeactivate, onE
             {pack.enabled && <span className="pack-active-badge">使用中</span>}
           </div>
           <p>{pack.description || '（无描述）'}</p>
-          <small>v{pack.version} · {pack.plugins.length} 个插件{pack.presets?.length ? ` · ${pack.presets.length} 个预设` : ''} · 更新于 {formatRelativeTime(pack.updatedAt)}</small>
+          <small>v{pack.version} · DSH {pack.dshVersion ?? '未记录'} · {pack.plugins.length} 个插件{pack.presets?.length ? ` · ${pack.presets.length} 个预设` : ''} · 更新于 {formatRelativeTime(pack.updatedAt)}</small>
         </div>
       </div>
       <div className="pack-row-actions" onClick={event => event.stopPropagation()}>
@@ -324,6 +374,7 @@ function PackDetails({ pack, profile, busy, onToggleItem, onRemoveItem, onAddPlu
       </div>
       <dl className="pack-details-meta">
         <div><dt>版本</dt><dd>{pack.version}</dd></div>
+        <div><dt>要求 DSH</dt><dd>{pack.dshVersion ?? '未记录（旧整合包）'}</dd></div>
         <div><dt>来源</dt><dd>{SOURCE_LABEL[pack.source]}</dd></div>
         <div><dt>状态</dt><dd className={pack.state}>{STATE_LABEL[pack.state]}</dd></div>
       </dl>
@@ -850,7 +901,93 @@ function RemovePackDialog({ pack, busy, onCancel, onConfirm }: {
   )
 }
 
+function ProfileExportMenu({ profileName, busy, onExportProfile, onExport }: {
+  profileName: string
+  busy: string | null
+  onExportProfile?: (profileName: string, mode: ProfileExportMode) => void
+  onExport: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const exporting = busy?.startsWith(`profile-export:${profileName}:`) === true
+  const anyExporting = busy?.startsWith('profile-export:') === true
+
+  useEffect(() => {
+    if (!open) return
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (busy !== null) setOpen(false)
+  }, [busy])
+
+  const selectMode = (mode: ProfileExportMode) => {
+    setOpen(false)
+    if (onExportProfile) onExportProfile(profileName, mode)
+    else onExport()
+  }
+
+  return (
+    <div className="profile-export-menu" ref={menuRef}>
+      <button
+        type="button"
+        className="secondary-button profile-export-trigger"
+        disabled={anyExporting}
+        onClick={() => setOpen(value => !value)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`导出 Profile「${profileName}」`}
+      >
+        {exporting ? <LoaderCircle className="spin" size={15} /> : <Download size={15} />}
+        导出
+        <ChevronDown size={14} aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="profile-export-submenu" role="menu" aria-label={`Profile「${profileName}」导出方式`}>
+          <button type="button" role="menuitem" disabled={anyExporting} onClick={() => selectMode('light')}>
+            <span>轻量导出</span><small>仅记录可追溯的远程来源</small>
+          </button>
+          <button type="button" role="menuitem" disabled={anyExporting} onClick={() => selectMode('full')}>
+            <span>全量导出</span><small>携带插件本体，适合离线导入</small>
+          </button>
+          <button type="button" role="menuitem" disabled={anyExporting} onClick={() => selectMode('repository')}>
+            <span>仓库化导出</span><small>同步到 GitHub Profile 仓库</small>
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const packsStyle = `
+.profile-environment-panel { margin: 18px 0; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--surface) 92%, var(--accent) 8%); }
+.profile-environment-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:12px; }
+.profile-environment-heading strong, .profile-environment-heading span { display:block; }
+.profile-environment-heading span { color:var(--muted); font-size:12px; margin-top:3px; }
+.profile-environment-list { display:grid; gap:8px; }
+.profile-environment-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 14px; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
+.profile-environment-row.selected { border-color:var(--accent); box-shadow:0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
+.profile-environment-row small { display:block; color:var(--muted); margin-top:4px; }
+.profile-environment-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.profile-export-menu { position: relative; }
+.profile-export-trigger { gap: 6px; }
+.profile-export-submenu { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; display: grid; min-width: 214px; padding: 5px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); box-shadow: 0 10px 26px rgba(25, 45, 38, 0.18); }
+.profile-export-submenu button { display: grid; gap: 2px; width: 100%; padding: 8px 10px; border: 0; border-radius: 5px; color: var(--text); background: transparent; text-align: left; cursor: pointer; }
+.profile-export-submenu button:hover:not(:disabled), .profile-export-submenu button:focus-visible { background: var(--surface-soft); }
+.profile-export-submenu button:disabled { color: var(--quiet); cursor: not-allowed; }
+.profile-export-submenu span { font-size: 12px; font-weight: 650; }
+.profile-export-submenu small { color: var(--muted); font-size: 10px; }
 .packs-stats { grid-template-columns: 110px 110px 130px; }
 
 .packs-layout {

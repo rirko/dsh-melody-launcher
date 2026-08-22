@@ -21,6 +21,8 @@ export interface PackRecord {
   name: string
   description: string
   version: string
+  /** 当前整合包要求的 DSH 精确版本；旧注册表记录可能缺省。 */
+  dshVersion?: string
   source: PackSource
   installedAt: string
   updatedAt: string
@@ -111,6 +113,7 @@ export function toPackStatus(record: PackRecord, activePackId: string | null | u
     name: record.name,
     description: record.description,
     version: record.version,
+    dshVersion: record.dshVersion ?? null,
     source: record.source,
     enabled: record.id === activePackId,
     state: record.state,

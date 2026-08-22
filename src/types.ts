@@ -1,10 +1,15 @@
-export type ViewName = 'plugins' | 'discover' | 'dsh-market' | 'runtime' | 'packs' | 'github'
+export type ViewName = 'plugins' | 'discover' | 'dsh-market' | 'environment' | 'packs' | 'github'
+export type RuntimeDrawerMode = 'hidden' | 'half' | 'expanded'
 export type WindowMode = 'launcher' | 'manager'
 export type UiTheme = 'forest' | 'ocean' | 'berry' | 'graphite'
 
 export interface AppSettings {
   dshInstallPath: string
   dshHome: string
+  /** 当前选中的启动器托管 DSH 版本；null 表示沿用旧版自动检测。 */
+  dshVersion?: string | null
+  /** 当前选中的启动器托管 Node.js 版本；null 表示系统 Node 优先。 */
+  nodeVersion?: string | null
   profileName: string
   /** 当前选中的整合包清单；不改变实际 DSH Profile。 */
   activePackId?: string | null
@@ -164,6 +169,42 @@ export interface RepositoryAnalysis {
   installability: PluginInstallability
   summary: string
   targets: PluginInstallTarget[]
+  /** 最新稳定 GitHub Release 中可直接下载的可执行资产。 */
+  releaseAnalysis?: ReleaseAnalysis | null
+}
+
+export type ReleaseExecutablePlatform = 'windows' | 'macos' | 'linux' | 'cross-platform' | 'unknown'
+export type ReleaseExecutableKind =
+  | 'exe'
+  | 'msi'
+  | 'dmg'
+  | 'pkg'
+  | 'appimage'
+  | 'deb'
+  | 'rpm'
+  | 'binary'
+  | 'script'
+  | 'jar'
+  | 'archive'
+
+export interface ReleaseExecutableAsset {
+  name: string
+  url: string
+  size: number | null
+  contentType: string | null
+  platform: ReleaseExecutablePlatform
+  kind: ReleaseExecutableKind
+  releaseTag: string
+  releaseName: string | null
+  publishedAt: string | null
+}
+
+export interface ReleaseAnalysis {
+  state: 'found' | 'none' | 'unavailable'
+  releaseTag: string | null
+  releaseName: string | null
+  publishedAt: string | null
+  assets: ReleaseExecutableAsset[]
 }
 
 export interface PluginInstallRequest {
@@ -189,6 +230,85 @@ export interface DshUpdateStatus {
   repository: string
   checkedAt: string
   message: string
+}
+
+/** Profile 是本地运行环境与可分享整合包的唯一实体。 */
+export interface ProfileSourceMetadata {
+  kind: 'local' | 'github' | 'import'
+  path?: string
+  repository?: string
+  branch?: string
+  commit?: string
+  format?: 'zip' | 'yaml' | 'github'
+  reference?: string
+}
+
+export interface ProfileSummary {
+  id: string
+  name: string
+  description: string
+  dshVersion: string | null
+  source: ProfileSourceMetadata | null
+  createdAt: string
+  updatedAt: string
+  exportedAt?: string | null
+  profileDir: string
+  initialized: boolean
+  pluginCount: number
+  enabledPluginCount: number
+  disabledPluginCount: number
+  missingDependencies: string[]
+  hasNodeModules: boolean
+  selected: boolean
+}
+
+export interface ProfileCreateRequest {
+  name: string
+  description?: string
+  dshVersion?: string | null
+  cloneFrom?: string
+}
+
+export type ProfileExportMode = 'light' | 'full' | 'repository'
+export interface ProfileExportOptions {
+  repositoryPrivate?: boolean
+}
+
+export interface RuntimeVersionCandidate {
+  version: string
+  label: string | null
+  lts: string | boolean | null
+  date: string | null
+  prerelease: boolean
+}
+
+export interface DshVersionInfo {
+  version: string
+  root: string
+  executable: string
+  source: 'launcher' | 'legacy' | 'system'
+  selected: boolean
+  removable: boolean
+}
+
+export interface NodeVersionInfo {
+  version: string
+  root: string
+  executable: string
+  source: 'launcher' | 'legacy' | 'system'
+  selected: boolean
+  removable: boolean
+}
+
+export interface RuntimeEnvironmentState {
+  dshRoot: string
+  nodeRoot: string
+  dshSelectedVersion: string | null
+  nodeSelectedVersion: string | null
+  dshInstalled: DshVersionInfo[]
+  nodeInstalled: NodeVersionInfo[]
+  dshAvailable: RuntimeVersionCandidate[]
+  nodeAvailable: RuntimeVersionCandidate[]
 }
 
 export interface LauncherUpdateStatus {
@@ -482,7 +602,7 @@ export interface RuntimeFailure {
 }
 
 export interface RuntimeOutput {
-  channel: 'runtime' | 'plugin' | 'ai'
+  channel: 'runtime' | 'plugin' | 'test' | 'ai'
   level: 'info' | 'error' | 'success'
   text: string
   timestamp: string
@@ -546,7 +666,10 @@ export type PackSource = 'created' | 'zip' | 'manifest' | 'raw'
 
 export interface PackPluginEntry {
   packageName: string
+  /** 完整安装目标；用于导入时不重新猜测仓库结构。 */
+  targetId?: string
   repository?: string        // github 源
+  defaultBranch?: string
   source?: 'github' | 'npm' | 'local'
   subdirectory?: string
   commit?: string
@@ -647,6 +770,8 @@ export interface PackManifest {
   name: string
   description: string
   version: string
+  /** 当前整合包要求使用的 DSH 精确版本；导入当前版本时必须提供。 */
+  dshVersion?: string
   author?: string
   plugins: PackPluginEntry[]
   presets?: PackPresetEntry[]
@@ -668,6 +793,7 @@ export interface PackAnalysis {
   name: string
   description: string
   version: string
+  dshVersion: string | null
   source: PackSource
   items: PackAnalysisItem[]
 }
@@ -705,6 +831,8 @@ export interface PackStatus {
   name: string
   description: string
   version: string
+  /** 当前整合包要求的 DSH 版本；旧注册表记录可能为空。 */
+  dshVersion: string | null
   source: PackSource
   enabled: boolean            // 当前选中的整合包清单
   state: 'complete' | 'partial' | 'failed'
@@ -725,11 +853,52 @@ export interface PackCreateRequest {
   presetNames?: string[]      // 从已安装且有来源记录的 Agent 预设勾选
   skillNames?: string[]       // 从已安装且有来源记录的 Skill 勾选
   applicationIds?: string[]   // 从已安装的 Application Addon 勾选
+  /** 可选覆盖；缺省使用当前启动器选中的 DSH 版本。 */
+  dshVersion?: string
 }
 
 /** importPack 的可选覆盖项（raw 导入时的包名覆盖）。 */
 export interface PackImportOptions {
   name?: string
+  /** Explicitly replace an existing Profile; default imports create a new
+   * suffixed Profile instead of changing the current environment. */
+  overwrite?: boolean
+  /** Remote Profile import mode. Full mode requires every plugin body in the archive. */
+  mode?: 'source' | 'full'
+  /** Main-process-only validated shared body paths for matched local plugins. */
+  localPluginBodies?: Record<string, string>
+}
+
+export type ProfileRepositoryImportMode = 'source' | 'full'
+
+export interface ProfileRepositoryPluginPreview {
+  packageName: string
+  enabled: boolean
+  order: number
+  source: 'npm' | 'github' | 'local'
+  repository: string | null
+  version: string | null
+  commit: string | null
+  match: 'declared' | 'matched' | 'ambiguous' | 'missing'
+  candidates: PackPluginEntry[]
+  reason?: string
+}
+
+export interface ProfileRepositoryImportPreview {
+  repository: string
+  branch: string
+  commit: string | null
+  manifestPath: 'dsh-profile.yaml' | 'dsh-pack.yaml'
+  profileName: string
+  description: string
+  version: string
+  dshVersion: string
+  dshVersionInstalled?: boolean
+  plugins: ProfileRepositoryPluginPreview[]
+  hasFullPackage: boolean
+  fullPackagePluginBodies: string[]
+  differences: { kind: 'added' | 'removed' | 'version' | 'commit' | 'enabled' | 'order'; packageName: string; detail: string }[]
+  blockers: string[]
 }
 
 export interface PackInstallResult {
@@ -796,6 +965,16 @@ export interface LauncherApi {
   saveSettings(settings: AppSettings): Promise<AppSettings>
   detectDshInstallation(): Promise<DshInstallationStatus>
   checkDshUpdate(): Promise<DshUpdateStatus>
+  readRuntimeEnvironment(refresh?: boolean): Promise<RuntimeEnvironmentState>
+  installDshVersion(version: string): Promise<RuntimeEnvironmentState>
+  selectDshVersion(version: string): Promise<RuntimeEnvironmentState>
+  removeDshVersion(version: string): Promise<RuntimeEnvironmentState>
+  installNodeVersion(version: string): Promise<RuntimeEnvironmentState>
+  selectNodeVersion(version: string | null): Promise<RuntimeEnvironmentState>
+  removeNodeVersion(version: string): Promise<RuntimeEnvironmentState>
+  cancelRuntimeEnvironmentOperation(): Promise<void>
+  openDshFolder(): Promise<void>
+  openNodeFolder(): Promise<void>
   checkLauncherUpdate(): Promise<LauncherUpdateStatus>
   downloadLauncherUpdate(): Promise<LauncherUpdateStatus>
   applyLauncherUpdate(): Promise<void>
@@ -817,6 +996,17 @@ export interface LauncherApi {
   setGitHubStar(repository: string, starred: boolean): Promise<boolean>
   chooseDirectory(kind: 'dshInstallPath' | 'dshHome' | 'workspace'): Promise<string | null>
   readProfile(): Promise<ProfileState>
+  listProfiles(): Promise<ProfileSummary[]>
+  createProfile(request: ProfileCreateRequest): Promise<ProfileSummary>
+  cloneProfile(sourceName: string, targetName: string, description?: string): Promise<ProfileSummary>
+  switchProfile(profileName: string, options?: { fillMissing?: boolean }): Promise<AppSettings>
+  deleteProfile(profileName: string): Promise<void>
+  readProfileMetadata(profileName: string): Promise<ProfileSummary>
+  exportProfile(profileName: string, mode: ProfileExportMode, options?: ProfileExportOptions): Promise<string | null>
+  importProfile(path: string, options?: { name?: string; overwrite?: boolean }): Promise<ProfileSummary>
+  analyzeProfileRepository(url: string): Promise<ProfileRepositoryImportPreview>
+  importProfileRepository(url: string, options: { mode: ProfileRepositoryImportMode; name?: string; overwrite?: boolean; resolutions?: Record<string, PackPluginEntry> }): Promise<ProfileSummary>
+  matchProfilePlugin(packageName: string): Promise<PackPluginEntry | null>
   togglePlugin(packageName: string, enabled: boolean, profileName?: string): Promise<LinkedComponentToggleResult>
   reorderPlugins(packageNames: string[]): Promise<ProfileState>
   discoverCatalog(query: string, sort: 'stars' | 'updated', page: number): Promise<CatalogDiscoveryResult>

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { DEFAULT_PROFILE_NAME, DSH_PACKAGE_NAME } from '../src/constants'
 import type {
@@ -36,6 +36,7 @@ import {
   isDshRepository,
   packageManagerProgress,
 } from './dsh-install'
+import { dshVersionRoot, findManagedDshVersions, listAvailableDshVersions, normalizeDshVersion } from './runtime-versions'
 import { checkDshUpdate } from './dsh-update'
 import { resolveNodeExecutable, type NodeRuntime, type NodeRuntimeProgress, type PnpmRuntime } from './node-runtime'
 import { approveAllIgnoredBuilds, denyBuildKeys } from './plugin-install'
@@ -45,13 +46,18 @@ import { prepareSubdirectoryPlugin, type PluginSourceProgress } from './plugin-s
 import { readPluginReceipts, recordPluginInstall, removePluginReceipt } from './plugin-receipts'
 import { readPresetReceipts, recordPresetInstall } from './preset-receipts'
 import { readSkillReceipts, recordSkillInstall } from './skill-receipts'
-import { isSafePackageName, readProfile } from './profile'
+import { isSafePackageName, isSafeProfileName, readProfile } from './profile'
 import { withExecutableDirectoryOnPath } from './process'
 import { analyzeSkillRepository } from './skill-catalog'
 import { readInstalledSkills as readLocalSkills, toggleInstalledSkill } from './skill-format'
 import { installPresetFromRepository, readInstalledPresets as readLocalPresets, toggleInstalledPreset } from './preset-install'
 import { downloadReleaseAsset } from './release-download'
 import { installSkillFromRepository } from './skill-install'
+import {
+  DSH_SUBPROCESS_LOCAL_PACKAGE,
+  ensureDshScriptPolicy,
+  hasDshScriptPackage,
+} from './dsh-script-policy'
 
 /**
  * 安装编排：插件与 DSH 本体的安装、卸载，以及安装进度的推送。
@@ -121,6 +127,8 @@ export interface InstallerOptions {
   pluginSourceRoot: string
   /** 插件安装凭据文件的路径。 */
   pluginReceiptsPath: string
+  /** 所有 Profile 共用的受控 pnpm store；Profile 自己仍保留独立链接层。 */
+  packageStoreRoot?: string
   /** Agent 预设安装凭据文件的路径。 */
   presetReceiptsPath: string
   /** Skill 安装凭据文件的路径。 */
@@ -188,7 +196,7 @@ export interface Installer {
   togglePreset(name: string, enabled: boolean): Promise<InstalledPreset[]>
   /** 汇总当前 Profile 与安装凭据里已安装的仓库，用于在列表中标记「已安装」。 */
   listInstalledRepositories(): Promise<string[]>
-  /** 从指定 Profile 中卸载一个插件（缺省为当前 Profile）。 */
+  /** 卸载插件；显式指定 Profile 时只处理该 Profile，否则从本机所有 Profile 清理。 */
   remove(packageName: string, profileName?: string): Promise<ProfileState>
   detectDsh(): Promise<DshInstallationStatus>
   checkDshUpdate(): Promise<DshUpdateStatus>
@@ -216,6 +224,13 @@ export function createInstaller(options: InstallerOptions): Installer {
 
   const detectDsh = async (): Promise<DshInstallationStatus> => {
     const settings = await options.readSettings()
+    if (settings.dshVersion) {
+      const selected = await getManagedDshStatus(dshVersionRoot(settings.dshInstallPath, settings.dshVersion))
+      if (selected.installed) return selected
+    }
+    const managedVersions = await findManagedDshVersions(settings.dshInstallPath)
+    const configured = managedVersions.find(item => item.executable.toLowerCase() === settings.launchExecutable.toLowerCase())
+    if (configured) return { installed: true, version: configured.version, executable: configured.executable, source: 'launcher' }
     return findInstalledDsh({
       managedRoot: settings.dshInstallPath,
       configuredExecutable: settings.launchExecutable,
@@ -351,6 +366,8 @@ export function createInstaller(options: InstallerOptions): Installer {
         NODE_RUNTIME_PROGRESS_FLOOR + Math.round(progress.percent * 0.12),
       ),
       message: progress.message,
+      downloadedBytes: progress.downloadedBytes,
+      totalBytes: progress.totalBytes,
     })
   })
 
@@ -365,6 +382,8 @@ export function createInstaller(options: InstallerOptions): Installer {
         NODE_RUNTIME_PROGRESS_FLOOR + Math.round(progress.percent * 0.12),
       ),
       message: progress.message,
+      downloadedBytes: progress.downloadedBytes,
+      totalBytes: progress.totalBytes,
     })
   })
 
@@ -375,6 +394,10 @@ export function createInstaller(options: InstallerOptions): Installer {
   const trackPackageProgress = (repository: string, kind: InstallProgress['kind'], message: string) => {
     const startedAt = Date.now()
     let measured = false
+    let npmFetchedCount = 0
+    let npmPlacedCount = 0
+    let lastNpmSummaryCount = 0
+    let lastNpmSummaryKind = ''
 
     const emitWaiting = () => {
       if (measured) return
@@ -394,7 +417,54 @@ export function createInstaller(options: InstallerOptions): Installer {
 
     return {
       handleOutput: (text: string) => {
-        const parsed = packageManagerProgress(text, currentPercent(DOWNLOAD_PROGRESS_FLOOR))
+        const npmFetches = (text.match(/npm\s+(?:http\s+(?:fetch\s+GET|cache)|silly\s+fetch\s+manifest)\b/gi) ?? []).length
+        const npmPlacements = (text.match(/npm\s+silly\s+placeDep\b/gi) ?? []).length
+        npmFetchedCount += npmFetches
+        npmPlacedCount += npmPlacements
+        const manifest = text.match(/npm\s+silly\s+fetch\s+manifest\s+([^\s]+)/i)?.[1]
+        const placement = text.match(/npm\s+silly\s+placeDep\s+[^\s]+\s+([^\s]+)\s+OK/i)?.[1]
+        const registryUrl = text.match(/npm\s+http\s+(?:fetch\s+GET\s+\d+|cache)\s+(https?:\/\/registry\.npmjs\.org\/[^\s]+)/i)?.[1]
+        let registryPackage = ''
+        if (registryUrl) {
+          try {
+            const registryPath = decodeURIComponent(new URL(registryUrl).pathname.slice(1))
+            registryPackage = registryPath.split('/-/')[0] ?? registryPath
+          } catch {
+            registryPackage = registryUrl
+          }
+        }
+        const stage = manifest
+          ? `正在解析 npm 依赖：${manifest}`
+          : placement
+            ? `正在整理 npm 依赖：${placement}`
+            : registryPackage
+              ? `正在获取 npm 包信息：${registryPackage}`
+            : /npm\s+timing\s+idealTree/i.test(text)
+              ? '正在构建 npm 依赖树'
+              : /npm\s+timing\s+reify/i.test(text)
+                ? '正在写入 npm node_modules'
+              : /npm\s+info\s+run\b/i.test(text)
+                  ? '正在执行 npm 安装脚本'
+                  : ''
+        // 原始 npm 输出已经完整转发；摘要每 25 个请求或阶段变化时写一条，
+        // 让长时间的依赖解析既能定位当前包，也不会淹没其他日志来源。
+        const stageKind = stage.split('：')[0] ?? stage
+        const stageCount = manifest || registryPackage
+          ? npmFetchedCount
+          : placement
+            ? npmPlacedCount
+            : npmFetchedCount + npmPlacedCount
+        if (stage && (stageKind !== lastNpmSummaryKind || stageCount - lastNpmSummaryCount >= 25)) {
+          lastNpmSummaryKind = stageKind
+          lastNpmSummaryCount = stageCount
+          options.emitOutput('info', `[${repository}] ${stage}${stageCount > 0 ? `（已处理 ${stageCount} 项）` : ''}`)
+        }
+        const parsed = packageManagerProgress(
+          text,
+          currentPercent(DOWNLOAD_PROGRESS_FLOOR),
+          npmFetchedCount - npmFetches,
+          npmPlacedCount - npmPlacements,
+        )
         if (!parsed || (parsed.indeterminate && measured)) return
         if (!parsed.indeterminate) measured = true
         emit({ repository, kind, phase: 'downloading', ...parsed })
@@ -440,6 +510,8 @@ export function createInstaller(options: InstallerOptions): Installer {
           withExecutableDirectoryOnPath(nodeRuntime.node, {
             ...process.env,
             DSH_HOME: settings.dshHome,
+            ...(options.packageStoreRoot ? { npm_config_store_dir: options.packageStoreRoot, NPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
+            ...(options.packageStoreRoot ? { pnpm_config_store_dir: options.packageStoreRoot, PNPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
             FORCE_COLOR: '0',
           }),
         ),
@@ -470,6 +542,8 @@ export function createInstaller(options: InstallerOptions): Installer {
           ...process.env,
           CI: 'true',
           DSH_HOME: settings.dshHome,
+          ...(options.packageStoreRoot ? { npm_config_store_dir: options.packageStoreRoot, NPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
+          ...(options.packageStoreRoot ? { pnpm_config_store_dir: options.packageStoreRoot, PNPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
           FORCE_COLOR: '0',
         }),
         onOutput: (text, level: OutputLevel) => options.emitOutput(level, text),
@@ -511,12 +585,26 @@ export function createInstaller(options: InstallerOptions): Installer {
     if (options.isRuntimeRunning()) throw new Error('请先停止 DSH，再安装或更新本地 DSH。')
 
     const settings = await options.readSettings()
-    const runtimeRoot = settings.dshInstallPath
+    let selectedVersion: string | null = null
+    try {
+      const available = await listAvailableDshVersions(options.githubFetch)
+      selectedVersion = selectedVersion
+        ?? available.find(candidate => candidate.label === 'latest')?.version
+        ?? available.find(candidate => !candidate.prerelease)?.version
+        ?? available[0]?.version
+        ?? (settings.dshVersion ? normalizeDshVersion(settings.dshVersion) : null)
+    } catch (error) {
+      // 首次部署不能因版本索引暂时不可用而阻塞；没有精确选择时回落到旧单目录和 npm latest。
+      selectedVersion = settings.dshVersion ? normalizeDshVersion(settings.dshVersion) : null
+      options.emitOutput('info', `读取 DSH 版本列表失败，回落到 npm latest：${error instanceof Error ? error.message : String(error)}`)
+    }
+    const runtimeRoot = selectedVersion ? dshVersionRoot(settings.dshInstallPath, selectedVersion) : settings.dshInstallPath
     await mkdir(runtimeRoot, { recursive: true })
     const manifestPath = path.join(runtimeRoot, 'package.json')
     if (!existsSync(manifestPath)) {
       await writeFile(manifestPath, `${JSON.stringify({ name: 'dsh-launcher-runtime', private: true }, null, 2)}\n`, 'utf8')
     }
+    await ensureDshScriptPolicy(manifestPath)
 
     const nodeRuntime = await prepareNode(repository)
     emit({ repository, kind: 'dsh', phase: 'resolving', percent: 18, message: '正在解析 DSH 安装包' })
@@ -531,7 +619,11 @@ export function createInstaller(options: InstallerOptions): Installer {
         '--no-audit',
         '--no-fund',
         '--progress=true',
-        `${DSH_PACKAGE_NAME}@latest`,
+        // 启动器没有交互式 TTY；显式打开 verbose/foreground 输出，
+        // 让运行日志保留 npm 的 registry 请求、依赖解析和安装脚本原文。
+        '--loglevel=verbose',
+        '--foreground-scripts',
+        selectedVersion ? `${DSH_PACKAGE_NAME}@${selectedVersion}` : `${DSH_PACKAGE_NAME}@latest`,
       ], {
         cwd: runtimeRoot,
         env: withExecutableDirectoryOnPath(nodeRuntime.node, {
@@ -544,6 +636,31 @@ export function createInstaller(options: InstallerOptions): Installer {
           tracker.handleOutput(text)
         },
       })
+      if (result.exitCode === 0 && hasDshScriptPackage(runtimeRoot)) {
+        emit({ repository, kind: 'dsh', phase: 'configuring', percent: 90, message: '正在执行 DSH 核心依赖安装脚本' })
+        options.emitOutput('info', `正在执行 ${DSH_SUBPROCESS_LOCAL_PACKAGE} 的安装脚本。`)
+        const rebuild = await executeCommand(nodeRuntime.npm, [
+          'rebuild',
+          '--prefix', runtimeRoot,
+          '--foreground-scripts',
+          '--loglevel=verbose',
+          DSH_SUBPROCESS_LOCAL_PACKAGE,
+        ], {
+          cwd: runtimeRoot,
+          env: withExecutableDirectoryOnPath(nodeRuntime.node, {
+            ...process.env,
+            FORCE_COLOR: '0',
+            NPM_CONFIG_UPDATE_NOTIFIER: 'false',
+          }),
+          onOutput: (text, level: OutputLevel) => {
+            options.emitOutput(level, text)
+            tracker.handleOutput(text)
+          },
+        })
+        if (rebuild.exitCode !== 0) {
+          throw new Error(`DSH 核心依赖安装脚本失败（代码 ${rebuild.exitCode}），请查看运行日志。`)
+        }
+      }
     } finally {
       tracker.stop()
     }
@@ -557,6 +674,7 @@ export function createInstaller(options: InstallerOptions): Installer {
 
     const saved = await options.saveSettings({
       ...settings,
+      dshVersion: dshInstallation.version ? normalizeDshVersion(dshInstallation.version) : selectedVersion,
       launchExecutable: dshInstallation.executable,
       launchArgs: ['web'],
     })
@@ -568,7 +686,7 @@ export function createInstaller(options: InstallerOptions): Installer {
       percent: 100,
       message: `DSH ${dshInstallation.version ?? ''} 已安装`,
     })
-    return { kind: 'dsh', profile, settings, dshInstallation }
+    return { kind: 'dsh', profile, settings: saved, dshInstallation }
   }
 
   /** 安装完成后用 --dump-config 验证插件组合可被 DSH 正常解析。 */
@@ -589,6 +707,7 @@ export function createInstaller(options: InstallerOptions): Installer {
         DSH_HOME: settings.dshHome,
         FORCE_COLOR: '0',
       }),
+      onOutput: (text, level: OutputLevel) => options.emitOutput(level, text),
     })
     if (result.exitCode !== 0) {
       const diagnostics = result.output.slice(-8_000).trim()
@@ -638,10 +757,54 @@ export function createInstaller(options: InstallerOptions): Installer {
 
     async remove(packageName: string, profileName?: string): Promise<ProfileState> {
       const settings = await options.readSettings()
-      const targetProfile = profileName ?? settings.profileName
-      await runPluginCommand(['remove', packageName], undefined, true, targetProfile)
-      await removePluginReceipt(options.pluginReceiptsPath, targetProfile, packageName)
-      return readProfile(settings.dshHome, targetProfile, options.pluginReceiptsPath)
+      const currentProfile = settings.profileName
+      const receipts = await readPluginReceipts(options.pluginReceiptsPath).catch(() => [])
+      const receiptProfiles = receipts
+        .filter(receipt => receipt.packageName === packageName && isSafeProfileName(receipt.profileName))
+        .map(receipt => receipt.profileName)
+
+      // 传入 profileName 的调用用于整合包/内部流程，只操作指定 Profile；
+      // UI 的普通卸载不传该参数，因此会覆盖本机所有已登记的 Profile。
+      const targetProfiles = new Set<string>(profileName ? [profileName] : [currentProfile, ...receiptProfiles])
+      if (!profileName) {
+        try {
+          const entries = await readdir(path.join(settings.dshHome, 'profiles'), { withFileTypes: true })
+          for (const entry of entries) {
+            if (entry.isDirectory() && isSafeProfileName(entry.name)) targetProfiles.add(entry.name)
+          }
+        } catch {
+          // profiles 目录尚未创建时仍保留当前 Profile 作为唯一候选。
+        }
+      }
+
+      const failures: string[] = []
+      for (const targetProfile of targetProfiles) {
+        let profile: ProfileState | null = null
+        try {
+          profile = await readProfile(settings.dshHome, targetProfile, options.pluginReceiptsPath)
+        } catch {
+          // 清理安装回执仍可继续；损坏的 Profile 不应阻塞其他 Profile 的卸载。
+        }
+        const installed = profile?.plugins.some(item => item.packageName === packageName && !item.builtin) ?? false
+        const hasReceipt = receiptProfiles.includes(targetProfile)
+
+        if (profileName || installed) {
+          try {
+            await runPluginCommand(['remove', packageName], undefined, true, targetProfile)
+          } catch (error) {
+            failures.push(`${targetProfile}: ${error instanceof Error ? error.message : String(error)}`)
+            continue
+          }
+        } else if (!hasReceipt) {
+          continue
+        }
+        await removePluginReceipt(options.pluginReceiptsPath, targetProfile, packageName)
+      }
+
+      if (failures.length > 0) {
+        throw new Error(`插件未能从所有本机 Profile 完全卸载：${failures.join('；')}`)
+      }
+      return readProfile(settings.dshHome, profileName ?? currentProfile, options.pluginReceiptsPath)
     },
 
     analyzePlugin,
@@ -765,6 +928,8 @@ export function createInstaller(options: InstallerOptions): Installer {
           subdirectory: target.subdirectory,
           version: target.version,
           commit: target.commit,
+          defaultBranch: request.defaultBranch,
+          targetId: request.targetId,
           installedAt: new Date().toISOString(),
         })
         // The receipt is the authoritative source for local `file:` and archive-subdirectory
@@ -831,6 +996,7 @@ export function createInstaller(options: InstallerOptions): Installer {
           subdirectory: null,
           version: version ?? installedPlugin.version ?? null,
           commit: '',
+          targetId: request.packageName,
           installedAt: new Date().toISOString(),
         })
         const profile = profileName === settings.profileName
@@ -855,8 +1021,8 @@ export function createInstaller(options: InstallerOptions): Installer {
         const target = analysis.targets.find(item => item.id === request.targetId)
         if (!target) throw new Error(analysis.summary || '所选 Skill 已失效，请重新检测仓库。')
         const settings = await options.readSettings()
-        const onProgress = (percent: number, message: string) =>
-          emit({ repository: request.repository, kind: 'skill', phase: 'downloading', percent, message })
+        const onProgress = (progress: { percent: number; message: string; downloadedBytes?: number; totalBytes?: number }) =>
+          emit({ repository: request.repository, kind: 'skill', phase: 'downloading', ...progress })
         const installedSkill = options.githubFetch
           ? await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, request.repository, target, onProgress, options.githubFetch)
           : await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, request.repository, target, onProgress)
@@ -889,8 +1055,8 @@ export function createInstaller(options: InstallerOptions): Installer {
 
     async installSkillPinned({ repository, target }): Promise<InstalledSkill> {
       const settings = await options.readSettings()
-      const onProgress = (percent: number, message: string) =>
-        emit({ repository, kind: 'skill', phase: 'downloading', percent, message })
+      const onProgress = (progress: { percent: number; message: string; downloadedBytes?: number; totalBytes?: number }) =>
+        emit({ repository, kind: 'skill', phase: 'downloading', ...progress })
       const installedSkill = options.githubFetch
         ? await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, repository, target, onProgress, options.githubFetch)
         : await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, repository, target, onProgress)
@@ -920,8 +1086,8 @@ export function createInstaller(options: InstallerOptions): Installer {
           sourcePath: request.sourcePath,
         }
         const settings = await options.readSettings()
-        const onProgress = (percent: number, message: string) =>
-          emit({ repository: request.repository, kind: 'preset', phase: 'downloading', percent, message })
+        const onProgress = (progress: { percent: number; message: string; downloadedBytes?: number; totalBytes?: number }) =>
+          emit({ repository: request.repository, kind: 'preset', phase: 'downloading', ...progress })
         const installedPreset = options.githubFetch
           ? await installPresetFromRepository(options.skillSourceRoot, settings.dshHome, request.repository, target, onProgress, options.githubFetch)
           : await installPresetFromRepository(options.skillSourceRoot, settings.dshHome, request.repository, target, onProgress)

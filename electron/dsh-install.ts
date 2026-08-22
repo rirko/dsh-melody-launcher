@@ -144,6 +144,8 @@ export function installWaitingMessage(initialMessage: string, elapsedMillisecond
 export function packageManagerProgress(
   text: string,
   currentPercent: number,
+  npmFetchedCount = 0,
+  npmPlacedCount = 0,
 ): Pick<InstallProgress, 'percent' | 'message' | 'indeterminate'> | null {
   const pnpmMatches = [...text.matchAll(/Progress:\s*resolved\s+(\d+),\s*reused\s+(\d+),\s*downloaded\s+(\d+),\s*added\s+(\d+)/gi)]
   const pnpm = pnpmMatches.at(-1)
@@ -167,6 +169,37 @@ export function packageManagerProgress(
       percent: Math.max(currentPercent, 25 + Math.round(received * 0.55)),
       message: `正在下载仓库 ${received}%`,
     }
+  }
+
+  // npm verbose 输出没有总包数，不能伪造精确百分比；阶段判断按输出中
+  // 更靠后的依赖树动作优先，避免同一批同时包含 fetch/placeDep 时仍显示旧阶段。
+  const npmPlacements = (text.match(/npm\s+silly\s+placeDep\b/gi) ?? []).length
+  if (npmPlacements > 0) {
+    const placed = npmPlacedCount + npmPlacements
+    return {
+      percent: Math.max(currentPercent, Math.min(86, 78 + Math.floor(placed / 25))),
+      message: `正在整理 npm 依赖（已整理 ${placed} 项）`,
+    }
+  }
+
+  const npmFetches = (text.match(/npm\s+(?:http\s+(?:fetch\s+GET|cache)|silly\s+fetch\s+manifest)\b/gi) ?? []).length
+  if (npmFetches > 0) {
+    const fetched = npmFetchedCount + npmFetches
+    return {
+      percent: Math.max(currentPercent, Math.min(75, 34 + Math.min(40, fetched))),
+      message: `正在解析 npm 依赖（已请求 ${fetched} 项）`,
+      indeterminate: true,
+    }
+  }
+
+  if (/npm\s+timing\s+idealTree/i.test(text)) {
+    return { percent: Math.max(currentPercent, 87), message: '正在完成 npm 依赖树解析' }
+  }
+  if (/npm\s+timing\s+reify/i.test(text)) {
+    return { percent: Math.max(currentPercent, 90), message: '正在写入 npm node_modules' }
+  }
+  if (/npm\s+info\s+run\b|npm\s+verb\s+(?:reify|audit)/i.test(text)) {
+    return { percent: Math.max(currentPercent, 84), message: '正在执行 npm 安装步骤' }
   }
 
   if (/added\s+\d+\s+packages?/i.test(text) || /Packages:\s*\+\d+/i.test(text)) {

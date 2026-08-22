@@ -232,7 +232,7 @@ function PreviewPanel({ analysis, selected, nameInput, onNameChange, onToggle }:
         </label>
       )}
       <p className="pack-preview-meta">
-        版本 {analysis.version} · {analysis.items.length} 个组件，勾选要安装的项；离线本体从包内安装，其余走在线源。
+        版本 {analysis.version} · 要求 DSH {analysis.dshVersion ?? '当前版本'} · {analysis.items.length} 个组件，勾选要安装的项；离线本体从包内安装，其余走在线源。
       </p>
       <div className="pack-item-list">
         {analysis.items.map(item => {

@@ -15,7 +15,7 @@ import * as yauzl from 'yauzl'
 import * as yazl from 'yazl'
 import type { PackManifest } from '../src/types'
 import { isSafePackageName } from './profile'
-import { PACK_MANIFEST_FILENAME, parsePackManifest, serializePackManifest } from './pack-manifest'
+import { PACK_MANIFEST_FILENAME, PROFILE_MANIFEST_FILENAME, parsePackManifest, serializePackManifest } from './pack-manifest'
 
 export interface PackZipLimits {
   maxArchiveBytes: number
@@ -90,7 +90,7 @@ function computeStripRoot(entries: ReadonlyArray<{ entryName: string; isDirector
   }
   if (firstSegments.size !== 1) return null
   const only = [...firstSegments][0]
-  if (only !== PACK_MANIFEST_FILENAME && !only.startsWith(PLUGIN_BODIES_PREFIX)) return only
+  if (only !== PACK_MANIFEST_FILENAME && only !== PROFILE_MANIFEST_FILENAME && !only.startsWith(PLUGIN_BODIES_PREFIX)) return only
   return null
 }
 
@@ -131,7 +131,7 @@ export function findManifestInArchive(buffer: Uint8Array): string | null {
     const safe = safeArchivePath(entry.entryName)
     if (!safe) continue
     const rel = relForEntry(safe, stripRoot)
-    if (rel === PACK_MANIFEST_FILENAME) return entry.getData().toString('utf8')
+    if (rel === PACK_MANIFEST_FILENAME || rel === PROFILE_MANIFEST_FILENAME) return entry.getData().toString('utf8')
   }
   return null
 }
@@ -187,7 +187,7 @@ export function inspectPackZip(buffer: Uint8Array, limits: PackZipLimits = DEFAU
     const safe = safeArchivePath(entry.entryName)
     if (!safe) continue
     const rel = relForEntry(safe, stripRoot)
-    if (rel === PACK_MANIFEST_FILENAME) {
+    if (rel === PACK_MANIFEST_FILENAME || rel === PROFILE_MANIFEST_FILENAME) {
       manifestText = entry.getData().toString('utf8')
       break
     }
@@ -262,7 +262,9 @@ export async function extractPackBodies(
 /** 用 adm-zip 打包：dsh-pack.yaml + plugin-bodies/<packageName>/…（无 body 时即 manifest-only 包）。 */
 export function buildPackZip(manifest: PackManifest, bodyDirs: Map<string, string>): Uint8Array {
   const zip = new AdmZip()
-  zip.addFile(PACK_MANIFEST_FILENAME, Buffer.from(serializePackManifest(manifest), 'utf8'))
+  const manifestBuffer = Buffer.from(serializePackManifest(manifest), 'utf8')
+  zip.addFile(PACK_MANIFEST_FILENAME, manifestBuffer)
+  zip.addFile(PROFILE_MANIFEST_FILENAME, manifestBuffer)
   for (const [packageName, directory] of bodyDirs) {
     const base = `${PLUGIN_BODIES_PREFIX}${packageName}`
     const stack: Array<{ dir: string; rel: string }> = [{ dir: directory, rel: '' }]
@@ -515,7 +517,7 @@ export async function findManifestInArchiveFromPath(filePath: string): Promise<s
       const safe = safeArchivePath(entry.entryName)
       if (!safe) continue
       const rel = relForEntry(safe, handle.stripRoot)
-      if (rel === PACK_MANIFEST_FILENAME) {
+      if (rel === PACK_MANIFEST_FILENAME || rel === PROFILE_MANIFEST_FILENAME) {
         const data = await handle.readEntryData(entry, MAX_MANIFEST_BYTES)
         return data.toString('utf8')
       }
@@ -539,7 +541,7 @@ export async function inspectPackZipFromPath(
       const safe = safeArchivePath(entry.entryName)
       if (!safe) continue
       const rel = relForEntry(safe, handle.stripRoot)
-      if (rel === PACK_MANIFEST_FILENAME) {
+      if (rel === PACK_MANIFEST_FILENAME || rel === PROFILE_MANIFEST_FILENAME) {
         const data = await handle.readEntryData(entry, MAX_MANIFEST_BYTES)
         manifestText = data.toString('utf8')
         break
@@ -653,7 +655,9 @@ export async function buildPackZipToFile(
   presetDirs: Map<string, string> = new Map(),
 ): Promise<void> {
   const zip = new yazl.ZipFile()
-  zip.addBuffer(Buffer.from(serializePackManifest(manifest), 'utf8'), PACK_MANIFEST_FILENAME)
+  const manifestBuffer = Buffer.from(serializePackManifest(manifest), 'utf8')
+  zip.addBuffer(manifestBuffer, PACK_MANIFEST_FILENAME)
+  zip.addBuffer(manifestBuffer, PROFILE_MANIFEST_FILENAME)
   for (const [packageName, directory] of bodyDirs) {
     const base = `${PLUGIN_BODIES_PREFIX}${packageName}`
     const stack: Array<{ dir: string; rel: string }> = [{ dir: directory, rel: '' }]
