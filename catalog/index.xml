@@ -1,39 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <dsh-catalog schema="1">
-  <repository name="tt-a1i/archify" branch="main" updated="2026-08-22T08:47:45Z" tags="plugin,skill"/>
-  <repository name="awesome-dsh-plugin/awesome-dsh-plugin" branch="main" updated="2026-08-22T09:01:55Z" tags="skill"/>
-  <repository name="freestylefly/awesome-gpt-image-2" branch="main" updated="2026-08-22T09:06:39Z" tags="skill"/>
-  <repository name="titanwings/colleague-skill" branch="dot-skill" updated="2026-08-22T09:07:42Z" tags="skill"/>
+  <repository name="tt-a1i/archify" branch="main" updated="2026-08-23T08:21:04Z" tags="plugin,skill"/>
+  <repository name="awesome-dsh-plugin/awesome-dsh-plugin" branch="main" updated="2026-08-23T08:24:08Z" tags="skill"/>
+  <repository name="freestylefly/awesome-gpt-image-2" branch="main" updated="2026-08-23T08:13:48Z" tags="skill"/>
+  <repository name="titanwings/colleague-skill" branch="dot-skill" updated="2026-08-23T08:22:06Z" tags="skill"/>
   <repository name="chuspeeism/dashi-taskboard" branch="main" updated="2026-08-19T02:41:16Z" tags="skill"/>
-  <repository name="anywhere-labs/deepseek-harness-desktop" branch="master" updated="2026-08-22T09:09:48Z" tags="skill,runtime"/>
-  <repository name="esengine/DeepSeek-Reasonix" branch="main-v2" updated="2026-08-22T08:59:23Z" tags="skill"/>
+  <repository name="anywhere-labs/deepseek-harness-desktop" branch="master" updated="2026-08-23T08:23:29Z" tags="runtime"/>
+  <repository name="esengine/DeepSeek-Reasonix" branch="main-v2" updated="2026-08-23T07:51:43Z" tags="skill"/>
   <repository name="Nagi-ovo/dsh-ads" branch="main" updated="2026-08-19T05:33:25Z" tags="plugin"/>
-  <repository name="xiaobright/dsh-anchored-standard" branch="main" updated="2026-08-22T07:14:10Z" tags="invalid"/>
+  <repository name="xiaobright/dsh-anchored-standard" branch="main" updated="2026-08-23T07:34:41Z" tags="invalid"/>
   <repository name="omdsh-dev/DSH-better-sidebar" branch="main" updated="2026-08-19T03:54:07Z" tags="plugin"/>
   <repository name="Leawind/dsh-minecraft-dev" branch="main" updated="2026-08-15T19:30:41Z" tags="skill"/>
   <repository name="HuanLinOTO/dsh-plugin-anti-ads" branch="master" updated="2026-08-17T02:18:27Z" tags="plugin"/>
-  <repository name="yjh051108/dsh-routing-suite" branch="main" updated="2026-08-22T09:05:29Z" tags="plugin,preset"/>
-  <repository name="zhu1090093659/dsh-web-ui" branch="dev" updated="2026-08-22T09:02:17Z" tags="plugin,skill"/>
-  <repository name="edison7009/EchoBird" branch="main" updated="2026-08-22T08:47:29Z" tags="invalid"/>
-  <repository name="EverMind-AI/EverOS" branch="main" updated="2026-08-22T08:40:58Z" tags="plugin,skill"/>
-  <repository name="Devin-AXIS/iPolloWork" branch="main" updated="2026-08-22T09:06:22Z" tags="plugin,skill"/>
+  <repository name="yjh051108/dsh-routing-suite" branch="main" updated="2026-08-23T08:23:37Z" tags="invalid"/>
+  <repository name="zhu1090093659/dsh-web-ui" branch="dev" updated="2026-08-23T08:23:52Z" tags="plugin,skill"/>
+  <repository name="edison7009/EchoBird" branch="main" updated="2026-08-23T07:02:22Z" tags="invalid"/>
+  <repository name="EverMind-AI/EverOS" branch="main" updated="2026-08-23T08:08:31Z" tags="plugin,skill"/>
+  <repository name="Devin-AXIS/iPolloWork" branch="main" updated="2026-08-23T08:14:39Z" tags="plugin,skill"/>
   <repository name="Tiger3807861189/J-Space-Cognition-Suite-V3.6" branch="main" updated="2026-08-22T09:08:24Z" tags="skill"/>
-  <repository name="walkinglabs/learn-harness-engineering" branch="main" updated="2026-08-22T09:04:01Z" tags="skill"/>
-  <repository name="MemTensor/MemOS" branch="main" updated="2026-08-22T09:09:32Z" tags="skill"/>
-  <repository name="strukto-ai/mirage" branch="main" updated="2026-08-22T08:58:13Z" tags="plugin,skill"/>
-  <repository name="liustack/modlens" branch="main" updated="2026-08-22T08:32:36Z" tags="plugin,skill"/>
-  <repository name="nexu-io/open-design" branch="main" updated="2026-08-22T09:16:27Z" tags="plugin"/>
+  <repository name="Tiger3807861189/J-Space-Cognition-Suite-V3.7" branch="main" updated="2026-08-23T07:46:41Z" tags="skill"/>
+  <repository name="walkinglabs/learn-harness-engineering" branch="main" updated="2026-08-23T08:23:25Z" tags="skill"/>
+  <repository name="MemTensor/MemOS" branch="main" updated="2026-08-23T08:07:09Z" tags="skill"/>
+  <repository name="strukto-ai/mirage" branch="main" updated="2026-08-23T07:58:06Z" tags="plugin,skill"/>
+  <repository name="liustack/modlens" branch="main" updated="2026-08-23T08:05:44Z" tags="plugin,skill"/>
+  <repository name="nexu-io/open-design" branch="main" updated="2026-08-23T08:24:08Z" tags="plugin"/>
   <repository name="whiteguo233/OpenBiliClaw" branch="main" updated="2026-08-22T08:43:19Z" tags="skill"/>
-  <repository name="ZSeven-W/openpencil" branch="main" updated="2026-08-22T08:12:58Z" tags="invalid"/>
-  <repository name="volcengine/OpenViking" branch="main" updated="2026-08-22T09:08:06Z" tags="plugin,skill"/>
-  <repository name="Q00/ouroboros" branch="main" updated="2026-08-22T06:15:51Z" tags="plugin,skill"/>
-  <repository name="crafter-station/petdex" branch="main" updated="2026-08-22T08:04:04Z" tags="plugin,skill"/>
-  <repository name="Molunerfinn/PicGo" branch="dev" updated="2026-08-22T08:41:23Z" tags="invalid"/>
-  <repository name="amruthpillai/reactive-resume" branch="main" updated="2026-08-22T08:28:33Z" tags="plugin,skill"/>
-  <repository name="ruvnet/ruflo" branch="main" updated="2026-08-22T09:03:58Z" tags="skill"/>
+  <repository name="ZSeven-W/openpencil" branch="main" updated="2026-08-23T08:00:23Z" tags="invalid"/>
+  <repository name="volcengine/OpenViking" branch="main" updated="2026-08-23T08:23:59Z" tags="plugin,skill"/>
+  <repository name="Q00/ouroboros" branch="main" updated="2026-08-23T07:35:58Z" tags="plugin,skill"/>
+  <repository name="crafter-station/petdex" branch="main" updated="2026-08-23T01:28:37Z" tags="plugin,skill"/>
+  <repository name="Molunerfinn/PicGo" branch="dev" updated="2026-08-23T07:17:23Z" tags="invalid"/>
+  <repository name="amruthpillai/reactive-resume" branch="main" updated="2026-08-23T08:14:20Z" tags="plugin,skill"/>
+  <repository name="ruvnet/ruflo" branch="main" updated="2026-08-23T08:02:39Z" tags="skill"/>
   <repository name="foryourhealth111-pixel/Vibe-Skills" branch="main" updated="2026-08-19T03:41:24Z" tags="skill"/>
-  <repository name="Nagi-ovo/voyager" branch="main" updated="2026-08-22T08:44:36Z" tags="skill"/>
-  <repository name="Tencent/WeKnora" branch="main" updated="2026-08-22T09:03:16Z" tags="plugin,skill"/>
-  <repository name="YaoApp/yao" branch="main" updated="2026-08-22T07:00:46Z" tags="skill"/>
+  <repository name="Nagi-ovo/voyager" branch="main" updated="2026-08-23T06:42:32Z" tags="skill"/>
+  <repository name="Tencent/WeKnora" branch="main" updated="2026-08-23T07:53:41Z" tags="plugin,skill"/>
+  <repository name="YaoApp/yao" branch="main" updated="2026-08-23T08:15:35Z" tags="skill"/>
   <repository name="imsai-sh/zhuzhiliao" branch="main" updated="2026-08-19T02:19:22Z" tags="invalid"/>
 </dsh-catalog>
