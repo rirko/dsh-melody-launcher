@@ -5,20 +5,32 @@
   <repository name="freestylefly/awesome-gpt-image-2" branch="main" updated="2026-08-22T09:06:39Z" tags="skill"/>
   <repository name="titanwings/colleague-skill" branch="dot-skill" updated="2026-08-22T09:07:42Z" tags="skill"/>
   <repository name="chuspeeism/dashi-taskboard" branch="main" updated="2026-08-19T02:41:16Z" tags="skill"/>
-  <repository name="anywhere-labs/deepseek-harness-desktop" branch="master" updated="2026-08-22T09:09:48Z" tags="skill,runtime"/>
+  <repository name="MeteorNOX/DeepSeek-Balance-Whale-Widget" branch="main" updated="2026-08-24T07:32:02Z" tags="plugin"/>
+  <repository name="anywhere-labs/deepseek-harness-desktop" branch="master" updated="2026-08-19T16:56:35Z" tags="skill,runtime"/>
   <repository name="esengine/DeepSeek-Reasonix" branch="main-v2" updated="2026-08-22T08:59:23Z" tags="skill"/>
-  <repository name="Nagi-ovo/dsh-ads" branch="main" updated="2026-08-19T05:33:25Z" tags="plugin"/>
+  <repository name="zed1902209846-dotcom/DPwhale-plugin" branch="main" updated="2026-08-14T10:02:18Z" tags="invalid"/>
+  <repository name="Nagi-ovo/dsh-ads" branch="main" updated="2026-08-24T06:23:39Z" tags="plugin"/>
   <repository name="xiaobright/dsh-anchored-standard" branch="main" updated="2026-08-22T07:14:10Z" tags="invalid"/>
   <repository name="omdsh-dev/DSH-better-sidebar" branch="main" updated="2026-08-19T03:54:07Z" tags="plugin"/>
+  <repository name="Small-tailqwq/dsh-deep-whale" branch="main" updated="2026-08-24T07:40:20Z" tags="plugin,skill"/>
+  <repository name="xiaoshihou514/dsh-desktop-pet" branch="main" updated="2026-08-24T07:23:49Z" tags="plugin"/>
+  <repository name="kingOfSoySauce/dsh-liang-skin" branch="main" updated="2026-08-24T07:02:51Z" tags="plugin"/>
+  <repository name="HansLin911/dsh-liang-slider" branch="main" updated="2026-08-18T04:25:26Z" tags="plugin"/>
+  <repository name="mozhuanzuojing/dsh-liangwengu" branch="main" updated="2026-08-19T16:56:15Z" tags="plugin"/>
+  <repository name="liang-today/dsh-liangxiang" branch="main" updated="2026-08-24T02:11:47Z" tags="plugin"/>
   <repository name="Leawind/dsh-minecraft-dev" branch="main" updated="2026-08-15T19:30:41Z" tags="skill"/>
   <repository name="HuanLinOTO/dsh-plugin-anti-ads" branch="master" updated="2026-08-17T02:18:27Z" tags="plugin"/>
-  <repository name="yjh051108/dsh-routing-suite" branch="main" updated="2026-08-22T09:05:29Z" tags="plugin,preset"/>
+  <repository name="yjh051108/dsh-routing-suite" branch="main" updated="2026-08-19T16:45:25Z" tags="plugin,preset"/>
+  <repository name="skiuniverse/dsh-running-liang" branch="main" updated="2026-08-17T08:18:28Z" tags="plugin"/>
+  <repository name="kingOfSoySauce/dsh-skin-market" branch="main" updated="2026-08-24T06:57:12Z" tags="plugin"/>
   <repository name="zhu1090093659/dsh-web-ui" branch="dev" updated="2026-08-22T09:02:17Z" tags="plugin,skill"/>
+  <repository name="Sutera-Diffusus/dsh-whale-musume" branch="main" updated="2026-08-24T03:13:59Z" tags="plugin"/>
   <repository name="edison7009/EchoBird" branch="main" updated="2026-08-22T08:47:29Z" tags="invalid"/>
   <repository name="EverMind-AI/EverOS" branch="main" updated="2026-08-22T08:40:58Z" tags="plugin,skill"/>
   <repository name="Devin-AXIS/iPolloWork" branch="main" updated="2026-08-22T09:06:22Z" tags="plugin,skill"/>
   <repository name="Tiger3807861189/J-Space-Cognition-Suite-V3.6" branch="main" updated="2026-08-22T09:08:24Z" tags="skill"/>
   <repository name="walkinglabs/learn-harness-engineering" branch="main" updated="2026-08-22T09:04:01Z" tags="skill"/>
+  <repository name="X-hub-spec/liangwengu" branch="main" updated="2026-08-19T13:29:35Z" tags="invalid"/>
   <repository name="MemTensor/MemOS" branch="main" updated="2026-08-22T09:09:32Z" tags="skill"/>
   <repository name="strukto-ai/mirage" branch="main" updated="2026-08-22T08:58:13Z" tags="plugin,skill"/>
   <repository name="liustack/modlens" branch="main" updated="2026-08-22T08:32:36Z" tags="plugin,skill"/>
