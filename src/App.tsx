@@ -32,6 +32,7 @@ import { PluginsView } from './views/PluginsView'
 import { GitHubView } from './views/GitHubView'
 import { DshMarketView } from './views/DshMarketView'
 import { RuntimeEnvironmentView } from './views/RuntimeEnvironmentView'
+import { SettingsView } from './views/SettingsView'
 
 /**
  * 应用根。
@@ -105,6 +106,7 @@ function LauncherShell() {
   const recommendedChoiceRef = useRef<((accept: boolean) => void) | null>(null)
   const managerVisited = useRef(false)
   const discoverVisited = useRef(false)
+  const settingsVisited = useRef(false)
   const previousManagerViewRef = useRef(navigation.view)
   // 仓库结构检测结果由各视图发起，App 统一持有，避免切页后丢失。
   const [repositoryAnalyses, setRepositoryAnalyses] = useState<Record<string, CatalogRepositoryAnalysis>>({})
@@ -300,6 +302,7 @@ function LauncherShell() {
   const { settings, profile } = store
   if (navigation.surface === 'manager') managerVisited.current = true
   if (navigation.surface === 'manager' && navigation.view === 'discover') discoverVisited.current = true
+  if (navigation.surface === 'settings') settingsVisited.current = true
 
   return (
     <>
@@ -326,6 +329,7 @@ function LauncherShell() {
             activeRuntimeReplacement={store.activeRuntimeReplacement}
             onGitHubAccount={() => setGitHubAccountOpen(true)}
             onManage={navigation.showManager}
+            onOpenSettings={navigation.showSettings}
             onPackChange={packId => {
               void (packId ? store.activatePack(packId) : store.deactivatePack())
             }}
@@ -603,6 +607,47 @@ function LauncherShell() {
               <path d="M36 0V29.5A6.5 6.5 0 0 1 29.5 36H0Z" />
             </svg>
           </button>
+          </div>
+        )}
+        {settingsVisited.current && (
+          <div className={`surface-host settings-surface-host ${navigation.surface === 'settings' ? '' : 'view-hidden'}`}>
+            <SettingsView
+              settings={settings}
+              profile={profile}
+              dshInstallation={store.dshInstallation}
+              runtimeEnvironment={store.runtimeEnvironment}
+              installedSkills={store.installedSkills}
+              installedPresets={store.installedPresets}
+              packs={store.packs}
+              busy={store.busy}
+              profileMutationLocked={profileMutationLocked}
+              onBack={navigation.showLauncher}
+              onOpenDeveloperSettings={() => setSettingsOpen(true)}
+              onOpenManager={navigation.showManager}
+              onRefresh={() => {
+                void store.refreshProfile()
+                void store.refreshSecondaryResources()
+                void store.refreshPacks()
+                void store.refreshRuntimeEnvironment(true)
+              }}
+              onImportPack={() => void handlePackImport()}
+              onMinimize={minimizeWindow}
+              onToggleMaximize={toggleMaximizeWindow}
+              onClose={closeWindow}
+              onInstallDshVersion={store.installDshVersion}
+              onSelectDshVersion={store.selectDshVersion}
+              onRemoveDshVersion={store.removeDshVersion}
+              onTogglePlugin={store.togglePlugin}
+              onToggleSkill={store.toggleSkill}
+              onTogglePreset={store.togglePreset}
+              onActivatePack={store.activatePack}
+              onDeactivatePack={store.deactivatePack}
+              onRemovePack={store.removePack}
+              onExportPack={store.exportPack}
+              onOpenDshFolder={() => void api.openDshFolder()}
+              onOpenPluginFolder={packageName => { void api.openProfilePluginFolder(packageName) }}
+              onOpenPath={targetPath => { void api.openPath(targetPath) }}
+            />
           </div>
         )}
       </div>

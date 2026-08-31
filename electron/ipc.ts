@@ -38,6 +38,7 @@ import type { RuntimeVersionService } from './runtime-versions'
 import type { ProfileService } from './profile-service'
 import { inspectPackZipFromPath } from './pack-zip'
 import { serializePackManifest } from './pack-manifest'
+import { ensureDshVersionInstalled } from './runtime-versions'
 import { writeProfileMetadata } from './profile-service'
 import { readPluginReceipts } from './plugin-receipts'
 import { analyzeProfileRepository, applyReceiptMatches, applySelectedMatches, loadProfileRepositoryManifest, manifestText, readProfileRepositoryArchive, validateFullArchive } from './profile-repository-import'
@@ -792,6 +793,10 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
       assertMeaningfulPackName(name) // 空名/纯中文等退化成无意义标识的名称会抛出中文错误
       nameOverride = name.trim()
     }
+    // 整合包声明了 DSH 版本但本机未安装时，先自动补装（与 profilesImport 仓库分支行为一致）。
+    const environment = await runtimeVersions.read(false)
+    const analysis = await packManager.analyzeImport(target)
+    await ensureDshVersionInstalled(environment.dshInstalled, version => runtimeVersions.installDsh(version), analysis.dshVersion)
     return packManager.importPack(target, items, nameOverride === undefined ? undefined : { name: nameOverride })
   })
 

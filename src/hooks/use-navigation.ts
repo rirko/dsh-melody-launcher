@@ -81,6 +81,7 @@ export function useNavigation(onError: (message: string) => void) {
     view,
     setView,
     showManager: useCallback(() => changeSurface('manager'), [changeSurface]),
+    showSettings: useCallback(() => changeSurface('settings'), [changeSurface]),
     showLauncher: useCallback(() => changeSurface('launcher'), [changeSurface]),
   }
 }

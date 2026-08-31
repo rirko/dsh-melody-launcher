@@ -1,6 +1,6 @@
 export type ViewName = 'plugins' | 'discover' | 'dsh-market' | 'environment' | 'packs' | 'github'
 export type RuntimeDrawerMode = 'hidden' | 'half' | 'expanded'
-export type WindowMode = 'launcher' | 'manager'
+export type WindowMode = 'launcher' | 'manager' | 'settings'
 export type UiTheme = 'forest' | 'ocean' | 'berry' | 'graphite'
 
 export interface AppSettings {
@@ -810,6 +810,16 @@ export interface PackManifest {
   presets?: PackPresetEntry[]
   skills?: PackSkillEntry[]
   applications?: PackApplicationEntry[]
+}
+
+/** 整合包携带的可迁移启动器配置（launcher-config.yaml）；凭据与本体/DSH_HOME 路径一律不进。 */
+export interface PackLauncherConfig {
+  workspace?: string
+  launchArgs?: string[]
+  webPort?: number
+  openAfterLaunch?: boolean
+  uiTheme?: UiTheme
+  network?: NetworkSettings
 }
 
 export interface PackAnalysisItem {

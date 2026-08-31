@@ -16,6 +16,7 @@ import * as yazl from 'yazl'
 import type { PackManifest } from '../src/types'
 import { isSafePackageName } from './profile'
 import { PACK_MANIFEST_FILENAME, PROFILE_MANIFEST_FILENAME, parsePackManifest, serializePackManifest } from './pack-manifest'
+import { LAUNCHER_CONFIG_FILENAME } from './pack-launcher-config'
 
 export interface PackZipLimits {
   maxArchiveBytes: number
@@ -260,11 +261,12 @@ export async function extractPackBodies(
 }
 
 /** 用 adm-zip 打包：dsh-pack.yaml + plugin-bodies/<packageName>/…（无 body 时即 manifest-only 包）。 */
-export function buildPackZip(manifest: PackManifest, bodyDirs: Map<string, string>): Uint8Array {
+export function buildPackZip(manifest: PackManifest, bodyDirs: Map<string, string>, launcherConfig?: string): Uint8Array {
   const zip = new AdmZip()
   const manifestBuffer = Buffer.from(serializePackManifest(manifest), 'utf8')
   zip.addFile(PACK_MANIFEST_FILENAME, manifestBuffer)
   zip.addFile(PROFILE_MANIFEST_FILENAME, manifestBuffer)
+  if (launcherConfig) zip.addFile(LAUNCHER_CONFIG_FILENAME, Buffer.from(launcherConfig, 'utf8'))
   for (const [packageName, directory] of bodyDirs) {
     const base = `${PLUGIN_BODIES_PREFIX}${packageName}`
     const stack: Array<{ dir: string; rel: string }> = [{ dir: directory, rel: '' }]
@@ -528,6 +530,26 @@ export async function findManifestInArchiveFromPath(filePath: string): Promise<s
   }
 }
 
+/** 文件路径版读取 launcher-config.yaml（可能不存在，返回 null）。 */
+export async function findLauncherConfigInArchiveFromPath(filePath: string): Promise<string | null> {
+  const handle = await openLooseZipFromPath(filePath)
+  try {
+    for (const entry of handle.entries) {
+      if (entry.isDirectory) continue
+      const safe = safeArchivePath(entry.entryName)
+      if (!safe) continue
+      const rel = relForEntry(safe, handle.stripRoot)
+      if (rel === LAUNCHER_CONFIG_FILENAME) {
+        const data = await handle.readEntryData(entry, MAX_MANIFEST_BYTES)
+        return data.toString('utf8')
+      }
+    }
+    return null
+  } finally {
+    await handle.close()
+  }
+}
+
 /** 文件路径版 inspectPackZip。 */
 export async function inspectPackZipFromPath(
   filePath: string,
@@ -653,11 +675,13 @@ export async function buildPackZipToFile(
   bodyDirs: Map<string, string>,
   outputPath: string,
   presetDirs: Map<string, string> = new Map(),
+  launcherConfig?: string,
 ): Promise<void> {
   const zip = new yazl.ZipFile()
   const manifestBuffer = Buffer.from(serializePackManifest(manifest), 'utf8')
   zip.addBuffer(manifestBuffer, PACK_MANIFEST_FILENAME)
   zip.addBuffer(manifestBuffer, PROFILE_MANIFEST_FILENAME)
+  if (launcherConfig) zip.addBuffer(Buffer.from(launcherConfig, 'utf8'), LAUNCHER_CONFIG_FILENAME)
   for (const [packageName, directory] of bodyDirs) {
     const base = `${PLUGIN_BODIES_PREFIX}${packageName}`
     const stack: Array<{ dir: string; rel: string }> = [{ dir: directory, rel: '' }]

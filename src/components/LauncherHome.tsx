@@ -22,6 +22,7 @@ interface LauncherHomeProps {
   onCredential: () => void
   onGitHubAccount: () => void
   onManage: () => void
+  onOpenSettings: () => void
   onPackChange: (packId: string) => void
   onProfileChange: (profileName: string) => void
   onToggleRuntime: () => void
@@ -50,6 +51,7 @@ export function LauncherHome({
   onCredential,
   onGitHubAccount,
   onManage,
+  onOpenSettings,
   onPackChange,
   onProfileChange,
   onToggleRuntime,
@@ -113,6 +115,7 @@ export function LauncherHome({
                 <strong>{runtime.running ? `停止 ${runtime.applicationAddonName ?? 'DSH'}` : installingDsh ? installProgress?.indeterminate ? '安装进行中' : `安装 DSH ${installProgress?.percent ?? 0}%` : needsInstallation ? '下载安装 DSH' : activeRuntimeReplacement ? `启动 ${activeRuntimeReplacement.name}` : '启动 DSH'}</strong>
               </span>
             </button>
+            <button type="button" className="launcher-utility-button" onClick={onOpenSettings} title="设置：版本、插件、技能与整合包"><Settings size={17} /><span>设置</span></button>
             <button type="button" className="launcher-utility-button" onClick={onManage}><Settings size={17} /><span>管理</span></button>
             <div className="launcher-utility-pair">
               <button type="button" className="launcher-utility-button" onClick={onCredential} title="配置 DeepSeek 与自定义模型 API"><KeyRound size={17} /><span>API 配置</span></button>

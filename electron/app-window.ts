@@ -14,6 +14,8 @@ interface WindowSize {
 export const WINDOW_MODES: Record<WindowMode, WindowSize> = {
   launcher: { width: 900, height: 560, minWidth: 760, minHeight: 480 },
   manager: { width: 1380, height: 860, minWidth: 1024, minHeight: 680 },
+  // C 端设置页与完整管理界面共用同一套大窗口尺寸。
+  settings: { width: 1380, height: 860, minWidth: 1024, minHeight: 680 },
 }
 
 const WINDOW_MODE_ANIMATION_DURATION = 100
@@ -64,7 +66,7 @@ function cancelWindowModeAnimation(window: BrowserWindow): void {
 }
 
 export function isWindowMode(value: unknown): value is WindowMode {
-  return value === 'launcher' || value === 'manager'
+  return value === 'launcher' || value === 'manager' || value === 'settings'
 }
 
 export interface CreateWindowOptions {

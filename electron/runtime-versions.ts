@@ -171,6 +171,22 @@ export function dshVersionRoot(runtimeRoot: string, version: string): string {
   return path.join(runtimeRoot, 'versions', normalizeDshVersion(version))
 }
 
+/**
+ * 确保某个 DSH 版本已安装：已安装直接通过；缺失时调用 install 补装。
+ * 版本号缺省（如 raw 整合包未声明）返回 false，表示没有需要保证的版本。
+ * 与 profilesRepositoryImport 的“先装版本再导 Profile”语义保持一致。
+ */
+export async function ensureDshVersionInstalled(
+  installed: ReadonlyArray<{ version: string }>,
+  install: (version: string) => Promise<unknown>,
+  version: string | null | undefined,
+): Promise<boolean> {
+  if (!version) return false
+  if (installed.some(item => item.version === version)) return true
+  await install(version)
+  return true
+}
+
 function validVersion(version: string): boolean {
   return /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version.trim())
 }
