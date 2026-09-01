@@ -7435,7 +7435,6 @@ input:focus-visible {
 .recommended-dialog-footer .primary-command { min-width: 132px; }
 .recommended-action-row { display: grid; gap: 6px; padding: 2px 0 10px; }
 .recommended-action-row small { color: var(--muted); font-size: 10px; line-height: 1.6; }
-
 /* ===================== C 端设置页（轮椅模式） ===================== */
 .settings-surface-host {
   display: flex;
@@ -7448,53 +7447,37 @@ input:focus-visible {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 28px 34px 0;
   box-sizing: border-box;
   overflow: hidden;
 }
 
-.settings-header {
+.settings-topbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 16px;
   flex-shrink: 0;
+  padding: 13px 18px 12px;
+  border-bottom: 1px solid var(--line);
 }
 
-.settings-title .management-eyebrow {
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  color: var(--quiet);
-  text-transform: uppercase;
+/* 无边框窗口：顶栏空白处可拖动，按钮本身除外。 */
+.settings-topbar {
+  -webkit-app-region: drag;
 }
 
-.settings-title h1 {
-  margin: 4px 0 0;
-  font-size: 26px;
-  line-height: 1.2;
-  color: var(--ink);
+.settings-topbar button {
+  -webkit-app-region: no-drag;
 }
 
-.settings-title p {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.settings-header-actions {
+.settings-topbar-left {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
+  gap: 16px;
+  min-width: 0;
 }
 
-.settings-header-actions .secondary-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.management-back-button {
+.settings-back-button {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -7507,52 +7490,184 @@ input:focus-visible {
   cursor: pointer;
 }
 
-.management-back-button:hover {
-  background: var(--surface-strong);
+.settings-back-button:hover {
   border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface-strong);
 }
 
-.settings-tabbar {
+.settings-topbar-title {
   display: flex;
-  gap: 4px;
-  margin: 20px 0 14px;
-  padding: 4px;
-  border-radius: 10px;
-  background: var(--surface-strong);
-  width: fit-content;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-topbar-title .management-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--quiet);
+  text-transform: uppercase;
+}
+
+.settings-topbar-title h1 {
+  margin: 1px 0 0;
+  font-size: 19px;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+.settings-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   flex-shrink: 0;
 }
 
-.settings-tabbar button {
+.settings-window-button {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 8px 16px;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.settings-window-button:hover {
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+.settings-window-button.close:hover {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+.settings-layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  padding: 14px 10px;
+  border-right: 1px solid var(--line);
+  background: var(--chrome);
+}
+
+.settings-nav > button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
   border: none;
   border-radius: 8px;
   background: transparent;
   color: var(--muted);
   font-size: 13px;
   font-weight: 600;
+  text-align: left;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 
-.settings-tabbar button:hover {
+.settings-nav > button:hover {
   color: var(--ink);
+  background: var(--surface-soft);
 }
 
-.settings-tabbar button.active {
+.settings-nav > button.active {
   background: var(--surface);
   color: var(--accent);
   box-shadow: 0 1px 4px rgba(25, 35, 29, 0.08);
 }
 
-.settings-body {
-  flex: 1;
-  min-height: 0;
+.settings-nav-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line-strong);
+}
+
+.settings-nav-action {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-nav-action:hover {
+  color: var(--ink);
+  background: var(--surface-soft);
+}
+
+.settings-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--quiet);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-nav-link:hover {
+  color: var(--accent);
+}
+
+.settings-content {
+  min-width: 0;
   overflow-y: auto;
-  padding-bottom: 24px;
+  padding: 18px 22px 26px;
+}
+
+.settings-segmented {
+  display: inline-flex;
+  gap: 3px;
+  width: fit-content;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--surface-strong);
+}
+
+.settings-segmented button {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.settings-segmented button.active {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(25, 35, 29, 0.1);
 }
 
 .settings-stack {
@@ -7626,28 +7741,6 @@ input:focus-visible {
 .settings-current strong {
   color: var(--accent);
   font-size: 15px;
-}
-
-.settings-install-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-.settings-install-row input {
-  flex: 1;
-  padding: 8px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 13px;
-}
-
-.settings-install-row input:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .settings-list {
@@ -7801,53 +7894,133 @@ input:focus-visible {
   gap: 10px;
 }
 
-.settings-footer {
+.settings-progress {
   display: flex;
   align-items: center;
-  gap: 22px;
-  padding: 10px 0 14px;
-  flex-shrink: 0;
-  border-top: 1px solid var(--line);
-  margin-top: 6px;
+  gap: 9px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 12px;
 }
 
-.settings-developer-link {
+.settings-progress-track {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-strong);
+  overflow: hidden;
+}
+
+.settings-progress-track.determinate > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+.settings-progress-track.indeterminate::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: settings-indeterminate 1.1s ease-in-out infinite;
+}
+
+@keyframes settings-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(280%); }
+}
+
+.settings-progress strong {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.settings-market-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.settings-market-search {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 7px;
+  flex: 1;
+  min-width: 180px;
+  padding: 7px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.settings-market-search input {
+  flex: 1;
+  min-width: 0;
   border: none;
   background: transparent;
-  color: var(--quiet);
+  color: var(--ink);
+  font-size: 13px;
+  outline: none;
+}
+
+.settings-market-chips {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.settings-market-chips button {
+  padding: 5px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--muted);
   font-size: 12px;
   cursor: pointer;
-  padding: 4px 2px;
-  border-radius: 6px;
 }
 
-.settings-developer-link:hover {
+.settings-market-chips button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
   color: var(--accent);
+  font-weight: 700;
 }
 
-.settings-window-button {
+.settings-market-heading-actions {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 28px;
+  gap: 8px;
+}
+
+/* DSH Market 嵌入 C 端设置页：去掉整页容器留白，随面板自然滚动。 */
+.dsh-market-embedded {
   padding: 0;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
+  min-height: 0;
+  overflow: visible;
 }
 
-.settings-window-button:hover {
-  background: var(--surface-strong);
-  color: var(--ink);
+.dsh-market-embedded-actions {
+  display: inline-flex;
+  gap: 7px;
 }
 
-.settings-window-button.close:hover {
-  background: var(--danger);
-  color: #ffffff;
+.dsh-market-embedded .dsh-market-note {
+  margin-bottom: 10px;
+}
+
+.dsh-market-embedded .dsh-market-grid {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
 }

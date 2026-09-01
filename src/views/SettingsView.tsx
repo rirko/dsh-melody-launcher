@@ -4,6 +4,7 @@ import {
   Check,
   Cpu,
   Download,
+  ExternalLink,
   FolderOpen,
   Layers3,
   LoaderCircle,
@@ -11,27 +12,42 @@ import {
   Minus,
   Package,
   RefreshCw,
+  Search,
   Settings,
+  Store,
   Trash2,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLauncherApi } from '../api/client'
+import { DshMarketView } from './DshMarketView'
+import {
+  SKILL_MARKET_SOURCES,
+  collectSkillMarketEntries,
+  filterSkillMarketEntries,
+  skillInstallRequestFor,
+  type SkillMarketEntry,
+  type SkillMarketSourceKind,
+} from '../lib/skill-market'
 import type {
   AppSettings,
+  CatalogRepositoryAnalysis,
   DshInstallationStatus,
   InstalledPreset,
   InstalledSkill,
+  InstallProgress,
   ManagedPlugin,
   PackStatus,
   ProfileState,
   RuntimeEnvironmentState,
+  SkillInstallResult,
 } from '../types'
 
 /**
  * C 端「设置」页：启动页齿轮入口进来的全屏简洁管理页。
- * 只暴露 版本 / 插件 / 技能与预设 / 整合包 四块，各有开关与「打开文件夹」；
- * 左下角低调链接进开发者模式（旧设置面板与完整管理界面）。
- * 视觉沿用现有主题体系，不另造设计语言。
+ * 顶栏=返回（左上）+ 窗口键（最右）；左竖栏=四个分类 + 刷新/开发者模式；
+ * 右内容=当前分类面板。版本直接点列表下载；插件内嵌 DSH Market；技能内嵌双源技能市场。
+ * 视觉沿用现有主题体系。
  */
 
 interface SettingsViewProps {
@@ -44,6 +60,7 @@ interface SettingsViewProps {
   packs: PackStatus[]
   busy: string | null
   profileMutationLocked: boolean
+  installProgress: InstallProgress | null
   onBack: () => void
   onOpenDeveloperSettings: () => void
   onOpenManager: () => void
@@ -58,6 +75,8 @@ interface SettingsViewProps {
   onTogglePlugin: (plugin: ManagedPlugin, enabled: boolean) => Promise<boolean>
   onToggleSkill: (skill: InstalledSkill, enabled: boolean) => void
   onTogglePreset: (preset: InstalledPreset, enabled: boolean) => void
+  onSkillInstalled: (result: SkillInstallResult) => void
+  onProfileChanged: () => void
   onActivatePack: (packId: string) => Promise<boolean>
   onDeactivatePack: () => Promise<boolean>
   onRemovePack: (packId: string) => Promise<boolean>
@@ -86,6 +105,7 @@ export function SettingsView({
   packs,
   busy,
   profileMutationLocked,
+  installProgress,
   onBack,
   onOpenDeveloperSettings,
   onOpenManager,
@@ -100,6 +120,8 @@ export function SettingsView({
   onTogglePlugin,
   onToggleSkill,
   onTogglePreset,
+  onSkillInstalled,
+  onProfileChanged,
   onActivatePack,
   onDeactivatePack,
   onRemovePack,
@@ -109,7 +131,6 @@ export function SettingsView({
   onOpenPath,
 }: SettingsViewProps) {
   const [tab, setTab] = useState<SettingsTab>('versions')
-  const [versionInput, setVersionInput] = useState('')
 
   const activePack = useMemo(() => {
     const direct = packs.find(pack => pack.id === settings.profileName)
@@ -121,134 +142,123 @@ export function SettingsView({
 
   return (
     <div className="settings-page">
-      <header className="settings-header">
-        <div className="settings-title">
-          <span className="management-eyebrow">DSH LAUNCHER · 简易模式</span>
-          <h1>设置</h1>
-          <p>管理要启动的 DSH 版本、插件、技能与整合包；每一步都可以打开对应的文件夹。</p>
+      <header className="settings-topbar">
+        <div className="settings-topbar-left">
+          <button type="button" className="settings-back-button" onClick={onBack} title="返回启动页" aria-label="返回启动页"><ArrowLeft size={16} /><span>返回启动页</span></button>
+          <div className="settings-topbar-title">
+            <span className="management-eyebrow">DSH LAUNCHER · 简易模式</span>
+            <h1>设置</h1>
+          </div>
         </div>
-        <div className="settings-header-actions">
+        <div className="settings-topbar-actions">
           <button type="button" className="settings-window-button" title="最小化" aria-label="最小化" onClick={onMinimize}><Minus size={16} /></button>
           <button type="button" className="settings-window-button" title="最大化或还原" aria-label="最大化或还原" onClick={onToggleMaximize}><Maximize2 size={14} /></button>
           <button type="button" className="settings-window-button close" title="关闭" aria-label="关闭" onClick={onClose}><X size={17} /></button>
-          <button type="button" className="secondary-button" onClick={onRefresh} disabled={locked}><RefreshCw size={16} />刷新</button>
-          <button type="button" className="management-back-button" onClick={onBack} title="返回启动页" aria-label="返回启动页"><ArrowLeft size={17} /><span>返回启动页</span></button>
         </div>
       </header>
 
-      <nav className="settings-tabbar" aria-label="设置分类">
-        {TABS.map(entry => {
-          const Icon = entry.icon
-          return (
-            <button
-              key={entry.id}
-              type="button"
-              className={tab === entry.id ? 'active' : ''}
-              onClick={() => setTab(entry.id)}
-            >
-              <Icon size={17} />
-              <span>{entry.label}</span>
-            </button>
-          )
-        })}
-      </nav>
-
-      <main className="settings-body">
-        {tab === 'versions' && (
-          <SettingsVersions
-            environment={runtimeEnvironment}
-            installed={Boolean(dshInstallation.installed)}
-            input={versionInput}
-            busy={locked}
-            onInput={setVersionInput}
-            onInstall={async version => {
-              if (await onInstallDshVersion(version)) setVersionInput('')
-            }}
-            onSelect={onSelectDshVersion}
-            onRemove={onRemoveDshVersion}
-            onOpenFolder={onOpenDshFolder}
-          />
-        )}
-        {tab === 'plugins' && (
-          <SettingsPlugins pluginCount={profile.plugins.length}>
-            {profile.plugins.map(plugin => (
-              <ResourceRow
-                key={plugin.packageName}
-                title={plugin.displayName}
-                subtitle={plugin.builtin ? 'DSH 核心组合层' : plugin.version}
-                locked={plugin.locked}
-                enabled={plugin.enabled}
-                busy={locked}
-                onToggle={enabled => { void onTogglePlugin(plugin, enabled) }}
-                onOpenFolder={plugin.builtin ? undefined : () => onOpenPluginFolder(plugin.packageName)}
-              />
-            ))}
-          </SettingsPlugins>
-        )}
-        {tab === 'skills' && (
-          <div className="settings-stack">
-            <SettingsSection
-              title="技能"
-              empty={installedSkills.length === 0}
-              emptyText="本机还没有安装技能；可到「开发者模式 → 资源市场」获取。"
-              onOpenFolder={() => onOpenPath(settings.dshHome)}
-            >
-              {installedSkills.map(skill => (
-                <ResourceRow
-                  key={skill.name}
-                  title={skill.name}
-                  subtitle={skill.description || skill.path}
-                  enabled={skill.enabled}
-                  busy={locked}
-                  onToggle={enabled => onToggleSkill(skill, enabled)}
-                  onOpenFolder={() => onOpenPath(skill.path)}
-                />
-              ))}
-            </SettingsSection>
-            <SettingsSection
-              title="Agent 预设"
-              empty={installedPresets.length === 0}
-              emptyText="本机还没有预设；可到「开发者模式 → 资源市场」获取。"
-              onOpenFolder={() => onOpenPath(settings.dshHome)}
-            >
-              {installedPresets.map(preset => (
-                <ResourceRow
-                  key={preset.name}
-                  title={preset.name}
-                  subtitle={preset.enabled ? preset.path : `已停用（${preset.path}）`}
-                  enabled={preset.enabled}
-                  busy={locked}
-                  onToggle={enabled => onTogglePreset(preset, enabled)}
-                  onOpenFolder={() => onOpenPath(preset.path)}
-                />
-              ))}
-            </SettingsSection>
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="设置分类">
+          {TABS.map(entry => {
+            const Icon = entry.icon
+            return (
+              <button key={entry.id} type="button" className={tab === entry.id ? 'active' : ''} onClick={() => setTab(entry.id)}>
+                <Icon size={17} />
+                <span>{entry.label}</span>
+              </button>
+            )
+          })}
+          <div className="settings-nav-footer">
+            <button type="button" className="settings-nav-action" onClick={onRefresh} disabled={locked}><RefreshCw size={15} /><span>刷新</span></button>
+            <button type="button" className="settings-nav-link" onClick={onOpenDeveloperSettings} title="完整开发者设置"><Settings size={13} />开发者模式 →</button>
+            <button type="button" className="settings-nav-link" onClick={onOpenManager}>完整管理界面</button>
           </div>
-        )}
-        {tab === 'packs' && (
-          <SettingsPacks
-            packs={packs}
-            activePack={activePack}
-            busy={locked}
-            onImport={onImportPack}
-            onActivate={id => { void onActivatePack(id) }}
-            onDeactivate={() => { void onDeactivatePack() }}
-            onExport={id => { void onExportPack(id) }}
-            onRemove={id => {
-              if (window.confirm('确定删除这个整合包吗？已导入的独立环境会一并移除。')) void onRemovePack(id)
-            }}
-          />
-        )}
-      </main>
+        </nav>
 
-      <footer className="settings-footer">
-        <button type="button" className="settings-developer-link" onClick={onOpenDeveloperSettings} title="完整开发者设置">
-          <Settings size={14} />开发者模式 →
-        </button>
-        <button type="button" className="settings-developer-link" onClick={onOpenManager}>
-          完整管理界面（资源市场 / GitHub / 运行环境）
-        </button>
-      </footer>
+        <main className="settings-content">
+          {tab === 'versions' && (
+            <SettingsVersions
+              environment={runtimeEnvironment}
+              installed={Boolean(dshInstallation.installed)}
+              busy={locked}
+              installProgress={installProgress}
+              onInstall={onInstallDshVersion}
+              onSelect={onSelectDshVersion}
+              onRemove={onRemoveDshVersion}
+              onOpenFolder={onOpenDshFolder}
+            />
+          )}
+          {tab === 'plugins' && (
+            <SettingsPluginsTab
+              profile={profile}
+              busy={locked}
+              onTogglePlugin={onTogglePlugin}
+              onOpenPluginFolder={onOpenPluginFolder}
+              onProfileChanged={onProfileChanged}
+            />
+          )}
+          {tab === 'skills' && (
+            <div className="settings-stack">
+              <SettingsSection
+                title="已安装技能"
+                empty={installedSkills.length === 0}
+                emptyText="还没有安装技能——在下方「技能市场」里点一下就能装。"
+                onOpenFolder={() => onOpenPath(settings.dshHome)}
+              >
+                {installedSkills.map(skill => (
+                  <ResourceRow
+                    key={skill.name}
+                    title={skill.name}
+                    subtitle={skill.description || skill.path}
+                    enabled={skill.enabled}
+                    busy={locked}
+                    onToggle={enabled => onToggleSkill(skill, enabled)}
+                    onOpenFolder={() => onOpenPath(skill.path)}
+                  />
+                ))}
+              </SettingsSection>
+              <SettingsSection
+                title="Agent 预设"
+                empty={installedPresets.length === 0}
+                emptyText="本机还没有预设；可到「完整管理界面」获取。"
+                onOpenFolder={() => onOpenPath(settings.dshHome)}
+              >
+                {installedPresets.map(preset => (
+                  <ResourceRow
+                    key={preset.name}
+                    title={preset.name}
+                    subtitle={preset.enabled ? preset.path : `已停用（${preset.path}）`}
+                    enabled={preset.enabled}
+                    busy={locked}
+                    onToggle={enabled => onTogglePreset(preset, enabled)}
+                    onOpenFolder={() => onOpenPath(preset.path)}
+                  />
+                ))}
+              </SettingsSection>
+              <SkillMarketPanel
+                installedSkills={installedSkills}
+                busy={locked}
+                onInstalled={onSkillInstalled}
+                onRefresh={onRefresh}
+              />
+            </div>
+          )}
+          {tab === 'packs' && (
+            <SettingsPacks
+              packs={packs}
+              activePack={activePack}
+              busy={locked}
+              onImport={onImportPack}
+              onActivate={id => { void onActivatePack(id) }}
+              onDeactivate={() => { void onDeactivatePack() }}
+              onExport={id => { void onExportPack(id) }}
+              onRemove={id => {
+                if (window.confirm('确定删除这个整合包吗？已导入的独立环境会一并移除。')) void onRemovePack(id)
+              }}
+            />
+          )}
+        </main>
+      </div>
     </div>
   )
 }
@@ -256,9 +266,8 @@ export function SettingsView({
 function SettingsVersions({
   environment,
   installed,
-  input,
   busy,
-  onInput,
+  installProgress,
   onInstall,
   onSelect,
   onRemove,
@@ -266,67 +275,252 @@ function SettingsVersions({
 }: {
   environment: RuntimeEnvironmentState | null
   installed: boolean
-  input: string
   busy: boolean
-  onInput: (value: string) => void
-  onInstall: (version: string) => void
+  installProgress: InstallProgress | null
+  onInstall: (version: string) => Promise<boolean>
   onSelect: (version: string) => Promise<boolean>
   onRemove: (version: string) => Promise<boolean>
   onOpenFolder: () => void
 }) {
+  const [expanded, setExpanded] = useState(false)
+  const dshProgress = installProgress && installProgress.kind === 'dsh'
+    && installProgress.phase !== 'complete' && installProgress.phase !== 'error'
+    ? installProgress : null
+
   if (!environment) {
     return <div className="settings-empty"><LoaderCircle className="spin" size={20} />正在读取 DSH 版本</div>
   }
-  const candidates = environment.dshAvailable
+
+  const installedVersions = new Set(environment.dshInstalled.map(item => item.version))
+  const downloadable = environment.dshAvailable.filter(candidate => !installedVersions.has(candidate.version))
+  const shown = expanded ? downloadable : downloadable.slice(0, 15)
+
   return (
-    <div className="settings-panel">
-      <div className="settings-panel-heading">
-        <div className="settings-panel-title"><Cpu size={17} /><span>DSH 版本管理</span></div>
-        <button type="button" className="icon-button" onClick={onOpenFolder} title="打开 DSH 版本文件夹" aria-label="打开 DSH 版本文件夹"><FolderOpen size={16} /></button>
-      </div>
-      <div className="settings-current">
-        <span>当前使用</span>
-        <strong>{environment.dshSelectedVersion ?? '未选择'}</strong>
-      </div>
-      <div className="settings-install-row">
-        <input list="settings-dsh-candidates" value={input} disabled={busy} placeholder="输入或选择要下载的 DSH 精确版本" onChange={event => onInput(event.target.value)} />
-        <datalist id="settings-dsh-candidates">
-          {candidates.map(candidate => <option key={candidate.version} value={candidate.version}>{candidate.label ?? ''}</option>)}
-        </datalist>
-        <button type="button" className="primary-command" disabled={busy || !input.trim()} onClick={() => onInstall(input.trim())}><Download size={15} />下载</button>
-      </div>
-      <div className="settings-list">
-        {environment.dshInstalled.map(item => (
-          <ResourceRow
-            key={item.version}
-            title={item.version}
-            subtitle={item.source === 'legacy' ? '旧目录' : undefined}
-            enabled={item.selected}
-            selected
-            busy={busy}
-            onToggle={undefined}
-            onSelect={item.selected ? undefined : () => { void onSelect(item.version) }}
-            onRemove={item.removable ? () => { void onRemove(item.version) } : undefined}
-            onOpenFolder={undefined}
-          />
-        ))}
-        {environment.dshInstalled.length === 0 && (
-          <div className="settings-empty">{installed ? '该版本未出现在列表中，刷新后再试。' : '尚未安装任何版本；输入版本号下载后即可启动。'}</div>
+    <div className="settings-stack">
+      <section className="settings-panel">
+        <div className="settings-panel-heading">
+          <div className="settings-panel-title"><Cpu size={17} /><span>已安装版本</span></div>
+          <button type="button" className="icon-button" onClick={onOpenFolder} title="打开 DSH 版本文件夹" aria-label="打开 DSH 版本文件夹"><FolderOpen size={16} /></button>
+        </div>
+        <div className="settings-current">
+          <span>当前使用</span>
+          <strong>{environment.dshSelectedVersion ?? '未选择'}</strong>
+        </div>
+        <div className="settings-list">
+          {environment.dshInstalled.map(item => (
+            <ResourceRow
+              key={item.version}
+              title={item.version}
+              subtitle={item.source === 'legacy' ? '旧目录' : undefined}
+              enabled={item.selected}
+              selected
+              busy={busy}
+              onSelect={item.selected ? undefined : () => { void onSelect(item.version) }}
+              onRemove={item.removable ? () => { void onRemove(item.version) } : undefined}
+            />
+          ))}
+          {environment.dshInstalled.length === 0 && (
+            <div className="settings-empty">{installed ? '该版本未出现在列表中，刷新后再试。' : '尚未安装任何版本；在下方「可下载版本」里点一个即可。'}</div>
+          )}
+        </div>
+      </section>
+
+      <section className="settings-panel">
+        <div className="settings-panel-heading">
+          <div className="settings-panel-title"><Download size={17} /><span>可下载版本</span></div>
+        </div>
+        {dshProgress && (
+          <div className="settings-progress">
+            <LoaderCircle size={14} className="spin" />
+            <span>{dshProgress.message}</span>
+            <div className={`settings-progress-track ${dshProgress.indeterminate || dshProgress.percent === 0 ? 'indeterminate' : 'determinate'}`}>
+              {!dshProgress.indeterminate && dshProgress.percent > 0 && <span style={{ width: `${dshProgress.percent}%` }} />}
+            </div>
+            {!dshProgress.indeterminate && dshProgress.percent > 0 && <strong>{dshProgress.percent}%</strong>}
+          </div>
         )}
-      </div>
+        <div className="settings-hint">点「下载」直接安装该版本；完成后会自动设为当前使用。</div>
+        <div className="settings-list">
+          {shown.map(candidate => (
+            <div key={candidate.version} className="settings-row">
+              <div className="settings-row-copy">
+                <strong>{candidate.version}</strong>
+                <span>{[candidate.label, candidate.date ? candidate.date.slice(0, 10) : null, candidate.prerelease ? '预发布' : null].filter(Boolean).join(' · ') || 'npm registry'}</span>
+              </div>
+              <div className="settings-row-actions">
+                <button type="button" className="secondary-button" disabled={busy || dshProgress !== null} onClick={() => { void onInstall(candidate.version) }}>
+                  {busy ? <LoaderCircle size={13} className="spin" /> : <Download size={13} />}下载
+                </button>
+              </div>
+            </div>
+          ))}
+          {downloadable.length === 0 && <div className="settings-empty">registry 里没有更多可下载的版本。</div>}
+        </div>
+        {downloadable.length > 15 && (
+          <div className="settings-pack-footer">
+            <button type="button" className="secondary-button" onClick={() => setExpanded(value => !value)}>{expanded ? '收起' : `显示全部 ${downloadable.length} 个版本`}</button>
+          </div>
+        )}
+      </section>
     </div>
   )
 }
 
-function SettingsPlugins({ pluginCount, children }: { pluginCount: number; children: React.ReactNode }) {
+function SettingsPluginsTab({
+  profile,
+  busy,
+  onTogglePlugin,
+  onOpenPluginFolder,
+  onProfileChanged,
+}: {
+  profile: ProfileState
+  busy: boolean
+  onTogglePlugin: (plugin: ManagedPlugin, enabled: boolean) => Promise<boolean>
+  onOpenPluginFolder: (packageName: string) => void
+  onProfileChanged: () => void
+}) {
+  const [subView, setSubView] = useState<'installed' | 'market'>('installed')
   return (
-    <div className="settings-panel">
-      <div className="settings-panel-heading">
-        <div className="settings-panel-title"><Layers3 size={17} /><span>已安装插件</span>{pluginCount > 0 && <span className="settings-count">{pluginCount}</span>}</div>
+    <div className="settings-stack">
+      <div className="settings-segmented" role="tablist" aria-label="插件视图">
+        <button type="button" role="tab" aria-selected={subView === 'installed'} className={subView === 'installed' ? 'active' : ''} onClick={() => setSubView('installed')}>已安装</button>
+        <button type="button" role="tab" aria-selected={subView === 'market'} className={subView === 'market' ? 'active' : ''} onClick={() => setSubView('market')}>DSH Market</button>
       </div>
-      <div className="settings-hint">开关决定插件在下次启动时是否加载；停用不会删除本体。</div>
-      <div className="settings-list">{children}</div>
+      {subView === 'installed' ? (
+        <section className="settings-panel">
+          <div className="settings-panel-heading">
+            <div className="settings-panel-title"><Layers3 size={17} /><span>已安装插件</span>{profile.plugins.length > 0 && <span className="settings-count">{profile.plugins.length}</span>}</div>
+          </div>
+          <div className="settings-hint">开关决定插件在下次启动时是否加载；停用不会删除本体。</div>
+          <div className="settings-list">
+            {profile.plugins.map(plugin => (
+              <ResourceRow
+                key={plugin.packageName}
+                title={plugin.displayName}
+                subtitle={plugin.builtin ? 'DSH 核心组合层' : plugin.version}
+                locked={plugin.locked}
+                enabled={plugin.enabled}
+                busy={busy}
+                onToggle={enabled => { void onTogglePlugin(plugin, enabled) }}
+                onOpenFolder={plugin.builtin ? undefined : () => onOpenPluginFolder(plugin.packageName)}
+              />
+            ))}
+            {profile.plugins.length === 0 && <div className="settings-empty">当前环境还没有插件；切到「DSH Market」点安装。</div>}
+          </div>
+        </section>
+      ) : (
+        <section className="settings-panel">
+          <DshMarketView embedded onProfileChanged={onProfileChanged} />
+        </section>
+      )}
     </div>
+  )
+}
+
+function SkillMarketPanel({
+  installedSkills,
+  busy,
+  onInstalled,
+  onRefresh,
+}: {
+  installedSkills: InstalledSkill[]
+  busy: boolean
+  onInstalled: (result: SkillInstallResult) => void
+  onRefresh: () => void
+}) {
+  const api = useLauncherApi()
+  const [analyses, setAnalyses] = useState<Record<string, CatalogRepositoryAnalysis | null>>({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [sourceKind, setSourceKind] = useState<'all' | SkillMarketSourceKind>('all')
+  const [busyName, setBusyName] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    const results = await Promise.allSettled(
+      SKILL_MARKET_SOURCES.map(source => api.analyzeCatalogRepository(source.repository, source.defaultBranch)),
+    )
+    const next: Record<string, CatalogRepositoryAnalysis | null> = {}
+    let failures = 0
+    results.forEach((result, index) => {
+      const repository = SKILL_MARKET_SOURCES[index].repository
+      if (result.status === 'fulfilled' && result.value.skillAnalysis) next[repository] = result.value
+      else { next[repository] = null; failures += 1 }
+    })
+    setAnalyses(next)
+    setLoading(false)
+    if (failures === SKILL_MARKET_SOURCES.length) setError('技能市场暂时不可用（网络或 GitHub 访问失败）。')
+  }, [api])
+
+  useEffect(() => { void load() }, [load])
+
+  const entries = useMemo(() => collectSkillMarketEntries(analyses, installedSkills), [analyses, installedSkills])
+  const visible = useMemo(() => filterSkillMarketEntries(entries, query, sourceKind), [entries, query, sourceKind])
+
+  const install = async (entry: SkillMarketEntry) => {
+    setBusyName(entry.name)
+    setError(null)
+    try {
+      const result = await api.installSkill(skillInstallRequestFor(entry))
+      onInstalled(result)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : `安装「${entry.name}」失败`)
+    } finally {
+      setBusyName(null)
+    }
+  }
+
+  return (
+    <section className="settings-panel">
+      <div className="settings-panel-heading">
+        <div className="settings-panel-title"><Store size={17} /><span>技能市场</span>{entries.length > 0 && <span className="settings-count">{entries.length}</span>}</div>
+        <div className="settings-market-heading-actions">
+          <button type="button" className="settings-nav-link" onClick={() => void api.openExternal('https://skills.sh')} title="skills.sh 开放目录（浏览）"><ExternalLink size={13} />在 skills.sh 浏览更多</button>
+          <button type="button" className="icon-button" onClick={() => void load()} disabled={loading} title="重新读取目录" aria-label="重新读取目录"><RefreshCw size={15} className={loading ? 'spin' : undefined} /></button>
+        </div>
+      </div>
+      <div className="settings-market-toolbar">
+        <label className="settings-market-search"><Search size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索技能名称或描述" /></label>
+        <div className="settings-market-chips">
+          {([['all', '全部'], ['anthropic', 'Anthropic 官方'], ['dsh', 'DSH 社区']] as const).map(([id, label]) => (
+            <button key={id} type="button" className={sourceKind === id ? 'active' : ''} onClick={() => setSourceKind(id)}>{label}</button>
+          ))}
+        </div>
+      </div>
+      {error && <div className="error-banner"><span>{error}</span><button type="button" onClick={() => void load()}>重试</button></div>}
+      {loading && Object.keys(analyses).length === 0 && <div className="settings-empty"><LoaderCircle size={20} className="spin" />正在读取技能目录（首次加载需扫描 GitHub，稍候）…</div>}
+      {!loading && Object.keys(analyses).length > 0 && visible.length === 0 && <div className="settings-empty"><Search size={20} />没有匹配的技能。</div>}
+      <div className="settings-list">
+        {visible.map(entry => {
+          const isBusy = busyName === entry.name
+          return (
+            <div key={entry.key} className={`settings-row ${entry.installed ? 'enabled' : ''}`}>
+              <div className="settings-row-copy">
+                <strong>{entry.name}</strong>
+                <span>{entry.description || '暂无描述'} · {entry.source.label} · {entry.format === 'bundle' ? '技能包' : '单文件'}</span>
+              </div>
+              <div className="settings-row-actions">
+                {entry.installed ? (
+                  <>
+                    <span className="settings-row-badge"><Check size={12} />已安装</span>
+                    <label className="switch" title={entry.enabled ? '停用技能' : '启用技能'}>
+                      <input type="checkbox" checked={entry.enabled} disabled={busy} onChange={event => { void api.toggleSkill(entry.name, event.target.checked).then(onRefresh) }} />
+                      <span />
+                    </label>
+                  </>
+                ) : (
+                  <button type="button" className="primary-command" disabled={busy || isBusy} onClick={() => { void install(entry) }}>
+                    {isBusy ? <LoaderCircle size={13} className="spin" /> : <Download size={13} />}安装
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
@@ -380,7 +574,7 @@ function SettingsPacks({
         <button type="button" className="primary-command" onClick={onImport} disabled={busy}><Download size={15} />导入整合包</button>
       </div>
       <div className="settings-hint">整合包是一整套「DSH 版本 + 插件 + 技能 + 预设 + 配置」；导入时若机器上没有配套的 DSH 版本会自动下载，并与其它环境隔离。</div>
-      {packs.length === 0 && <div className="settings-empty">还没有任何整合包；可导入他人分享的 .zip，或到「开发者模式」里创建一个。</div>}
+      {packs.length === 0 && <div className="settings-empty">还没有任何整合包；可导入他人分享的 .zip，或到「完整管理界面」里创建一个。</div>}
       <div className="settings-list">
         {packs.map(pack => {
           const isActive = activePack?.id === pack.id

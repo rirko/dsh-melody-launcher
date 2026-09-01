@@ -621,6 +621,7 @@ function LauncherShell() {
               packs={store.packs}
               busy={store.busy}
               profileMutationLocked={profileMutationLocked}
+              installProgress={store.installProgress}
               onBack={navigation.showLauncher}
               onOpenDeveloperSettings={() => setSettingsOpen(true)}
               onOpenManager={navigation.showManager}
@@ -640,6 +641,8 @@ function LauncherShell() {
               onTogglePlugin={store.togglePlugin}
               onToggleSkill={store.toggleSkill}
               onTogglePreset={store.togglePreset}
+              onSkillInstalled={store.applyCatalogSkillInstall}
+              onProfileChanged={() => { void store.refreshProfile() }}
               onActivatePack={store.activatePack}
               onDeactivatePack={store.deactivatePack}
               onRemovePack={store.removePack}

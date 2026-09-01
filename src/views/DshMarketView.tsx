@@ -10,9 +10,11 @@ type Sort = 'stars' | 'updated' | 'name'
 interface DshMarketViewProps {
   /** Market mutations write the active Profile; let the shared store refresh it. */
   onProfileChanged?: () => Promise<void> | void
+  /** 嵌入 C 端设置页时：去掉整页容器与 PageHeading，改用紧凑面板头。 */
+  embedded?: boolean
 }
 
-export function DshMarketView({ onProfileChanged }: DshMarketViewProps) {
+export function DshMarketView({ onProfileChanged, embedded = false }: DshMarketViewProps) {
   const api = useLauncherApi()
   const [catalog, setCatalog] = useState<DshMarketCatalog | null>(null)
   const [query, setQuery] = useState('')
@@ -74,14 +76,17 @@ export function DshMarketView({ onProfileChanged }: DshMarketViewProps) {
   }
 
   const categories = Object.entries(catalog?.categories ?? {})
+  const refreshActions = <><button type="button" className="secondary-button" onClick={() => void checkUpdates()} disabled={loading || checkingUpdates}><RefreshCw size={14} className={checkingUpdates ? 'spin' : undefined} />检查更新</button><button type="button" className="secondary-button" onClick={() => void load()} disabled={loading || checkingUpdates}><RefreshCw size={14} className={loading ? 'spin' : undefined} />刷新目录</button></>
   return (
-    <div className="page dsh-market-page">
-      <PageHeading
-        eyebrow="独立插件市场"
-        title="DSH Market"
-        description="复用 dsh-market 的精选目录、安装、更新和启停逻辑。与资源市场完全独立。"
-        actions={<><button type="button" className="secondary-button" onClick={() => void checkUpdates()} disabled={loading || checkingUpdates}><RefreshCw size={14} className={checkingUpdates ? 'spin' : undefined} />检查更新</button><button type="button" className="secondary-button" onClick={() => void load()} disabled={loading || checkingUpdates}><RefreshCw size={14} className={loading ? 'spin' : undefined} />刷新目录</button></>}
-      />
+    <div className={embedded ? 'dsh-market-page dsh-market-embedded' : 'page dsh-market-page'}>
+      {embedded
+        ? <div className="settings-panel-heading"><div className="settings-panel-title"><Store size={17} /><span>DSH Market · 精选插件</span></div><div className="dsh-market-embedded-actions">{refreshActions}</div></div>
+        : <PageHeading
+            eyebrow="独立插件市场"
+            title="DSH Market"
+            description="复用 dsh-market 的精选目录、安装、更新和启停逻辑。与资源市场完全独立。"
+            actions={refreshActions}
+          />}
       <div className="dsh-market-note">
         <span><Store size={14} /> 数据源：awesome-dsh-plugin.com/plugins.json</span>
         <span>{catalog ? `${catalog.count} 个精选插件 · 更新于 ${catalog.updated || '未知'}` : '正在读取目录'}</span>
