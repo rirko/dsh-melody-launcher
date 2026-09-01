@@ -73,3 +73,10 @@
 - 各 tab 提供「打开文件夹」：DSH 版本文件夹、插件本体（逐项）、技能/预设目录（逐项）。
 
 **后续项（未做，已记录在设计内）**：导出勾选清单对话框与「包含 DSH 运行时 / 包含密钥」高级选项（D8）；MCP 管理（D11，等 DSH 支持）。
+
+### 改版增补（2026-08-31 · commit 0dbdaeb）
+
+- D5 落定为**左竖栏导航**：返回启动页在顶栏左上、窗口三键最右、刷新与开发者模式链接在竖栏底部；顶栏可拖拽。
+- 版本 tab 去掉手动输入版本号，改为「可下载版本」列表直接点击下载（内联进度）。
+- 插件 tab 子视图「已安装 / DSH Market」，复用 `DshMarketView`（新增 `embedded` prop）。
+- 技能 tab 内嵌**技能市场**：双源 = `anthropics/skills`（官方 Apache 2.0）+ DSH 社区仓库（awesome-dsh-skills、dsh-local-skills），走现成 `analyzeCatalogRepository`/`installSkill`，主进程零改动；skills.sh 因 API 强制 Vercel OIDC 认证（实测 401）仅保留浏览外链。
