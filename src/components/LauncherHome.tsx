@@ -1,4 +1,4 @@
-import { AppWindow, Box, CircleStop, Download, ExternalLink, GitFork, KeyRound, LoaderCircle, Maximize2, Minus, Play, RefreshCw, Settings, X } from 'lucide-react'
+import { AppWindow, Box, CircleStop, Download, ExternalLink, GitFork, KeyRound, LoaderCircle, Maximize2, Minus, Play, RefreshCw, Settings, Wrench, X } from 'lucide-react'
 import packageMetadata from '../../package.json'
 import type { AppSettings, DshInstallationStatus, DshUpdateStatus, GitHubAuthStatus, InstallProgress, InstalledApplicationAddon, PackStatus, ProfileState, ProfileSummary, RuntimeState } from '../types'
 
@@ -116,11 +116,9 @@ export function LauncherHome({
               </span>
             </button>
             <button type="button" className="launcher-utility-button" onClick={onOpenSettings} title="设置：版本、插件、技能与整合包"><Settings size={17} /><span>设置</span></button>
-            <button type="button" className="launcher-utility-button" onClick={onManage}><Settings size={17} /><span>管理</span></button>
-            <div className="launcher-utility-pair">
-              <button type="button" className="launcher-utility-button" onClick={onCredential} title="配置 DeepSeek 与自定义模型 API"><KeyRound size={17} /><span>API 配置</span></button>
-              <button type="button" className={`launcher-utility-button ${githubAuthStatus.authenticated ? 'configured' : ''}`} onClick={onGitHubAccount} title={githubAuthStatus.authenticated ? `GitHub：${githubAuthStatus.login}` : '登录 GitHub'}><GitFork size={17} /><span>{githubAuthStatus.authenticated ? githubAuthStatus.login : 'GitHub'}</span></button>
-            </div>
+            <button type="button" className="launcher-utility-button" onClick={onManage} title="完整管理界面（资源市场 / GitHub / 运行环境）"><Wrench size={17} /><span>管理</span></button>
+            <button type="button" className="launcher-utility-button" onClick={onCredential} title="配置 DeepSeek 与自定义模型 API"><KeyRound size={17} /><span>API 配置</span></button>
+            <button type="button" className={`launcher-utility-button ${githubAuthStatus.authenticated ? 'configured' : ''}`} onClick={onGitHubAccount} title={githubAuthStatus.authenticated ? `GitHub：${githubAuthStatus.login}` : '登录 GitHub'}><GitFork size={17} /><span>{githubAuthStatus.authenticated ? githubAuthStatus.login : 'GitHub'}</span></button>
           </div>
 
           <div className="launcher-profile-row">
