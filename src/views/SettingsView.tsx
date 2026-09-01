@@ -16,6 +16,7 @@ import {
   Settings,
   Store,
   Trash2,
+  Wand2,
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -25,13 +26,13 @@ import {
   SKILL_MARKET_SOURCES,
   collectSkillMarketEntries,
   filterSkillMarketEntries,
-  skillInstallRequestFor,
+  partitionDshVersions,
   type SkillMarketEntry,
   type SkillMarketSourceKind,
 } from '../lib/skill-market'
 import type {
   AppSettings,
-  CatalogRepositoryAnalysis,
+  BuiltinAgentPreset,
   DshInstallationStatus,
   InstalledPreset,
   InstalledSkill,
@@ -40,7 +41,9 @@ import type {
   PackStatus,
   ProfileState,
   RuntimeEnvironmentState,
+  RuntimeVersionCandidate,
   SkillInstallResult,
+  SkillRepositoryAnalysis,
 } from '../types'
 
 /**
@@ -86,12 +89,13 @@ interface SettingsViewProps {
   onOpenPath: (targetPath: string) => void
 }
 
-type SettingsTab = 'versions' | 'plugins' | 'skills' | 'packs'
+type SettingsTab = 'versions' | 'plugins' | 'skills' | 'presets' | 'packs'
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Cpu }> = [
   { id: 'versions', label: 'DSH 版本', icon: Cpu },
   { id: 'plugins', label: '插件', icon: Layers3 },
-  { id: 'skills', label: '技能与预设', icon: BookOpen },
+  { id: 'skills', label: '技能', icon: BookOpen },
+  { id: 'presets', label: '预设', icon: Wand2 },
   { id: 'packs', label: '整合包', icon: Package },
 ]
 
@@ -198,50 +202,24 @@ export function SettingsView({
             />
           )}
           {tab === 'skills' && (
-            <div className="settings-stack">
-              <SettingsSection
-                title="已安装技能"
-                empty={installedSkills.length === 0}
-                emptyText="还没有安装技能——在下方「技能市场」里点一下就能装。"
-                onOpenFolder={() => onOpenPath(settings.dshHome)}
-              >
-                {installedSkills.map(skill => (
-                  <ResourceRow
-                    key={skill.name}
-                    title={skill.name}
-                    subtitle={skill.description || skill.path}
-                    enabled={skill.enabled}
-                    busy={locked}
-                    onToggle={enabled => onToggleSkill(skill, enabled)}
-                    onOpenFolder={() => onOpenPath(skill.path)}
-                  />
-                ))}
-              </SettingsSection>
-              <SettingsSection
-                title="Agent 预设"
-                empty={installedPresets.length === 0}
-                emptyText="本机还没有预设；可到「完整管理界面」获取。"
-                onOpenFolder={() => onOpenPath(settings.dshHome)}
-              >
-                {installedPresets.map(preset => (
-                  <ResourceRow
-                    key={preset.name}
-                    title={preset.name}
-                    subtitle={preset.enabled ? preset.path : `已停用（${preset.path}）`}
-                    enabled={preset.enabled}
-                    busy={locked}
-                    onToggle={enabled => onTogglePreset(preset, enabled)}
-                    onOpenFolder={() => onOpenPath(preset.path)}
-                  />
-                ))}
-              </SettingsSection>
-              <SkillMarketPanel
-                installedSkills={installedSkills}
-                busy={locked}
-                onInstalled={onSkillInstalled}
-                onRefresh={onRefresh}
-              />
-            </div>
+            <SettingsSkillsTab
+              installedSkills={installedSkills}
+              busy={locked}
+              dshHome={settings.dshHome}
+              onToggleSkill={onToggleSkill}
+              onSkillInstalled={onSkillInstalled}
+              onRefresh={onRefresh}
+              onOpenPath={onOpenPath}
+            />
+          )}
+          {tab === 'presets' && (
+            <SettingsPresetsTab
+              installedPresets={installedPresets}
+              busy={locked}
+              dshHome={settings.dshHome}
+              onTogglePreset={onTogglePreset}
+              onOpenPath={onOpenPath}
+            />
           )}
           {tab === 'packs' && (
             <SettingsPacks
@@ -282,7 +260,7 @@ function SettingsVersions({
   onRemove: (version: string) => Promise<boolean>
   onOpenFolder: () => void
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expandedGroup, setExpandedGroup] = useState<'stable' | 'prerelease' | null>(null)
   const dshProgress = installProgress && installProgress.kind === 'dsh'
     && installProgress.phase !== 'complete' && installProgress.phase !== 'error'
     ? installProgress : null
@@ -292,8 +270,7 @@ function SettingsVersions({
   }
 
   const installedVersions = new Set(environment.dshInstalled.map(item => item.version))
-  const downloadable = environment.dshAvailable.filter(candidate => !installedVersions.has(candidate.version))
-  const shown = expanded ? downloadable : downloadable.slice(0, 15)
+  const { stable, prerelease } = partitionDshVersions(environment.dshAvailable, installedVersions)
 
   return (
     <div className="settings-stack">
@@ -340,28 +317,69 @@ function SettingsVersions({
           </div>
         )}
         <div className="settings-hint">点「下载」直接安装该版本；完成后会自动设为当前使用。</div>
-        <div className="settings-list">
-          {shown.map(candidate => (
-            <div key={candidate.version} className="settings-row">
-              <div className="settings-row-copy">
-                <strong>{candidate.version}</strong>
-                <span>{[candidate.label, candidate.date ? candidate.date.slice(0, 10) : null, candidate.prerelease ? '预发布' : null].filter(Boolean).join(' · ') || 'npm registry'}</span>
-              </div>
-              <div className="settings-row-actions">
-                <button type="button" className="secondary-button" disabled={busy || dshProgress !== null} onClick={() => { void onInstall(candidate.version) }}>
-                  {busy ? <LoaderCircle size={13} className="spin" /> : <Download size={13} />}下载
-                </button>
-              </div>
-            </div>
-          ))}
-          {downloadable.length === 0 && <div className="settings-empty">registry 里没有更多可下载的版本。</div>}
-        </div>
-        {downloadable.length > 15 && (
-          <div className="settings-pack-footer">
-            <button type="button" className="secondary-button" onClick={() => setExpanded(value => !value)}>{expanded ? '收起' : `显示全部 ${downloadable.length} 个版本`}</button>
-          </div>
-        )}
+        {stable.length === 0 && prerelease.length === 0 && <div className="settings-empty">registry 里没有更多可下载的版本。</div>}
+        <VersionGroup
+          title="稳定版"
+          candidates={stable}
+          expanded={expandedGroup === 'stable'}
+          onToggle={() => setExpandedGroup(value => value === 'stable' ? null : 'stable')}
+          busy={busy || dshProgress !== null}
+          onInstall={onInstall}
+        />
+        <VersionGroup
+          title="预发布版"
+          candidates={prerelease}
+          expanded={expandedGroup === 'prerelease'}
+          onToggle={() => setExpandedGroup(value => value === 'prerelease' ? null : 'prerelease')}
+          busy={busy || dshProgress !== null}
+          onInstall={onInstall}
+        />
       </section>
+    </div>
+  )
+}
+
+/** 可下载版本分组：默认只露 5 条，组内可展开，避免长列表堆在一起。 */
+function VersionGroup({
+  title,
+  candidates,
+  expanded,
+  onToggle,
+  busy,
+  onInstall,
+}: {
+  title: string
+  candidates: RuntimeVersionCandidate[]
+  expanded: boolean
+  onToggle: () => void
+  busy: boolean
+  onInstall: (version: string) => Promise<boolean>
+}) {
+  if (candidates.length === 0) return null
+  const shown = expanded ? candidates : candidates.slice(0, 5)
+  return (
+    <div className="settings-version-group">
+      <div className="settings-version-group-head">
+        <span className="settings-version-group-title">{title}<em>{candidates.length}</em></span>
+        {candidates.length > 5 && (
+          <button type="button" className="settings-nav-link" onClick={onToggle}>{expanded ? '收起' : `展开全部 ${candidates.length} 个`}</button>
+        )}
+      </div>
+      <div className="settings-list">
+        {shown.map(candidate => (
+          <div key={candidate.version} className="settings-row">
+            <div className="settings-row-copy">
+              <strong>{candidate.version}</strong>
+              <span>{[candidate.label, candidate.date ? candidate.date.slice(0, 10) : null, candidate.prerelease ? '预发布' : null].filter(Boolean).join(' · ') || 'npm registry'}</span>
+            </div>
+            <div className="settings-row-actions">
+              <button type="button" className="secondary-button" disabled={busy} onClick={() => { void onInstall(candidate.version) }}>
+                {busy ? <LoaderCircle size={13} className="spin" /> : <Download size={13} />}下载
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -417,6 +435,128 @@ function SettingsPluginsTab({
   )
 }
 
+function SettingsSkillsTab({
+  installedSkills,
+  busy,
+  dshHome,
+  onToggleSkill,
+  onSkillInstalled,
+  onRefresh,
+  onOpenPath,
+}: {
+  installedSkills: InstalledSkill[]
+  busy: boolean
+  dshHome: string
+  onToggleSkill: (skill: InstalledSkill, enabled: boolean) => void
+  onSkillInstalled: (result: SkillInstallResult) => void
+  onRefresh: () => void
+  onOpenPath: (targetPath: string) => void
+}) {
+  const [subView, setSubView] = useState<'installed' | 'market'>('installed')
+  return (
+    <div className="settings-stack">
+      <div className="settings-segmented" role="tablist" aria-label="技能视图">
+        <button type="button" role="tab" aria-selected={subView === 'installed'} className={subView === 'installed' ? 'active' : ''} onClick={() => setSubView('installed')}>已安装</button>
+        <button type="button" role="tab" aria-selected={subView === 'market'} className={subView === 'market' ? 'active' : ''} onClick={() => setSubView('market')}>技能市场</button>
+      </div>
+      {subView === 'installed' ? (
+        <SettingsSection
+          title="已安装技能"
+          empty={installedSkills.length === 0}
+          emptyText="还没有安装技能——切到「技能市场」点一下就能装。"
+          onOpenFolder={() => onOpenPath(dshHome)}
+        >
+          {installedSkills.map(skill => (
+            <ResourceRow
+              key={skill.name}
+              title={skill.name}
+              subtitle={skill.description || skill.path}
+              enabled={skill.enabled}
+              busy={busy}
+              onToggle={enabled => onToggleSkill(skill, enabled)}
+              onOpenFolder={() => onOpenPath(skill.path)}
+            />
+          ))}
+        </SettingsSection>
+      ) : (
+        <SkillMarketPanel
+          installedSkills={installedSkills}
+          busy={busy}
+          onInstalled={onSkillInstalled}
+          onRefresh={onRefresh}
+        />
+      )}
+    </div>
+  )
+}
+
+function SettingsPresetsTab({
+  installedPresets,
+  busy,
+  dshHome,
+  onTogglePreset,
+  onOpenPath,
+}: {
+  installedPresets: InstalledPreset[]
+  busy: boolean
+  dshHome: string
+  onTogglePreset: (preset: InstalledPreset, enabled: boolean) => void
+  onOpenPath: (targetPath: string) => void
+}) {
+  const api = useLauncherApi()
+  const [builtin, setBuiltin] = useState<BuiltinAgentPreset[] | null>(null)
+  useEffect(() => {
+    let alive = true
+    void api.presetsBuiltin()
+      .then(list => { if (alive) setBuiltin(list) })
+      .catch(() => { if (alive) setBuiltin([]) })
+    return () => { alive = false }
+  }, [api])
+  return (
+    <div className="settings-stack">
+      <section className="settings-panel">
+        <div className="settings-panel-heading">
+          <div className="settings-panel-title"><Wand2 size={17} /><span>内置预设</span>{builtin !== null && builtin.length > 0 && <span className="settings-count">{builtin.length}</span>}</div>
+        </div>
+        <div className="settings-hint">随 DSH 一起发布，在 DSH 界面里切换工作模式；启动器只读展示。</div>
+        {builtin === null && <div className="settings-empty"><LoaderCircle size={18} className="spin" />正在读取内置预设…</div>}
+        {builtin !== null && builtin.length === 0 && <div className="settings-empty">当前 DSH 版本没有发现内置预设。</div>}
+        <div className="settings-list">
+          {(builtin ?? []).map(preset => (
+            <div key={preset.name} className="settings-row">
+              <div className="settings-row-copy">
+                <strong>{preset.displayName}</strong>
+                <span>{preset.description || preset.name}</span>
+              </div>
+              <div className="settings-row-actions">
+                <span className="settings-row-badge">内置</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+      <SettingsSection
+        title="已安装预设"
+        empty={installedPresets.length === 0}
+        emptyText="本机还没有安装预设。"
+        onOpenFolder={() => onOpenPath(`${dshHome}\.agent-presets`)}
+      >
+        {installedPresets.map(preset => (
+          <ResourceRow
+            key={preset.name}
+            title={preset.name}
+            subtitle={preset.enabled ? preset.path : `已停用（${preset.path}）`}
+            enabled={preset.enabled}
+            busy={busy}
+            onToggle={enabled => onTogglePreset(preset, enabled)}
+            onOpenFolder={() => onOpenPath(preset.path)}
+          />
+        ))}
+      </SettingsSection>
+    </div>
+  )
+}
+
 function SkillMarketPanel({
   installedSkills,
   busy,
@@ -429,7 +569,7 @@ function SkillMarketPanel({
   onRefresh: () => void
 }) {
   const api = useLauncherApi()
-  const [analyses, setAnalyses] = useState<Record<string, CatalogRepositoryAnalysis | null>>({})
+  const [analyses, setAnalyses] = useState<Record<string, SkillRepositoryAnalysis | null>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
@@ -440,18 +580,18 @@ function SkillMarketPanel({
     setLoading(true)
     setError(null)
     const results = await Promise.allSettled(
-      SKILL_MARKET_SOURCES.map(source => api.analyzeCatalogRepository(source.repository, source.defaultBranch)),
+      SKILL_MARKET_SOURCES.map(source => api.skillMarketAnalyze(source.repository, source.defaultBranch)),
     )
-    const next: Record<string, CatalogRepositoryAnalysis | null> = {}
+    const next: Record<string, SkillRepositoryAnalysis | null> = {}
     let failures = 0
     results.forEach((result, index) => {
       const repository = SKILL_MARKET_SOURCES[index].repository
-      if (result.status === 'fulfilled' && result.value.skillAnalysis) next[repository] = result.value
+      if (result.status === 'fulfilled') next[repository] = result.value
       else { next[repository] = null; failures += 1 }
     })
     setAnalyses(next)
     setLoading(false)
-    if (failures === SKILL_MARKET_SOURCES.length) setError('技能市场暂时不可用（网络或 GitHub 访问失败）。')
+    if (failures === SKILL_MARKET_SOURCES.length) setError('技能市场暂时不可用（GitHub 访问失败）。可在「开发者模式 → 网络」配置 GitHub 镜像，或登录 GitHub 后重试。')
   }, [api])
 
   useEffect(() => { void load() }, [load])
@@ -463,7 +603,10 @@ function SkillMarketPanel({
     setBusyName(entry.name)
     setError(null)
     try {
-      const result = await api.installSkill(skillInstallRequestFor(entry))
+      const result = await api.skillMarketInstall({
+        repository: entry.target.sourceRepository ?? entry.source.repository,
+        target: entry.target,
+      })
       onInstalled(result)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : `安装「${entry.name}」失败`)

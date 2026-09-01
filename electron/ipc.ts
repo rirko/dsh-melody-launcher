@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { IPC, IPC_EVENTS } from '../src/constants'
-import type { AiSessionCreateInput, ApplicationInstallRequest, AppSettings, CustomApiProviderInput, PackCreateRequest, PluginInstallRequest, PresetInstallRequest, SkillInstallRequest, WindowMode, ProfileRepositoryImportMode, PackPluginEntry } from '../src/types'
+import type { AiSessionCreateInput, ApplicationInstallRequest, AppSettings, CustomApiProviderInput, PackCreateRequest, PluginInstallRequest, PresetInstallRequest, SkillInstallRequest, SkillInstallTarget, WindowMode, ProfileRepositoryImportMode, PackPluginEntry } from '../src/types'
 import type { ApplicationAddonManager } from './application-addons'
 import type { RecommendedWebUiService } from './recommended-web-ui'
 import { isWindowMode } from './app-window'
@@ -39,6 +39,8 @@ import type { ProfileService } from './profile-service'
 import { inspectPackZipFromPath } from './pack-zip'
 import { serializePackManifest } from './pack-manifest'
 import { ensureDshVersionInstalled } from './runtime-versions'
+import { dshVersionRoot } from './runtime-versions'
+import { readBuiltinAgentPresets } from './preset-install'
 import { writeProfileMetadata } from './profile-service'
 import { readPluginReceipts } from './plugin-receipts'
 import { analyzeProfileRepository, applyReceiptMatches, applySelectedMatches, loadProfileRepositoryManifest, manifestText, readProfileRepositoryArchive, validateFullArchive } from './profile-repository-import'
@@ -647,6 +649,38 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
       throw new Error('预设名称无效。')
     }
     return installer.uninstallPreset(payload.name)
+  })
+  ipcMain.handle(IPC.presetsBuiltin, async () => {
+    const current = await settings.read()
+    // 优先读当前选中版本的安装包；旧版布局回落到安装根目录。
+    const roots: string[] = []
+    if (current.dshVersion) roots.push(path.join(dshVersionRoot(current.dshInstallPath, current.dshVersion), 'node_modules', '@deepseek-ai', 'dsh'))
+    roots.push(path.join(current.dshInstallPath, 'node_modules', '@deepseek-ai', 'dsh'))
+    for (const root of roots) {
+      const presets = await readBuiltinAgentPresets(root)
+      if (presets.length > 0) return presets
+    }
+    return []
+  })
+  ipcMain.handle(IPC.skillMarketAnalyze, async (_event, payload: { repository: string; defaultBranch: string }) => {
+    if (!payload || typeof payload.repository !== 'string' || !isSafeRepositoryName(payload.repository)
+      || typeof payload.defaultBranch !== 'string' || !payload.defaultBranch.trim()) {
+      throw new Error('技能市场仓库参数无效。')
+    }
+    return installer.analyzeSkillArchive(payload.repository, payload.defaultBranch.trim())
+  })
+  ipcMain.handle(IPC.skillMarketInstall, async (_event, payload: { repository: string; target: SkillInstallTarget }) => {
+    assertProfileMutationAvailable()
+    if (!payload || typeof payload.repository !== 'string' || !isSafeRepositoryName(payload.repository)) {
+      throw new Error('GitHub 仓库名称无效。')
+    }
+    const target = payload.target
+    if (!target || typeof target !== 'object' || typeof target.name !== 'string' || typeof target.id !== 'string'
+      || typeof target.sourcePath !== 'string' || typeof target.revision !== 'string'
+      || (target.format !== 'bundle' && target.format !== 'flat')) {
+      throw new Error('Skill 安装目标无效。')
+    }
+    return installer.installSkillFromMarket({ repository: payload.repository, target })
   })
 
   ipcMain.handle(IPC.aiStatus, () => aiInstaller.status())

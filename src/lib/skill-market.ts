@@ -1,7 +1,7 @@
 // 技能市场（C 端设置页内嵌）的纯数据层：精选源、摊平去重、筛选、安装请求构造。
 // 数据来自现成的 api.analyzeCatalogRepository（主进程已带缓存），此处只做展示整形。
 
-import type { CatalogRepositoryAnalysis, InstalledSkill, SkillInstallRequest, SkillInstallTarget } from '../types'
+import type { InstalledSkill, RuntimeVersionCandidate, SkillInstallRequest, SkillInstallTarget, SkillRepositoryAnalysis } from '../types'
 
 export type SkillMarketSourceKind = 'anthropic' | 'dsh'
 
@@ -33,14 +33,14 @@ export interface SkillMarketEntry {
 
 /** 把各源的分析结果摊平成市场条目：按 name 去重（SKILL_MARKET_SOURCES 顺序即优先级），并标记本机已安装/启用。 */
 export function collectSkillMarketEntries(
-  analyses: Record<string, CatalogRepositoryAnalysis | null>,
+  analyses: Record<string, SkillRepositoryAnalysis | null>,
   installedSkills: InstalledSkill[],
 ): SkillMarketEntry[] {
   const installedByName = new Map(installedSkills.map(skill => [skill.name, skill]))
   const seen = new Set<string>()
   const entries: SkillMarketEntry[] = []
   for (const source of SKILL_MARKET_SOURCES) {
-    const targets = analyses[source.repository]?.skillAnalysis?.targets ?? []
+    const targets = analyses[source.repository]?.targets ?? []
     for (const target of targets) {
       if (seen.has(target.name)) continue
       seen.add(target.name)
@@ -82,4 +82,19 @@ export function skillInstallRequestFor(entry: SkillMarketEntry): SkillInstallReq
     defaultBranch: submodule ? entry.target.revision : entry.source.defaultBranch,
     targetId: entry.target.id,
   }
+}
+
+/** 可下载版本分组：剔除已安装，按预发布标记拆成稳定/预发布两组（各自保持 registry 顺序）。 */
+export function partitionDshVersions(
+  candidates: RuntimeVersionCandidate[],
+  installedVersions: ReadonlySet<string>,
+): { stable: RuntimeVersionCandidate[]; prerelease: RuntimeVersionCandidate[] } {
+  const stable: RuntimeVersionCandidate[] = []
+  const prerelease: RuntimeVersionCandidate[] = []
+  for (const candidate of candidates) {
+    if (installedVersions.has(candidate.version)) continue
+    if (candidate.prerelease) prerelease.push(candidate)
+    else stable.push(candidate)
+  }
+  return { stable, prerelease }
 }

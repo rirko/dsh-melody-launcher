@@ -1,5 +1,7 @@
 import path from 'node:path'
+import AdmZip from 'adm-zip'
 import type { SkillInstallTarget, SkillRepositoryAnalysis } from '../src/types'
+import { downloadGitHubArchive } from './github-archive'
 import { isSafeRepositoryName } from './profile'
 import { parseSkillDocument } from './skill-format'
 
@@ -8,6 +10,8 @@ const MAX_SKILL_DOCUMENT_BYTES = 2 * 1024 * 1024
 const MAX_CANDIDATES = 128
 const CANDIDATE_FETCH_CONCURRENCY = 8
 const GITHUB_API_ROOT = 'https://api.github.com'
+/** 归档式检测的下载上限：Skill 仓库都是文档型仓库，64 MiB 足够且能挡住异常大包。 */
+const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 
 interface GitHubTreeEntry {
   path?: unknown
@@ -190,6 +194,108 @@ export async function analyzeSkillRepository(
   }
 
   const targets = [...discovered.values()].sort((left, right) => left.name.localeCompare(right.name))
+  if (targets.length > 0) {
+    return {
+      repository,
+      defaultBranch,
+      installability: targets.length === 1 ? 'ready' : 'choice',
+      summary: targets.length === 1
+        ? `确认是 DSH Skill：${targets[0].name}`
+        : `确认包含 ${targets.length} 个有效 DSH Skills。`,
+      targets,
+    }
+  }
+  return {
+    repository,
+    defaultBranch,
+    installability: 'invalid',
+    summary: '没有找到符合 DSH 规范的 SKILL.md 或单文件 Skill。',
+    targets: [],
+  }
+}
+
+/** 归档条目（已去掉顶层包裹目录）：path 为仓库内路径，content 为文本内容。 */
+export interface SkillArchiveEntry {
+  path: string
+  content: string
+}
+
+/**
+ * 纯函数：从仓库归档条目挑出 Skill targets，规则与 API 检测完全一致
+ * （SKILL.md = bundle；likelyFlatSkill = flat；同名按 preferTarget 去重；按名称排序）。
+ */
+export function skillTargetsFromArchiveEntries(
+  repository: string,
+  revision: string,
+  entries: SkillArchiveEntry[],
+): SkillInstallTarget[] {
+  const candidates = [
+    ...entries.filter(entry => /(?:^|\/)SKILL\.md$/i.test(entry.path)),
+    ...entries.filter(entry => likelyFlatSkill(entry.path)),
+  ].filter((entry, index, values) => values.findIndex(other => other.path === entry.path) === index)
+    .filter(entry => entry.content.length <= MAX_SKILL_DOCUMENT_BYTES)
+    .slice(0, MAX_CANDIDATES)
+
+  const discovered = new Map<string, SkillInstallTarget>()
+  for (const entry of candidates) {
+    let parsed: ReturnType<typeof parseSkillDocument> = null
+    try {
+      parsed = parseSkillDocument(entry.content)
+    } catch {
+      parsed = null
+    }
+    if (!parsed) continue
+    const format = path.posix.basename(entry.path).toLowerCase() === 'skill.md' ? 'bundle' : 'flat'
+    const target: SkillInstallTarget = {
+      id: `${parsed.name}:${entry.path}`,
+      name: parsed.name,
+      description: parsed.description,
+      sourcePath: entry.path,
+      format,
+      revision,
+      modelInvocable: parsed.modelInvocable,
+      userInvocable: parsed.userInvocable,
+    }
+    const existing = discovered.get(parsed.name)
+    discovered.set(parsed.name, existing ? preferTarget(existing, target) : target)
+  }
+  return [...discovered.values()].sort((left, right) => left.name.localeCompare(right.name))
+}
+
+/**
+ * 归档式 Skill 检测：下载 codeload zip 后本地扫描，绕开 api.github.com。
+ * 面向 C 端技能市场——无令牌时 REST API 会被限流（403），而 codeload 直连可用。
+ * revision 使用分支名（与 installSkillFromRepository 的归档 ref 语义一致）。
+ */
+export async function analyzeSkillRepositoryFromArchive(
+  repository: string,
+  defaultBranch: string,
+  onProgress?: (received: number, total: number | null) => void,
+): Promise<SkillRepositoryAnalysis> {
+  if (!isSafeRepositoryName(repository) || !safeRevision(defaultBranch)) throw new Error('仓库名称或默认分支无效。')
+
+  const buffer = await downloadGitHubArchive(repository, defaultBranch, MAX_ARCHIVE_BYTES, onProgress)
+  const archive = new AdmZip(buffer)
+  const entries = archive.getEntries().filter(entry => !entry.isDirectory)
+  if (entries.length > MAX_FILES) throw new Error('仓库文件数量超过安全限制，已停止 Skill 检测。')
+  const firstFile = entries[0]
+  const archiveRoot = firstFile ? firstFile.entryName.split('/')[0] : null
+  if (!archiveRoot) throw new Error('仓库压缩包结构无效。')
+
+  const scanned: SkillArchiveEntry[] = []
+  for (const entry of entries) {
+    const repositoryPath = safeArchivePath(entry.entryName)
+    if (!repositoryPath) throw new Error('仓库压缩包包含不安全路径。')
+    if (!repositoryPath.startsWith(`${archiveRoot}/`)) continue
+    const relative = repositoryPath.slice(archiveRoot.length + 1)
+    if (!relative) continue
+    const isSkillFile = /(?:^|\/)SKILL\.md$/i.test(relative) || likelyFlatSkill(relative)
+    if (!isSkillFile) continue
+    if (entry.header.size > MAX_SKILL_DOCUMENT_BYTES) continue
+    scanned.push({ path: relative, content: entry.getData().toString('utf8') })
+  }
+
+  const targets = skillTargetsFromArchiveEntries(repository, defaultBranch, scanned)
   if (targets.length > 0) {
     return {
       repository,

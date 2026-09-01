@@ -495,6 +495,16 @@ export interface InstalledPreset {
   revision?: string
 }
 
+/** DSH 安装包内置的 agent preset（只读展示，由 DSH 自身管理启停）。 */
+export interface BuiltinAgentPreset {
+  /** 目录名，如 standard / cordis / minimal / code。 */
+  name: string
+  /** preset.yml 里的展示名，如「标准模式」。 */
+  displayName: string
+  description: string
+  order: number | null
+}
+
 export interface PresetInstallRequest {
   /** 子模块仓库（meta-repo 分析确定），不是父 meta-repo。 */
   repository: string
@@ -1067,6 +1077,9 @@ export interface LauncherApi {
   trialPlugin(packageName: string, profileName?: string): Promise<PluginTrialResult>
   readPluginTrials(): Promise<PluginTrialResult[]>
   installSkill(request: SkillInstallRequest): Promise<SkillInstallResult>
+  /** C 端技能市场：归档式检测（绕开 api.github.com 限流）与免重析安装。 */
+  skillMarketAnalyze(repository: string, defaultBranch: string): Promise<SkillRepositoryAnalysis>
+  skillMarketInstall(request: { repository: string; target: SkillInstallTarget }): Promise<SkillInstallResult>
   readInstalledSkills(): Promise<InstalledSkill[]>
   toggleSkill(name: string, enabled: boolean): Promise<InstalledSkill[]>
   installApplication(request: ApplicationInstallRequest): Promise<ApplicationInstallResult>
@@ -1075,6 +1088,8 @@ export interface LauncherApi {
   uninstallApplication(id: string): Promise<InstalledApplicationAddon[]>
   installPreset(request: PresetInstallRequest): Promise<PresetInstallResult>
   readInstalledPresets(): Promise<InstalledPreset[]>
+  /** 当前 DSH 版本内置的 agent preset（standard/cordis/minimal/code…）。 */
+  presetsBuiltin(): Promise<BuiltinAgentPreset[]>
   togglePreset(name: string, enabled: boolean): Promise<InstalledPreset[]>
   uninstallPreset(name: string): Promise<InstalledPreset[]>
   getRuntimeState(): Promise<RuntimeState>

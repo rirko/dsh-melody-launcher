@@ -49,7 +49,7 @@ import { readSkillReceipts, recordSkillInstall } from './skill-receipts'
 import { isSafePackageName, isSafeProfileName, readProfile } from './profile'
 import { withExecutableDirectoryOnPath } from './process'
 import { buildNetworkEnvironment } from './proxy'
-import { analyzeSkillRepository } from './skill-catalog'
+import { analyzeSkillRepository, analyzeSkillRepositoryFromArchive } from './skill-catalog'
 import { readInstalledSkills as readLocalSkills, toggleInstalledSkill } from './skill-format'
 import { installPresetFromRepository, readInstalledPresets as readLocalPresets, toggleInstalledPreset, uninstallInstalledPreset } from './preset-install'
 import { downloadReleaseAsset } from './release-download'
@@ -183,6 +183,9 @@ export interface Installer {
   ): Promise<CatalogRepositoryAnalysis>
   /** 安装一个 Skill。 */
   installSkill(request: SkillInstallRequest): Promise<SkillInstallResult>
+  /** C 端技能市场：归档式检测（绕开 api.github.com 限流）与免重析安装。 */
+  analyzeSkillArchive(fullName: string, defaultBranch: string): Promise<SkillRepositoryAnalysis>
+  installSkillFromMarket(request: { repository: string; target: SkillInstallTarget }): Promise<SkillInstallResult>
   /** 按固定 pin 安装一个 Skill（整合包清单导入用，不重新分析 HEAD）。 */
   installSkillPinned(request: { repository: string; target: SkillInstallTarget }): Promise<InstalledSkill>
   /** 读取已安装的 Skill 列表。 */
@@ -307,6 +310,16 @@ export function createInstaller(options: InstallerOptions): Installer {
     const analysis = options.githubFetch
       ? await analyzeSkillRepository(fullName, defaultBranch, options.githubFetch)
       : await analyzeSkillRepository(fullName, defaultBranch)
+    skillAnalysisCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, analysis })
+    return analysis
+  }
+
+  /** C 端技能市场专用：codeload 归档 + 本地扫描，与 analyzeSkill 共享 5 分钟缓存。 */
+  const analyzeSkillArchive = async (fullName: string, defaultBranch: string, bypassCache = false): Promise<SkillRepositoryAnalysis> => {
+    const cacheKey = `${fullName.toLowerCase()}#${defaultBranch}`
+    const cached = skillAnalysisCache.get(cacheKey)
+    if (!bypassCache && cached && cached.expiresAt > Date.now()) return cached.analysis
+    const analysis = await analyzeSkillRepositoryFromArchive(fullName, defaultBranch)
     skillAnalysisCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, analysis })
     return analysis
   }
@@ -870,6 +883,8 @@ export function createInstaller(options: InstallerOptions): Installer {
 
     analyzeSkill,
 
+    analyzeSkillArchive,
+
     analyzeApplication,
 
     analyzeCatalogRepository,
@@ -1101,6 +1116,44 @@ export function createInstaller(options: InstallerOptions): Installer {
       } catch (error) {
         emit({
           repository: request.repository,
+          kind: 'skill',
+          phase: 'error',
+          percent: currentPercent(0),
+          message: error instanceof Error ? error.message : 'Skill 安装失败',
+        })
+        throw error
+      } finally {
+        active = null
+      }
+    },
+
+    /** C 端技能市场安装：直接吃市场分析出的 target，不再走 API 重析（无令牌时 API 会 403）。 */
+    async installSkillFromMarket({ repository, target }: { repository: string; target: SkillInstallTarget }): Promise<SkillInstallResult> {
+      if (active) throw new Error(`正在安装 ${active.repository}，请等待当前任务完成。`)
+      emit({ repository, kind: 'skill', phase: 'preparing', percent: 5, message: '正在确认 Skill 格式' })
+      try {
+        const settings = await options.readSettings()
+        const onProgress = (progress: { percent: number; message: string; downloadedBytes?: number; totalBytes?: number }) =>
+          emit({ repository, kind: 'skill', phase: 'downloading', ...progress })
+        const installedSkill = options.githubFetch
+          ? await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, repository, target, onProgress, options.githubFetch)
+          : await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, repository, target, onProgress)
+        await recordSkillInstall(options.skillReceiptsPath, {
+          name: target.name,
+          format: target.format,
+          repository,
+          sourcePath: target.sourcePath,
+          revision: target.revision,
+          installedAt: new Date().toISOString(),
+        })
+        const installedSkills = await readLocalSkills(settings.dshHome)
+        const verified = installedSkills.find(skill => skill.name === target.name)
+        if (!verified) throw new Error('文件已写入，但 DSH 没有把它识别为有效 Skill。')
+        emit({ repository, kind: 'skill', phase: 'complete', percent: 100, message: `${target.name} 已安装` })
+        return { installedSkill, installedSkills }
+      } catch (error) {
+        emit({
+          repository,
           kind: 'skill',
           phase: 'error',
           percent: currentPercent(0),

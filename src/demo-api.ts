@@ -1155,6 +1155,29 @@ export const demoApi: LauncherApi = {
     demoInstalledSkills = demoInstalledSkills.map(skill => skill.name === name ? { ...skill, enabled } : skill)
     return demoInstalledSkills
   },
+  presetsBuiltin: async () => ([
+    { name: 'standard', displayName: '标准模式', description: '功能完整的编码 Agent，支持文件编辑、Shell、检索、Skills、计划与子代理。', order: 1 },
+    { name: 'code', displayName: 'PTC 模式', description: '具备标准模式全部能力，并通过 Code Mode SDK 呈现工具。', order: 2 },
+    { name: 'minimal', displayName: '极简模式', description: '仅提供持久 bash 与 str_replace_editor 的双工具编码 Agent。', order: 3 },
+    { name: 'cordis', displayName: '创造模式', description: '用于创建自定义 Agent preset，提供运行时检查与创作指导。', order: 4 },
+  ]),
+  skillMarketAnalyze: async (repository, defaultBranch) => demoSkillAnalysis(repository, defaultBranch),
+  skillMarketInstall: async ({ repository, target }) => {
+    installProgressListeners.forEach(listener => listener({ repository, kind: 'skill', phase: 'downloading', percent: 42, message: `正在下载 Skill ${target.name}` }))
+    await wait(500)
+    const installedSkill: InstalledSkill = {
+      name: target.name,
+      description: target.description,
+      path: `${demoSettings.dshHome}\\skills\\${target.name}`,
+      format: target.format,
+      enabled: true,
+      modelInvocable: target.modelInvocable,
+      userInvocable: target.userInvocable,
+    }
+    demoInstalledSkills = [...demoInstalledSkills.filter(skill => skill.name !== target.name), installedSkill]
+    installProgressListeners.forEach(listener => listener({ repository, kind: 'skill', phase: 'complete', percent: 100, message: `${target.name} 已安装` }))
+    return { installedSkill, installedSkills: demoInstalledSkills }
+  },
   installApplication: async request => {
     const analysis = demoApplicationAnalysis(request.repository, request.defaultBranch)
     const target = analysis.targets.find(item => item.id === request.targetId)
