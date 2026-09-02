@@ -326,7 +326,7 @@ input:focus-visible {
   position: absolute;
   z-index: 4;
   top: 0;
-  right: 126px;
+  right: 84px;
   left: 0;
   height: 36px;
   -webkit-app-region: drag;
@@ -364,89 +364,78 @@ input:focus-visible {
 }
 
 .launcher-window-button.minimize {
-  right: 84px;
-}
-
-.launcher-window-button.maximize {
   right: 42px;
 }
 
-.launcher-window-close:hover,
-.manager-window-close:hover {
-  color: #fff;
-  background: #c93636;
-}
+@media (hover: hover) and (pointer: fine) {
+  .launcher-window-close:hover,
+  .manager-window-close:hover {
+    color: #fff;
+    background: #c93636;
+  }
 
-.launcher-window-button:hover,
-.manager-window-button:hover {
-  color: var(--ink);
-  background: rgba(127, 137, 130, 0.16);
+  .launcher-window-button:hover,
+  .manager-window-button:hover {
+    color: var(--ink);
+    background: rgba(127, 137, 130, 0.16);
+  }
 }
 
 .launcher-stage {
   position: absolute;
   inset: 0 0 30px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(350px, 400px);
-  grid-template-rows: minmax(0, 1fr) auto;
-  padding: 28px 34px 22px;
-  gap: 16px 28px;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 24px 40px 18px;
 }
 
 .launcher-brand {
   display: flex;
-  grid-column: 1;
-  grid-row: 1 / 3;
-  min-width: 0;
-  align-self: center;
-  flex-direction: column;
+  margin-bottom: 26px;
+  align-items: center;
   gap: 14px;
-  padding-top: 8px;
   animation: launcher-rise 320ms cubic-bezier(.22,.61,.36,1) both;
 }
 
+/* 鲸鱼女仆 logo（ico 素材自带圆角，这里只加投影；入场只淡入+上移，不做缩放噱头） */
 .launcher-logo {
-  width: 132px;
-  height: 132px;
+  width: 56px;
+  height: 56px;
   flex: none;
-  border-radius: 28px;
   object-fit: contain;
-  filter: drop-shadow(0 16px 28px rgba(38, 52, 104, 0.22));
-  animation: launcher-logo-in 480ms cubic-bezier(.22,.61,.36,1) both;
+  filter: drop-shadow(0 8px 18px rgba(38, 52, 104, 0.18));
+  animation: launcher-logo-in 320ms cubic-bezier(.23,1,.32,1) both;
 }
 
 @keyframes launcher-logo-in {
-  from { opacity: 0; transform: translateY(10px) scale(.94); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
 
 .launcher-brand-copy {
   display: flex;
-  flex-direction: column;
   min-width: 0;
-}
-
-.launcher-kicker {
-  color: var(--accent);
-  font-size: 9px;
-  font-weight: 850;
-  letter-spacing: 0.14em;
+  flex-direction: column;
 }
 
 .launcher-brand-copy h1 {
-  margin: 2px 0 0;
+  margin: 0;
   color: var(--ink);
-  font-size: 31px;
+  font-size: 22px;
   font-weight: 800;
-  line-height: 38px;
-  letter-spacing: 0;
+  line-height: 26px;
+  letter-spacing: -0.01em;
 }
 
 .launcher-brand-summary {
-  margin: 0;
+  margin: 3px 0 0;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
 
 @keyframes launcher-rise {
@@ -454,89 +443,13 @@ input:focus-visible {
   to { opacity: 1; transform: none; }
 }
 
-.launcher-update-notice {
-  display: inline-flex;
-  max-width: 100%;
-  align-items: center;
-  margin-top: 11px;
-  padding: 7px 8px 7px 9px;
-  gap: 7px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  color: var(--amber);
-  background: var(--amber-soft);
-  box-shadow: 0 5px 15px rgba(53, 39, 14, 0.08);
-  text-align: left;
-}
-
-.launcher-update-notice > svg {
-  flex: none;
-  color: var(--amber);
-}
-
-.launcher-update-notice > span {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.launcher-update-notice strong,
-.launcher-update-notice small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.launcher-update-notice strong {
-  font-size: 10px;
-}
-
-.launcher-update-notice small {
-  color: var(--muted);
-  font-size: 9px;
-}
-
-.launcher-update-notice button {
-  flex: none;
-  min-height: 25px;
-  padding: 0 9px;
-  border: 1px solid var(--line-strong);
-  border-radius: 5px;
-  color: var(--amber);
-  background: var(--surface);
-  font-size: 10px;
-  font-weight: 750;
-  cursor: pointer;
-}
-
-.launcher-update-notice button:hover:not(:disabled) {
-  color: var(--amber);
-  background: var(--surface-strong);
-}
-
-.launcher-update-notice button:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
 .launcher-controls {
-  grid-column: 2;
-  align-self: center;
-  min-width: 0;
-  animation: launcher-rise 320ms cubic-bezier(.22,.61,.36,1) 90ms both;
-}
-
-/* 右侧控制卡：状态、启动、工具与配置全部收进一张浮起的卡片。 */
-.launcher-control-card {
   display: flex;
+  width: min(560px, 100%);
+  min-width: 0;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px 16px 13px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
+  gap: 12px;
+  animation: launcher-rise 320ms cubic-bezier(.22,.61,.36,1) 90ms both;
 }
 
 .launcher-runtime-state {
@@ -544,11 +457,12 @@ input:focus-visible {
   grid-template-columns: 9px minmax(0, 1fr) auto;
   min-height: 46px;
   align-items: center;
-  padding: 7px 11px;
-  gap: 9px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: var(--surface-soft);
+  padding: 7px 12px;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-variant-numeric: tabular-nums;
 }
 
 .launcher-state-dot {
@@ -583,36 +497,32 @@ input:focus-visible {
   white-space: nowrap;
 }
 
-.launcher-runtime-state > span:last-child {
-  color: var(--muted);
-  font-family: Consolas, monospace;
-  font-size: 10px;
-}
-
 .launcher-start-button {
   display: flex;
   min-width: 0;
-  min-height: 58px;
+  min-height: 64px;
   align-items: center;
   justify-content: center;
   padding: 0 18px;
   gap: 12px;
   border: 1px solid var(--accent);
-  border-radius: 11px;
+  border-radius: 8px;
   color: #ffffff;
   background: var(--accent);
   box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 25%, transparent);
   cursor: pointer;
-  transition: transform 120ms ease, background 150ms ease, border-color 150ms ease;
+  transition: transform 160ms cubic-bezier(.23,1,.32,1), background 150ms ease, border-color 150ms ease;
 }
 
 .launcher-start-button:active:not(:disabled) {
-  transform: scale(.985);
+  transform: scale(.97);
 }
 
-.launcher-start-button:hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+@media (hover: hover) and (pointer: fine) {
+  .launcher-start-button:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
 }
 
 .launcher-start-button.stop {
@@ -653,37 +563,38 @@ input:focus-visible {
 
 .launcher-utility-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .launcher-utility-button {
   display: inline-flex;
   min-width: 0;
-  min-height: 40px;
+  min-height: 44px;
   align-items: center;
   justify-content: center;
-  padding: 0 6px;
-  gap: 6px;
+  padding: 0 10px;
+  gap: 7px;
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: 8px;
   color: var(--ink);
-  background: var(--surface-soft);
-  font-size: 10.5px;
+  background: var(--surface);
+  font-size: 11.5px;
   font-weight: 650;
   cursor: pointer;
+  transition: transform 160ms cubic-bezier(.23,1,.32,1), background 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
-.launcher-utility-button.emphasis {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
-  color: var(--accent);
-  background: var(--accent-soft);
+.launcher-utility-button:active:not(:disabled) {
+  transform: scale(.97);
 }
 
-.launcher-utility-button:hover {
-  background: var(--surface-strong);
-  border-color: var(--accent);
-  color: var(--accent);
+@media (hover: hover) and (pointer: fine) {
+  .launcher-utility-button:hover {
+    background: var(--surface-strong);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
 }
 
 .launcher-utility-button > span {
@@ -693,20 +604,14 @@ input:focus-visible {
   white-space: nowrap;
 }
 
-.launcher-utility-button.configured {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
 .launcher-profile-row {
   display: grid;
-  grid-template-columns: auto minmax(128px, 1fr) auto;
-  min-height: 34px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 30px;
   align-items: center;
-  padding: 11px 1px 1px;
+  margin-top: 6px;
+  padding: 0 2px;
   gap: 9px;
-  border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 10px;
 }
@@ -735,25 +640,29 @@ input:focus-visible {
   color: var(--ink);
 }
 
-.launcher-runtime-source {
-  color: var(--quiet);
-}
-
 .launcher-open-button {
   display: inline-flex;
   align-items: center;
-  padding: 0;
-  gap: 4px;
-  border: 0;
+  padding: 4px 8px;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
   color: var(--accent);
-  background: transparent;
-  font-size: 10px;
+  background: var(--surface);
+  font-size: 10.5px;
   font-weight: 700;
   cursor: pointer;
+  transition: transform 160ms cubic-bezier(.23,1,.32,1), background 150ms ease;
 }
 
-.launcher-open-button:hover {
-  color: var(--accent-hover);
+.launcher-open-button:active {
+  transform: scale(.97);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .launcher-open-button:hover {
+    background: var(--accent-soft);
+  }
 }
 
 .launcher-footer {
@@ -768,6 +677,7 @@ input:focus-visible {
   color: var(--quiet);
   font-size: 9px;
   font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
 
 .app-shell {
@@ -6297,52 +6207,47 @@ input:focus-visible {
 @media (max-width: 820px), (max-height: 540px) {
   .launcher-stage {
     inset: 0 0 27px;
-    grid-template-columns: minmax(0, 1fr) minmax(310px, 340px);
-    padding: 34px 22px 15px;
-    gap: 10px 20px;
+    padding: 30px 24px 12px;
   }
 
   .launcher-brand {
-    align-self: start;
-    padding-top: 2px;
+    margin-bottom: 16px;
     gap: 10px;
   }
 
   .launcher-logo {
-    width: 96px;
-    height: 96px;
-    border-radius: 22px;
-  }
-
-  .launcher-control-card {
-    gap: 8px;
-    padding: 12px 12px 10px;
-  }
-
-  .launcher-start-button {
-    min-height: 50px;
+    width: 44px;
+    height: 44px;
   }
 
   .launcher-brand-copy h1 {
-    font-size: 25px;
-    line-height: 30px;
+    font-size: 19px;
+    line-height: 23px;
   }
 
   .launcher-brand-summary {
     font-size: 10px;
   }
 
-  .launcher-runtime-state {
-    min-height: 42px;
+  .launcher-controls {
+    gap: 9px;
   }
 
-  .launcher-utility-button {
-    min-height: 34px;
+  .launcher-runtime-state {
+    min-height: 40px;
+  }
+
+  .launcher-start-button {
+    min-height: 52px;
   }
 
   .launcher-start-button strong {
     font-size: 16px;
     line-height: 20px;
+  }
+
+  .launcher-utility-button {
+    min-height: 38px;
   }
 }
 
@@ -8321,7 +8226,9 @@ input:focus-visible {
     animation: none;
   }
 
-  .launcher-start-button:active {
+  .launcher-start-button:active,
+  .launcher-utility-button:active,
+  .launcher-open-button:active {
     transform: none;
   }
 

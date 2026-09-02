@@ -312,11 +312,10 @@ function LauncherShell() {
       >
         <div className={`surface-host launcher-surface-host ${navigation.surface === 'launcher' ? '' : 'view-hidden'}`}>
           <LauncherHome
-            settings={settings}
             profile={profile}
+            profileName={settings.profileName}
             runtime={store.runtime}
             dshInstallation={store.dshInstallation}
-            dshUpdate={store.dshUpdate}
             installProgress={store.installProgress?.repository === DSH_REPOSITORY ? store.installProgress : null}
             busy={runtimeBusy}
             packs={store.packs}
@@ -324,10 +323,7 @@ function LauncherShell() {
             activePackId={settings.activePackId}
             profileSwitcherDisabled={profileSwitcherLocked}
             installingDsh={installingDsh}
-            onCredential={openApiConfig}
-            githubAuthStatus={store.githubAuthStatus}
             activeRuntimeReplacement={store.activeRuntimeReplacement}
-            onGitHubAccount={() => setGitHubAccountOpen(true)}
             onManage={navigation.showManager}
             onOpenSettings={navigation.showSettings}
             onPackChange={packId => {
@@ -335,10 +331,8 @@ function LauncherShell() {
             }}
             onProfileChange={profileName => { void store.switchProfile(profileName) }}
             onToggleRuntime={toggleRuntime}
-            onUpdateDsh={() => { void store.updateDsh() }}
             onOpenHarness={openHarness}
             onMinimize={minimizeWindow}
-            onToggleMaximize={toggleMaximizeWindow}
             onClose={closeWindow}
           />
         </div>
