@@ -392,12 +392,43 @@ input:focus-visible {
   gap: 16px 28px;
 }
 
-.launcher-title-block {
-  grid-column: 2;
-  align-self: start;
-  padding-top: 12px;
-  color: var(--ink);
-  text-align: right;
+.launcher-brand {
+  display: flex;
+  grid-column: 1;
+  grid-row: 1 / 3;
+  min-width: 0;
+  align-self: center;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 8px;
+  animation: launcher-rise 320ms cubic-bezier(.22,.61,.36,1) both;
+}
+
+.launcher-brand-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.launcher-brand-mark {
+  display: inline-flex;
+  width: 54px;
+  height: 54px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--accent);
+  border-radius: 15px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 8px 20px rgba(25, 115, 79, 0.16);
+}
+
+.launcher-brand-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .launcher-kicker {
@@ -407,19 +438,25 @@ input:focus-visible {
   letter-spacing: 0.14em;
 }
 
-.launcher-title-block h1 {
-  margin: 3px 0 0;
-  font-size: 36px;
+.launcher-brand-copy h1 {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 31px;
   font-weight: 800;
-  line-height: 42px;
+  line-height: 38px;
   letter-spacing: 0;
 }
 
-.launcher-title-block p {
-  margin: 3px 0 0;
+.launcher-brand-summary {
+  margin: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 650;
+}
+
+@keyframes launcher-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
 }
 
 .launcher-update-notice {
@@ -492,6 +529,7 @@ input:focus-visible {
   grid-column: 2;
   align-self: end;
   min-width: 0;
+  animation: launcher-rise 320ms cubic-bezier(.22,.61,.36,1) 90ms both;
 }
 
 .launcher-runtime-state {
@@ -518,6 +556,7 @@ input:focus-visible {
 .launcher-state-dot.running {
   background: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+  animation: status-pulse 1.8s ease-in-out infinite;
 }
 
 .launcher-runtime-state div {
@@ -567,6 +606,11 @@ input:focus-visible {
   background: var(--accent);
   box-shadow: 0 8px 20px rgba(25, 115, 79, 0.25);
   cursor: pointer;
+  transition: transform 120ms ease, background 150ms ease, border-color 150ms ease;
+}
+
+.launcher-start-button:active:not(:disabled) {
+  transform: scale(.985);
 }
 
 .launcher-start-button:hover:not(:disabled) {
@@ -6251,18 +6295,24 @@ input:focus-visible {
     gap: 10px 20px;
   }
 
-  .launcher-title-block {
-    padding-top: 5px;
-    padding-right: 44px;
+  .launcher-brand {
+    align-self: start;
+    padding-top: 2px;
+    gap: 10px;
   }
 
-  .launcher-title-block h1 {
-    font-size: 29px;
-    line-height: 34px;
+  .launcher-brand-mark {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
   }
 
-  .launcher-title-block p {
-    margin-top: 1px;
+  .launcher-brand-copy h1 {
+    font-size: 25px;
+    line-height: 30px;
+  }
+
+  .launcher-brand-summary {
     font-size: 10px;
   }
 
@@ -6281,7 +6331,7 @@ input:focus-visible {
 }
 
 @media (max-height: 500px) {
-  .launcher-title-block p,
+  .launcher-brand-summary,
   .launcher-start-button small {
     display: none;
   }
@@ -8153,4 +8203,101 @@ input:focus-visible {
 .skill-market-card-foot .primary-command {
   padding: 5px 12px;
   font-size: 12px;
+}
+
+/* ---- 市场骨架屏 ---- */
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.skeleton-card {
+  display: flex;
+  min-height: 150px;
+  flex-direction: column;
+  gap: 9px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.skeleton-line {
+  position: relative;
+  display: block;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--surface-strong);
+}
+
+.skeleton-line-title {
+  height: 15px;
+}
+
+.skeleton-block {
+  position: relative;
+  height: 27px;
+  margin-top: auto;
+  overflow: hidden;
+  border-radius: 7px;
+  background: var(--surface-strong);
+}
+
+.skeleton-line::after,
+.skeleton-block::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
+  transform: translateX(-100%);
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  to { transform: translateX(100%); }
+}
+
+.skeleton-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.skeleton-strip-label {
+  color: var(--quiet);
+  font-size: 11px;
+}
+
+/* 呼吸脉冲：启动页运行中状态点 */
+@keyframes status-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); }
+  50% { box-shadow: 0 0 0 5px transparent; }
+}
+
+/* 尊重系统「减少动态效果」：全部新动画降级为静态 */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line::after,
+  .skeleton-block::after {
+    animation: none;
+  }
+
+  .launcher-start-button:active {
+    transform: none;
+  }
+
+  .launcher-state-dot.running {
+    animation: none;
+  }
+
+  .launcher-brand,
+  .launcher-controls {
+    animation: none;
+  }
 }

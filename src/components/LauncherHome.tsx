@@ -1,4 +1,4 @@
-import { AppWindow, Box, CircleStop, Download, ExternalLink, GitFork, KeyRound, LoaderCircle, Maximize2, Minus, Play, RefreshCw, Settings, Wrench, X } from 'lucide-react'
+import { AppWindow, Box, CircleStop, Download, ExternalLink, GitFork, KeyRound, Layers3, LoaderCircle, Maximize2, Minus, Play, RefreshCw, Settings, Wrench, X } from 'lucide-react'
 import packageMetadata from '../../package.json'
 import type { AppSettings, DshInstallationStatus, DshUpdateStatus, GitHubAuthStatus, InstallProgress, InstalledApplicationAddon, PackStatus, ProfileState, ProfileSummary, RuntimeState } from '../types'
 
@@ -82,10 +82,15 @@ export function LauncherHome({
       </button>
 
       <main className="launcher-stage">
-        <div className="launcher-title-block">
-          <span className="launcher-kicker">LOCAL AI WORKSPACE</span>
-          <h1>DeepSeek Harness</h1>
-          <p>{activeRuntimeReplacement ? `${activeRuntimeReplacement.name} 已激活` : needsInstallation ? '首次部署准备' : `本地 DSH ${dshInstallation.version ?? ''}`} · {profile.activeBundles.length} 个加载层</p>
+        <section className="launcher-brand">
+          <div className="launcher-brand-head">
+            <div className="launcher-brand-mark"><Layers3 size={25} /></div>
+            <div className="launcher-brand-copy">
+              <span className="launcher-kicker">LOCAL AI WORKSPACE</span>
+              <h1>DeepSeek Harness</h1>
+            </div>
+          </div>
+          <p className="launcher-brand-summary">{activeRuntimeReplacement ? `${activeRuntimeReplacement.name} 已激活` : needsInstallation ? '首次部署准备' : `本地 DSH ${dshInstallation.version ?? ''}`} · {profile.activeBundles.length} 个加载层</p>
           {dshUpdate?.state === 'update-available' && (
             <div className="launcher-update-notice" role="status">
               <RefreshCw size={14} />
@@ -93,7 +98,7 @@ export function LauncherHome({
               <button type="button" onClick={onUpdateDsh} disabled={busy} title="更新 DSH">更新</button>
             </div>
           )}
-        </div>
+        </section>
 
         <div className="launcher-controls">
           <div className="launcher-runtime-state">
