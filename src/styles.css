@@ -411,7 +411,7 @@ input:focus-visible {
   position: absolute;
   inset: 0 0 30px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(330px, 380px);
+  grid-template-columns: minmax(0, 1fr) minmax(350px, 400px);
   grid-template-rows: minmax(0, 1fr) auto;
   padding: 28px 34px 22px;
   gap: 16px 28px;
@@ -429,25 +429,19 @@ input:focus-visible {
   animation: launcher-rise 320ms cubic-bezier(.22,.61,.36,1) both;
 }
 
-.launcher-brand-head {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
+.launcher-logo {
+  width: 132px;
+  height: 132px;
+  flex: none;
+  border-radius: 28px;
+  object-fit: contain;
+  filter: drop-shadow(0 16px 28px rgba(38, 52, 104, 0.22));
+  animation: launcher-logo-in 480ms cubic-bezier(.22,.61,.36,1) both;
 }
 
-.launcher-brand-mark {
-  display: inline-flex;
-  width: 54px;
-  height: 54px;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--accent);
-  border-radius: 15px;
-  color: var(--accent);
-  background: var(--accent-soft);
-  box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 16%, transparent);
+@keyframes launcher-logo-in {
+  from { opacity: 0; transform: translateY(10px) scale(.94); }
+  to { opacity: 1; transform: none; }
 }
 
 .launcher-brand-copy {
@@ -552,9 +546,21 @@ input:focus-visible {
 
 .launcher-controls {
   grid-column: 2;
-  align-self: end;
+  align-self: center;
   min-width: 0;
   animation: launcher-rise 320ms cubic-bezier(.22,.61,.36,1) 90ms both;
+}
+
+/* 右侧控制卡：状态、启动、工具与配置全部收进一张浮起的卡片。 */
+.launcher-control-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 16px 13px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
 }
 
 .launcher-runtime-state {
@@ -564,10 +570,9 @@ input:focus-visible {
   align-items: center;
   padding: 7px 11px;
   gap: 9px;
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: 10px;
-  background: var(--surface);
-  box-shadow: var(--chrome-shadow);
+  background: var(--surface-soft);
 }
 
 .launcher-state-dot {
@@ -608,25 +613,16 @@ input:focus-visible {
   font-size: 10px;
 }
 
-.launcher-action-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: 46px repeat(2, 38px);
-  margin-top: 8px;
-  gap: 7px;
-}
-
 .launcher-start-button {
   display: flex;
-  grid-column: 1 / -1;
-  grid-row: 1;
   min-width: 0;
+  min-height: 58px;
   align-items: center;
   justify-content: center;
   padding: 0 18px;
   gap: 12px;
   border: 1px solid var(--accent);
-  border-radius: 8px;
+  border-radius: 11px;
   color: #ffffff;
   background: var(--accent);
   box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 25%, transparent);
@@ -679,20 +675,33 @@ input:focus-visible {
   line-height: 22px;
 }
 
+.launcher-utility-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .launcher-utility-button {
   display: inline-flex;
   min-width: 0;
+  min-height: 40px;
   align-items: center;
   justify-content: center;
-  padding: 0 10px;
-  gap: 7px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  padding: 0 6px;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
   color: var(--ink);
-  background: var(--surface);
-  font-size: 11px;
+  background: var(--surface-soft);
+  font-size: 10.5px;
   font-weight: 650;
   cursor: pointer;
+}
+
+.launcher-utility-button.emphasis {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .launcher-utility-button:hover {
@@ -717,15 +726,12 @@ input:focus-visible {
 .launcher-profile-row {
   display: grid;
   grid-template-columns: auto minmax(128px, 1fr) auto;
-  min-height: 35px;
+  min-height: 34px;
   align-items: center;
-  margin-top: 8px;
-  padding: 0 9px 0 11px;
+  padding: 11px 1px 1px;
   gap: 9px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  border-top: 1px solid var(--line);
   color: var(--muted);
-  background: var(--surface);
   font-size: 10px;
 }
 
@@ -6329,10 +6335,19 @@ input:focus-visible {
     gap: 10px;
   }
 
-  .launcher-brand-mark {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
+  .launcher-logo {
+    width: 96px;
+    height: 96px;
+    border-radius: 22px;
+  }
+
+  .launcher-control-card {
+    gap: 8px;
+    padding: 12px 12px 10px;
+  }
+
+  .launcher-start-button {
+    min-height: 50px;
   }
 
   .launcher-brand-copy h1 {
@@ -6348,8 +6363,8 @@ input:focus-visible {
     min-height: 42px;
   }
 
-  .launcher-action-grid {
-    grid-template-rows: 42px repeat(2, 33px);
+  .launcher-utility-button {
+    min-height: 34px;
   }
 
   .launcher-start-button strong {
@@ -8325,7 +8340,8 @@ input:focus-visible {
   }
 
   .launcher-brand,
-  .launcher-controls {
+  .launcher-controls,
+  .launcher-logo {
     animation: none;
   }
 }

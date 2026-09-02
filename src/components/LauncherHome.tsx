@@ -1,4 +1,4 @@
-import { AppWindow, Box, CircleStop, Download, ExternalLink, GitFork, KeyRound, Layers3, LoaderCircle, Maximize2, Minus, Play, RefreshCw, Settings, Wrench, X } from 'lucide-react'
+import { AppWindow, Box, CircleStop, Download, ExternalLink, GitFork, KeyRound, LoaderCircle, Maximize2, Minus, Play, RefreshCw, Settings, Wrench, X } from 'lucide-react'
 import packageMetadata from '../../package.json'
 import type { AppSettings, DshInstallationStatus, DshUpdateStatus, GitHubAuthStatus, InstallProgress, InstalledApplicationAddon, PackStatus, ProfileState, ProfileSummary, RuntimeState } from '../types'
 
@@ -83,12 +83,10 @@ export function LauncherHome({
 
       <main className="launcher-stage">
         <section className="launcher-brand">
-          <div className="launcher-brand-head">
-            <div className="launcher-brand-mark"><Layers3 size={25} /></div>
-            <div className="launcher-brand-copy">
-              <span className="launcher-kicker">LOCAL AI WORKSPACE</span>
-              <h1>DeepSeek Harness</h1>
-            </div>
+          <img className="launcher-logo" src="/launcher-logo.png" alt="" width={132} height={132} draggable={false} />
+          <div className="launcher-brand-copy">
+            <span className="launcher-kicker">LOCAL AI WORKSPACE</span>
+            <h1>DeepSeek Harness</h1>
           </div>
           <p className="launcher-brand-summary">{activeRuntimeReplacement ? `${activeRuntimeReplacement.name} 已激活` : needsInstallation ? '首次部署准备' : `本地 DSH ${dshInstallation.version ?? ''}`} · {profile.activeBundles.length} 个加载层</p>
           {dshUpdate?.state === 'update-available' && (
@@ -101,13 +99,13 @@ export function LauncherHome({
         </section>
 
         <div className="launcher-controls">
-          <div className="launcher-runtime-state">
-            <span className={`launcher-state-dot ${runtime.running ? 'running' : ''}`} />
-            <div><small>运行状态</small><strong>{runtimeLabel}</strong></div>
-            <span>{runtime.running && runtime.pid ? `PID ${runtime.pid}${runtime.port ? ` · :${runtime.port}` : ''}` : settings.profileName}</span>
-          </div>
+          <div className="launcher-control-card">
+            <div className="launcher-runtime-state">
+              <span className={`launcher-state-dot ${runtime.running ? 'running' : ''}`} />
+              <div><small>运行状态</small><strong>{runtimeLabel}</strong></div>
+              <span>{runtime.running && runtime.pid ? `PID ${runtime.pid}${runtime.port ? ` · :${runtime.port}` : ''}` : settings.profileName}</span>
+            </div>
 
-          <div className="launcher-action-grid">
             <button
               type="button"
               className={`launcher-start-button ${runtime.running ? 'stop' : ''}`}
@@ -120,33 +118,36 @@ export function LauncherHome({
                 <strong>{runtime.running ? `停止 ${runtime.applicationAddonName ?? 'DSH'}` : installingDsh ? installProgress?.indeterminate ? '安装进行中' : `安装 DSH ${installProgress?.percent ?? 0}%` : needsInstallation ? '下载安装 DSH' : activeRuntimeReplacement ? `启动 ${activeRuntimeReplacement.name}` : '启动 DSH'}</strong>
               </span>
             </button>
-            <button type="button" className="launcher-utility-button" onClick={onOpenSettings} title="设置：版本、插件、技能与整合包"><Settings size={17} /><span>设置</span></button>
-            <button type="button" className="launcher-utility-button" onClick={onManage} title="完整管理界面（资源市场 / GitHub / 运行环境）"><Wrench size={17} /><span>管理</span></button>
-            <button type="button" className="launcher-utility-button" onClick={onCredential} title="配置 DeepSeek 与自定义模型 API"><KeyRound size={17} /><span>API 配置</span></button>
-            <button type="button" className={`launcher-utility-button ${githubAuthStatus.authenticated ? 'configured' : ''}`} onClick={onGitHubAccount} title={githubAuthStatus.authenticated ? `GitHub：${githubAuthStatus.login}` : '登录 GitHub'}><GitFork size={17} /><span>{githubAuthStatus.authenticated ? githubAuthStatus.login : 'GitHub'}</span></button>
-          </div>
 
-          <div className="launcher-profile-row">
-            <span>启动配置</span>
-            <label className="launcher-profile-select">
-              {activeRuntimeReplacement ? <AppWindow size={15} /> : <Box size={15} />}
-              <select
-                aria-label="启动配置"
-                value={profileSelection}
-                disabled={profileSwitcherDisabled}
-                onChange={event => profiles.length > 0 ? onProfileChange(event.target.value) : onPackChange(event.target.value)}
-              >
-                {profiles.length > 0
-                  ? profiles.map(item => <option key={item.id} value={item.id}>{item.name}</option>)
-                  : <option value="">默认配置</option>}
-                {profiles.length === 0 && packs.map(pack => <option key={pack.id} value={pack.id}>{pack.name}</option>)}
-              </select>
-            </label>
-            {runtime.url ? (
-              <button type="button" className="launcher-open-button" onClick={onOpenHarness}>打开 Harness<ExternalLink size={13} /></button>
-            ) : (
-              <span className="launcher-runtime-source">{activeRuntimeReplacement ? '替代 Web 启动' : needsInstallation ? '等待部署' : dshInstallation.source === 'system' ? '系统安装' : '启动器安装'}</span>
-            )}
+            <div className="launcher-utility-row">
+              <button type="button" className="launcher-utility-button emphasis" onClick={onOpenSettings} title="设置：版本、插件、技能与整合包"><Settings size={16} /><span>设置</span></button>
+              <button type="button" className="launcher-utility-button" onClick={onManage} title="完整管理界面（资源市场 / GitHub / 运行环境）"><Wrench size={16} /><span>管理</span></button>
+              <button type="button" className="launcher-utility-button" onClick={onCredential} title="配置 DeepSeek 与自定义模型 API"><KeyRound size={16} /><span>API</span></button>
+              <button type="button" className={`launcher-utility-button ${githubAuthStatus.authenticated ? 'configured' : ''}`} onClick={onGitHubAccount} title={githubAuthStatus.authenticated ? `GitHub：${githubAuthStatus.login}` : '登录 GitHub'}><GitFork size={16} /><span>{githubAuthStatus.authenticated ? githubAuthStatus.login : 'GitHub'}</span></button>
+            </div>
+
+            <div className="launcher-profile-row">
+              <span>启动配置</span>
+              <label className="launcher-profile-select">
+                {activeRuntimeReplacement ? <AppWindow size={15} /> : <Box size={15} />}
+                <select
+                  aria-label="启动配置"
+                  value={profileSelection}
+                  disabled={profileSwitcherDisabled}
+                  onChange={event => profiles.length > 0 ? onProfileChange(event.target.value) : onPackChange(event.target.value)}
+                >
+                  {profiles.length > 0
+                    ? profiles.map(item => <option key={item.id} value={item.id}>{item.name}</option>)
+                    : <option value="">默认配置</option>}
+                  {profiles.length === 0 && packs.map(pack => <option key={pack.id} value={pack.id}>{pack.name}</option>)}
+                </select>
+              </label>
+              {runtime.url ? (
+                <button type="button" className="launcher-open-button" onClick={onOpenHarness}>打开 Harness<ExternalLink size={13} /></button>
+              ) : (
+                <span className="launcher-runtime-source">{activeRuntimeReplacement ? '替代 Web 启动' : needsInstallation ? '等待部署' : dshInstallation.source === 'system' ? '系统安装' : '启动器安装'}</span>
+              )}
+            </div>
           </div>
         </div>
       </main>
