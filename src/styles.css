@@ -1,10 +1,41 @@
+/* :root 即默认主题：DeepSeek 蓝。其余主题通过 data-theme 覆盖同名变量。 */
 :root {
   font-family: Inter, "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
-  color: #202722;
+  color: #1f2433;
   background: transparent;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   letter-spacing: 0;
+  --app-bg: #e9edf6;
+  --chrome: #eef1f8;
+  --chrome-strong: #e3e8f4;
+  --workspace-bg: #f7f9fc;
+  --ink: #1f2433;
+  --muted: #646d82;
+  --quiet: #8b93a6;
+  --line: #dde2ee;
+  --line-strong: #c8d0e4;
+  --surface: #ffffff;
+  --surface-soft: #f8fafd;
+  --surface-strong: #edf1fa;
+  --accent: #4d6bfe;
+  --accent-hover: #3a56e4;
+  --accent-soft: #e9edff;
+  --focus-ring: rgba(77, 107, 254, 0.42);
+  --scrollbar-thumb: rgba(77, 107, 254, 0.46);
+  --scrollbar-thumb-hover: rgba(58, 86, 228, 0.78);
+  --blue: #2866a0;
+  --blue-soft: #e9f1f8;
+  --amber: #9f6309;
+  --amber-soft: #fbf1dd;
+  --danger: #b33b3b;
+  --danger-soft: #f9e9e8;
+  --shadow: 0 14px 34px rgba(27, 33, 56, 0.14);
+  --chrome-shadow: 0 5px 16px rgba(41, 55, 105, 0.09);
+}
+
+:root[data-theme='forest'] {
+  color: #202722;
   --app-bg: #e7ece8;
   --chrome: #edf1ee;
   --chrome-strong: #e4eae6;
@@ -23,12 +54,6 @@
   --focus-ring: rgba(25, 115, 79, 0.42);
   --scrollbar-thumb: rgba(25, 115, 79, 0.46);
   --scrollbar-thumb-hover: rgba(16, 95, 64, 0.78);
-  --blue: #2866a0;
-  --blue-soft: #e9f1f8;
-  --amber: #9f6309;
-  --amber-soft: #fbf1dd;
-  --danger: #b33b3b;
-  --danger-soft: #f9e9e8;
   --shadow: 0 14px 34px rgba(25, 35, 29, 0.14);
   --chrome-shadow: 0 5px 16px rgba(37, 54, 43, 0.09);
 }
@@ -422,7 +447,7 @@ input:focus-visible {
   border-radius: 15px;
   color: var(--accent);
   background: var(--accent-soft);
-  box-shadow: 0 8px 20px rgba(25, 115, 79, 0.16);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .launcher-brand-copy {
@@ -604,7 +629,7 @@ input:focus-visible {
   border-radius: 8px;
   color: #ffffff;
   background: var(--accent);
-  box-shadow: 0 8px 20px rgba(25, 115, 79, 0.25);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 25%, transparent);
   cursor: pointer;
   transition: transform 120ms ease, background 150ms ease, border-color 150ms ease;
 }
@@ -1258,7 +1283,7 @@ input:focus-visible {
 
 .secondary-button.accent {
   color: var(--accent);
-  border-color: #b9d7c7;
+  border-color: color-mix(in srgb, var(--accent) 22%, white);
   background: #f6fbf8;
 }
 
@@ -3138,7 +3163,7 @@ input:focus-visible {
 
 .environment-install-row input:focus {
   border-color: #91b9a5;
-  box-shadow: 0 0 0 3px rgba(25, 115, 79, 0.08);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .environment-install-button {
@@ -3494,10 +3519,10 @@ input:focus-visible {
   width: 27px;
   height: 27px;
   place-items: center;
-  border: 1px solid #bddae0;
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, white);
   border-radius: 6px;
-  color: #236a76;
-  background: #edf7f8;
+  color: var(--blue);
+  background: var(--blue-soft);
 }
 
 .skill-identity > div:last-child {
@@ -3561,7 +3586,7 @@ input:focus-visible {
 
 .search-field:focus-within {
   border-color: #91b9a5;
-  box-shadow: 0 0 0 3px rgba(25, 115, 79, 0.08);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .search-field.compact {
@@ -4289,9 +4314,9 @@ input:focus-visible {
 }
 
 .repo-icon.skill-icon {
-  color: #236a76;
-  border-color: #bddae0;
-  background: #edf7f8;
+  color: var(--blue);
+  border-color: color-mix(in srgb, var(--blue) 35%, white);
+  background: var(--blue-soft);
 }
 
 .repo-icon.hybrid-icon {
@@ -4372,9 +4397,9 @@ input:focus-visible {
 }
 
 .repository-analysis-badge.skill {
-  color: #236a76;
-  border-color: #bddae0;
-  background: #edf7f8;
+  color: var(--blue);
+  border-color: color-mix(in srgb, var(--blue) 35%, white);
+  background: var(--blue-soft);
 }
 
 .repository-analysis-badge.application {
@@ -4864,7 +4889,7 @@ input:focus-visible {
   width: 100%;
   height: 4px;
   border-radius: 2px;
-  background: #dfe6e1;
+  background: var(--line);
   overflow: hidden;
 }
 
@@ -5263,9 +5288,9 @@ input:focus-visible {
 }
 
 .plugin-target-icon.skill-icon {
-  color: #236a76;
-  border-color: #bddae0;
-  background: #edf7f8;
+  color: var(--blue);
+  border-color: color-mix(in srgb, var(--blue) 35%, white);
+  background: var(--blue-soft);
 }
 
 .plugin-target-icon.preset-icon {
@@ -5614,7 +5639,7 @@ input:focus-visible {
 .custom-api-form-grid select:focus,
 .custom-api-form-grid textarea:focus {
   border-color: #8eb8a3;
-  box-shadow: 0 0 0 2px rgba(25, 115, 79, 0.12);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .custom-api-form-grid .secret-input {
@@ -5701,7 +5726,7 @@ input:focus-visible {
 
 .secret-input:focus-within {
   border-color: #8eb8a3;
-  box-shadow: 0 0 0 2px rgba(25, 115, 79, 0.12);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .secret-input input {
@@ -6032,6 +6057,9 @@ input:focus-visible {
   border-radius: 3px;
 }
 
+.theme-swatch.deepseek i:nth-child(1) { background: #dbe3ff; }
+.theme-swatch.deepseek i:nth-child(2) { background: #8fa2f2; }
+.theme-swatch.deepseek i:nth-child(3) { background: #4d6bfe; }
 .theme-swatch.forest i:nth-child(1) { background: #dce9e0; }
 .theme-swatch.forest i:nth-child(2) { background: #92b9a2; }
 .theme-swatch.forest i:nth-child(3) { background: #19734f; }
@@ -6950,7 +6978,7 @@ input:focus-visible {
 .dsh-market-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 11px; }
 .dsh-market-toolbar select { height: 34px; min-width: 0; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--ink); background: #fff; font-size: 11px; }
 .dsh-market-progress { display: flex; min-height: 34px; align-items: center; margin-bottom: 10px; padding: 0 11px; gap: 7px; border: 1px solid #c3d7ca; border-radius: 5px; color: var(--accent); background: var(--accent-soft); font-size: 11px; }
-.dsh-market-progress-track { flex: 1; min-width: 110px; height: 4px; border-radius: 2px; background: #dfe6e1; overflow: hidden; }
+.dsh-market-progress-track { flex: 1; min-width: 110px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .dsh-market-progress-track.determinate span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 180ms ease; }
 .dsh-market-progress-track.indeterminate span { display: block; width: 38%; height: 100%; border-radius: inherit; background: var(--accent); animation: install-progress-slide 1.25s ease-in-out infinite; }
 .dsh-market-progress strong { flex: 0 0 auto; font-family: Consolas, monospace; font-size: 10px; }
@@ -7034,7 +7062,7 @@ input:focus-visible {
 
 .ai-phase-badge.done {
   color: var(--accent);
-  border-color: #b9d7c7;
+  border-color: color-mix(in srgb, var(--accent) 22%, white);
   background: var(--accent-soft);
 }
 

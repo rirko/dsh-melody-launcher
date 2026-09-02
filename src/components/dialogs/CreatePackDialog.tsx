@@ -299,12 +299,12 @@ const createPackStyle = `
   border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer;
 }
 .pack-checklist-item input { width: 14px; height: 14px; accent-color: var(--accent); }
-.pack-checklist-item.checked { border-color: #b9d7c7; background: var(--accent-soft); }
+.pack-checklist-item.checked { border-color: color-mix(in srgb, var(--accent) 22%, white); background: var(--accent-soft); }
 .pack-checklist-item.muted { opacity: 0.6; }
 .pack-item-glyph {
   display: grid; width: 27px; height: 27px; place-items: center;
-  border: 1px solid #bddae0; border-radius: 6px;
-  color: #236a76; background: #edf7f8; font-size: 10px; font-weight: 700;
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, white); border-radius: 6px;
+  color: var(--blue); background: var(--blue-soft); font-size: 10px; font-weight: 700;
 }
 .pack-checklist-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .pack-checklist-copy strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
@@ -322,7 +322,7 @@ const createPackStyle = `
   background: var(--surface-soft); color: var(--muted); font-size: 11px; cursor: pointer;
 }
 .pack-resource-tabs button.active {
-  border-color: #b9d7c7; color: var(--accent); background: var(--accent-soft); font-weight: 650;
+  border-color: color-mix(in srgb, var(--accent) 22%, white); color: var(--accent); background: var(--accent-soft); font-weight: 650;
 }
 .pack-resource-tabs button span { margin-left: 4px; opacity: 0.75; }
 .pack-resource-panel h3 { margin: 0; font-size: 12px; }

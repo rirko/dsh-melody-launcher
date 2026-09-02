@@ -15,6 +15,7 @@ interface SettingsDialogProps {
 }
 
 const UI_THEMES: Array<{ id: UiTheme; label: string }> = [
+  { id: 'deepseek', label: 'DeepSeek 蓝' },
   { id: 'forest', label: '松林' },
   { id: 'ocean', label: '海湾' },
   { id: 'berry', label: '莓果' },
@@ -54,13 +55,13 @@ export function SettingsDialog({ settings, busy, onClose, onSave, onDownloadReco
                 key={theme.id}
                 type="button"
                 role="radio"
-                aria-checked={(draft.uiTheme ?? 'forest') === theme.id}
-                className={`theme-option ${(draft.uiTheme ?? 'forest') === theme.id ? 'selected' : ''}`}
+                aria-checked={(draft.uiTheme ?? 'deepseek') === theme.id}
+                className={`theme-option ${(draft.uiTheme ?? 'deepseek') === theme.id ? 'selected' : ''}`}
                 onClick={() => setDraft({ ...draft, uiTheme: theme.id })}
               >
                 <span className={`theme-swatch ${theme.id}`} aria-hidden="true"><i /><i /><i /></span>
                 <span>{theme.label}</span>
-                {(draft.uiTheme ?? 'forest') === theme.id && <Check size={14} />}
+                {(draft.uiTheme ?? 'deepseek') === theme.id && <Check size={14} />}
               </button>
             ))}
           </div>

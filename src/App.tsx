@@ -112,7 +112,7 @@ function LauncherShell() {
   const [repositoryAnalyses, setRepositoryAnalyses] = useState<Record<string, CatalogRepositoryAnalysis>>({})
 
   useEffect(() => {
-    document.documentElement.dataset.theme = store.settings?.uiTheme ?? 'forest'
+    document.documentElement.dataset.theme = store.settings?.uiTheme ?? 'deepseek'
   }, [store.settings?.uiTheme])
 
   const installingResource = isInstallProgressActive(store.installProgress)

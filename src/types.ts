@@ -1,7 +1,7 @@
 export type ViewName = 'plugins' | 'discover' | 'dsh-market' | 'environment' | 'packs' | 'github'
 export type RuntimeDrawerMode = 'hidden' | 'half' | 'expanded'
 export type WindowMode = 'launcher' | 'manager' | 'settings'
-export type UiTheme = 'forest' | 'ocean' | 'berry' | 'graphite'
+export type UiTheme = 'deepseek' | 'forest' | 'ocean' | 'berry' | 'graphite'
 
 export interface AppSettings {
   dshInstallPath: string

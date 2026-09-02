@@ -56,7 +56,7 @@ let demoSettings: AppSettings = {
   launchArgs: ['--yes', '@deepseek-ai/dsh', 'web'],
   webPort: 3080,
   openAfterLaunch: true,
-  uiTheme: 'forest',
+  uiTheme: 'deepseek',
   dshVersion: null,
   nodeVersion: null,
 }
