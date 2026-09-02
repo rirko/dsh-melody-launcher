@@ -77,7 +77,7 @@ describe('filterSkillMarketEntries', () => {
   })
 
   it('按源类型筛选', () => {
-    expect(filterSkillMarketEntries(entries, '', 'anthropic').map(e => e.name)).toEqual(['pdf'])
+    expect(filterSkillMarketEntries(entries, '', 'general').map(e => e.name)).toEqual(['pdf'])
     expect(filterSkillMarketEntries(entries, '', 'dsh').map(e => e.name)).toEqual(['dsh-x'])
   })
 })

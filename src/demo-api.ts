@@ -1161,7 +1161,18 @@ export const demoApi: LauncherApi = {
     { name: 'minimal', displayName: '极简模式', description: '仅提供持久 bash 与 str_replace_editor 的双工具编码 Agent。', order: 3 },
     { name: 'cordis', displayName: '创造模式', description: '用于创建自定义 Agent preset，提供运行时检查与创作指导。', order: 4 },
   ]),
-  skillMarketAnalyze: async (repository, defaultBranch) => demoSkillAnalysis(repository, defaultBranch),
+  skillMarketAnalyze: async (repository, defaultBranch) => ({
+    repository,
+    defaultBranch,
+    installability: 'choice',
+    summary: '演示数据：4 个技能。',
+    targets: [
+      { id: 'pdf:skills/pdf/SKILL.md', name: 'pdf', description: 'Use this skill whenever the user wants to do anything with PDF files.', sourcePath: 'skills/pdf/SKILL.md', format: 'bundle', revision: defaultBranch, modelInvocable: true, userInvocable: true },
+      { id: 'canvas-design:skills/canvas-design/SKILL.md', name: 'canvas-design', description: 'Create beautiful visual art in .png and .pdf documents.', sourcePath: 'skills/canvas-design/SKILL.md', format: 'bundle', revision: defaultBranch, modelInvocable: true, userInvocable: true },
+      { id: 'mcp-builder:skills/mcp-builder/SKILL.md', name: 'mcp-builder', description: 'Guide for creating high-quality MCP servers.', sourcePath: 'skills/mcp-builder/SKILL.md', format: 'bundle', revision: defaultBranch, modelInvocable: true, userInvocable: true },
+      { id: 'quick-ref:quick-ref.md', name: 'quick-ref', description: '单文件速查技能示例。', sourcePath: 'quick-ref.md', format: 'flat', revision: defaultBranch, modelInvocable: true, userInvocable: true },
+    ],
+  }),
   skillMarketInstall: async ({ repository, target }) => {
     installProgressListeners.forEach(listener => listener({ repository, kind: 'skill', phase: 'downloading', percent: 42, message: `正在下载 Skill ${target.name}` }))
     await wait(500)

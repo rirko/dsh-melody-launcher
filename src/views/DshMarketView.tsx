@@ -2,6 +2,7 @@ import { Check, ExternalLink, LoaderCircle, RefreshCw, Search, Star, Store, Togg
 import { useEffect, useMemo, useState } from 'react'
 import { useLauncherApi } from '../api/client'
 import { PageHeading } from '../components/PageHeading'
+import { SkeletonCards } from '../components/Skeleton'
 import { formatStars } from '../lib/format'
 import type { DshMarketCatalog, DshMarketPlugin, DshMarketProgress } from '../types'
 
@@ -107,7 +108,7 @@ export function DshMarketView({ onProfileChanged, embedded = false }: DshMarketV
         </div>
       )}
       {error && <div className="error-banner"><span>{error}</span><button type="button" onClick={() => void load()}>重试</button></div>}
-      {loading && catalog === null && <div className="empty-state"><LoaderCircle size={22} className="spin" /><span>正在读取 DSH Market 目录…</span></div>}
+      {loading && catalog === null && <><div className="settings-hint">正在读取 DSH Market 目录…</div><SkeletonCards count={8} /></>}
       {!loading && catalog !== null && visible.length === 0 && <div className="empty-state"><Search size={22} /><span>没有匹配的精选插件。</span></div>}
       <div className="dsh-market-grid">
         {visible.map(plugin => {

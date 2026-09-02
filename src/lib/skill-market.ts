@@ -1,9 +1,9 @@
 // 技能市场（C 端设置页内嵌）的纯数据层：精选源、摊平去重、筛选、安装请求构造。
-// 数据来自现成的 api.analyzeCatalogRepository（主进程已带缓存），此处只做展示整形。
+// 数据来自 api.skillMarketAnalyze（归档式检测，主进程带内存+磁盘缓存），此处只做展示整形。
 
 import type { InstalledSkill, RuntimeVersionCandidate, SkillInstallRequest, SkillInstallTarget, SkillRepositoryAnalysis } from '../types'
 
-export type SkillMarketSourceKind = 'anthropic' | 'dsh'
+export type SkillMarketSourceKind = 'general' | 'dsh'
 
 export interface SkillMarketSource {
   /** GitHub owner/repo。 */
@@ -13,9 +13,16 @@ export interface SkillMarketSource {
   kind: SkillMarketSourceKind
 }
 
-/** 精选技能源：Anthropic 官方仓库 + 本仓库 catalog 已同步的 DSH 社区技能仓库。 */
+/**
+ * 精选技能源：通用头部仓库（skills.sh 榜单常客）+ 本仓库 catalog 已同步的 DSH 社区技能仓库。
+ * 收录门槛是「能解析出 SKILL.md」；某源拉取失败只会显示该源的重试行，不影响其它源出结果。
+ */
 export const SKILL_MARKET_SOURCES: SkillMarketSource[] = [
-  { repository: 'anthropics/skills', defaultBranch: 'main', label: 'Anthropic 官方', kind: 'anthropic' },
+  { repository: 'anthropics/skills', defaultBranch: 'main', label: 'Anthropic 官方', kind: 'general' },
+  { repository: 'obra/superpowers', defaultBranch: 'main', label: 'Superpowers', kind: 'general' },
+  { repository: 'vercel-labs/skills', defaultBranch: 'main', label: 'Vercel Labs', kind: 'general' },
+  { repository: 'mattpocock/skills', defaultBranch: 'main', label: 'Matt Pocock', kind: 'general' },
+  { repository: 'firebase/agent-skills', defaultBranch: 'main', label: 'Firebase', kind: 'general' },
   { repository: 'hackerfish/awesome-dsh-skills', defaultBranch: 'main', label: 'DSH 社区精选', kind: 'dsh' },
   { repository: 'asakumizy/dsh-local-skills', defaultBranch: 'main', label: 'DSH 本地技能', kind: 'dsh' },
 ]
@@ -91,6 +98,18 @@ export const SKILL_ZH_META: Record<string, SkillZhMeta> = {
   'dsh-test-first': { category: '开发' },
   'code-review': { category: '开发' },
   'git-commit': { category: '效率' },
+  // ---- obra/superpowers ----
+  brainstorming: { category: '效率', nameZh: '头脑风暴', descriptionZh: '动手前先把问题、约束与方案空间聊清楚。' },
+  'writing-plans': { category: '效率', nameZh: '撰写计划', descriptionZh: '把目标拆成可验证的分步实施计划。' },
+  'executing-plans': { category: '效率', nameZh: '执行计划', descriptionZh: '按计划推进并逐段核验产出。' },
+  'test-driven-development': { category: '开发', nameZh: '测试驱动开发', descriptionZh: '先写失败测试，再最小实现，最后重构。' },
+  'systematic-debugging': { category: '开发', nameZh: '系统化调试', descriptionZh: '按假设-验证循环定位缺陷，而非乱改碰运气。' },
+  'requesting-code-review': { category: '开发', nameZh: '请求代码评审', descriptionZh: '提交评审前自查范围、测试与说明。' },
+  // ---- vercel-labs/skills ----
+  'find-skills': { category: '效率', nameZh: '技能发现', descriptionZh: '按任务检索并推荐可安装的技能。' },
+  // ---- mattpocock/skills ----
+  'grill-me': { category: '效率', nameZh: '拷问方案', descriptionZh: '对设计/方案逐条追问直到边界清晰。' },
+  tdd: { category: '开发', nameZh: 'TDD 红绿循环', descriptionZh: '红-绿-重构的小步循环写测试与实现。' },
 }
 
 const CATEGORY_KEYWORDS: Array<[SkillCategory, RegExp]> = [

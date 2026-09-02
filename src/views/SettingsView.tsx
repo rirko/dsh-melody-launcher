@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLauncherApi } from '../api/client'
+import { SkeletonStrip } from '../components/Skeleton'
 import { DshMarketView } from './DshMarketView'
 import {
   SKILL_CATEGORIES,
@@ -639,7 +640,7 @@ function SkillMarketPanel({
       <div className="settings-market-toolbar">
         <label className="settings-market-search"><Search size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索技能名称或描述" /></label>
         <div className="settings-market-chips">
-          {([['all', '全部'], ['anthropic', 'Anthropic 官方'], ['dsh', 'DSH 社区']] as const).map(([id, label]) => (
+          {([['all', '全部'], ['general', '通用技能'], ['dsh', 'DSH 社区']] as const).map(([id, label]) => (
             <button key={id} type="button" className={sourceKind === id ? 'active' : ''} onClick={() => setSourceKind(id)}>{label}</button>
           ))}
         </div>
@@ -652,14 +653,16 @@ function SkillMarketPanel({
       </div>
       {SKILL_MARKET_SOURCES.map(source => {
         const state = sources[source.repository]
-        if (!state || state.status === 'ready') return null
-        return (
-          <div key={source.repository} className={`settings-market-source ${state.status === 'failed' ? 'failed' : ''}`}>
-            {state.status === 'failed'
-              ? <><span>{source.label}：{state.error}</span><button type="button" className="settings-nav-link" onClick={() => loadSource(source)}>重试</button></>
-              : <><LoaderCircle size={13} className="spin" /><span>正在读取 {source.label}…</span></>}
-          </div>
-        )
+        if (state?.status === 'ready') return null
+        if (state?.status === 'failed') {
+          return (
+            <div key={source.repository} className="settings-market-source failed">
+              <span>{source.label}：{state.error}</span>
+              <button type="button" className="settings-nav-link" onClick={() => loadSource(source)}>重试</button>
+            </div>
+          )
+        }
+        return <SkeletonStrip key={source.repository} label={`正在读取 ${source.label}…`} />
       })}
       {allFailed && <div className="error-banner"><span>所有技能源都读取失败。若你的网络需要代理才能访问 GitHub，请在「开发者模式 → 网络」配置代理或 GitHub 镜像后重试。</span><button type="button" onClick={() => SKILL_MARKET_SOURCES.forEach(loadSource)}>全部重试</button></div>}
       {!loading && !allFailed && visible.length === 0 && <div className="settings-empty"><Search size={20} />没有匹配的技能。</div>}
@@ -670,8 +673,8 @@ function SkillMarketPanel({
             <article key={entry.key} className="skill-market-card">
               <div className="skill-market-card-head">
                 <div>
-                  <h2>{entry.displayName}</h2>
-                  {entry.displayName !== entry.name && <span>{entry.name}</span>}
+                  <h2>{entry.name}</h2>
+                  {entry.displayName !== entry.name && <span>{entry.displayName}</span>}
                 </div>
                 {entry.installed && <span className="settings-row-badge"><Check size={12} />已装</span>}
               </div>
