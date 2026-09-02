@@ -42,6 +42,7 @@ import { ensureDshVersionInstalled } from './runtime-versions'
 import { dshVersionRoot } from './runtime-versions'
 import { readBuiltinAgentPresets } from './preset-install'
 import { writeProfileMetadata } from './profile-service'
+import { createSkillsShIndexStore, fetchSkillsShIndex, lookupSkillsShIndexCache, matchSkillsShTarget } from './skills-sh'
 import { readPluginReceipts } from './plugin-receipts'
 import { analyzeProfileRepository, applyReceiptMatches, applySelectedMatches, loadProfileRepositoryManifest, manifestText, readProfileRepositoryArchive, validateFullArchive } from './profile-repository-import'
 
@@ -67,12 +68,14 @@ export interface IpcDependencies {
   recommendedWebUi: RecommendedWebUiService
   runtimeVersions: RuntimeVersionService
   profiles: ProfileService
+  /** skills.sh 索引磁盘缓存路径（userData/skills-sh-index.json）。 */
+  skillsShIndexPath: string
   getWindow: () => BrowserWindow | null
   setWindowMode: (mode: WindowMode) => void
 }
 
 export function registerIpcHandlers(deps: IpcDependencies): void {
-  const { settings, pluginReceiptsPath, runtime, installer, launcherUpdater, pluginTrial, aiInstaller, copilot, packManager, githubAuth, applicationAddons, catalogSync, dshMarket, recommendedWebUi, runtimeVersions, profiles } = deps
+  const { settings, pluginReceiptsPath, runtime, installer, launcherUpdater, pluginTrial, aiInstaller, copilot, packManager, githubAuth, applicationAddons, catalogSync, dshMarket, recommendedWebUi, runtimeVersions, profiles, skillsShIndexPath } = deps
   const linkedComponents = createLinkedComponentController({
     readSettings: () => settings.read(),
     readProfile,
@@ -681,6 +684,50 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
       throw new Error('Skill 安装目标无效。')
     }
     return installer.installSkillFromMarket({ repository: payload.repository, target })
+  })
+
+  // skills.sh 目录索引：fresh 直接回；stale 先回旧数据并后台刷新；miss 现场拉取。
+  const skillsShIndexStore = createSkillsShIndexStore(skillsShIndexPath)
+  let skillsShRefreshing = false
+  const refreshSkillsShIndex = () => {
+    if (skillsShRefreshing) return
+    skillsShRefreshing = true
+    void fetchSkillsShIndex(githubAuth.fetch)
+      .then(skills => skillsShIndexStore.write({ version: 1, fetchedAt: Date.now(), skills }))
+      .catch((cause: unknown) => console.error('[skills-sh] background refresh failed', cause))
+      .finally(() => { skillsShRefreshing = false })
+  }
+  ipcMain.handle(IPC.skillMarketCatalog, async () => {
+    const lookup = lookupSkillsShIndexCache(await skillsShIndexStore.read(), Date.now())
+    if (lookup.status === 'fresh') return lookup.skills
+    if (lookup.status === 'stale') {
+      refreshSkillsShIndex()
+      return lookup.skills
+    }
+    const skills = await fetchSkillsShIndex(githubAuth.fetch)
+    await skillsShIndexStore.write({ version: 1, fetchedAt: Date.now(), skills })
+    return skills
+  })
+  ipcMain.handle(IPC.skillMarketInstallByName, async (_event, payload: { sourceRepository: string; skillId: string }) => {
+    assertProfileMutationAvailable()
+    if (!payload || typeof payload.sourceRepository !== 'string' || !isSafeRepositoryName(payload.sourceRepository)
+      || typeof payload.skillId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(payload.skillId)) {
+      throw new Error('skills.sh 安装参数无效。')
+    }
+    // 索引条目不知道默认分支：main/master 逐个尝试归档分析，命中 target 即停。
+    let analysis: Awaited<ReturnType<Installer['analyzeSkillArchive']>> | null = null
+    for (const branch of ['main', 'master']) {
+      try {
+        const candidate = await installer.analyzeSkillArchive(payload.sourceRepository, branch)
+        if (candidate.targets.length > 0) { analysis = candidate; break }
+        analysis ??= candidate
+      } catch {
+        // 分支不存在或仓库过大：换下一个分支。
+      }
+    }
+    const target = analysis ? matchSkillsShTarget(analysis.targets, payload.skillId) : null
+    if (!target) throw new Error(`来源仓库 ${payload.sourceRepository} 中找不到技能「${payload.skillId}」，可能仓库结构已变化。`)
+    return installer.installSkillFromMarket({ repository: payload.sourceRepository, target })
   })
 
   ipcMain.handle(IPC.aiStatus, () => aiInstaller.status())

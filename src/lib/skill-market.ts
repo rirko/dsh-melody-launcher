@@ -1,7 +1,8 @@
-// 技能市场（C 端设置页内嵌）的纯数据层：精选源、摊平去重、筛选、安装请求构造。
-// 数据来自 api.skillMarketAnalyze（归档式检测，主进程带内存+磁盘缓存），此处只做展示整形。
+// 技能市场（C 端设置页内嵌）的纯数据层：展示整形、摊平去重、筛选、安装请求构造。
+// 通用技能来自 skills.sh 目录索引（api.skillMarketCatalog，千级、带安装量）；
+// DSH 社区栏仍走精选仓库的归档式检测（api.skillMarketAnalyze，主进程带缓存）。
 
-import type { InstalledSkill, RuntimeVersionCandidate, SkillInstallRequest, SkillInstallTarget, SkillRepositoryAnalysis } from '../types'
+import type { InstalledSkill, RuntimeVersionCandidate, SkillInstallRequest, SkillInstallTarget, SkillRepositoryAnalysis, SkillsShSkill } from '../types'
 
 export type SkillMarketSourceKind = 'general' | 'dsh'
 
@@ -14,15 +15,10 @@ export interface SkillMarketSource {
 }
 
 /**
- * 精选技能源：通用头部仓库（skills.sh 榜单常客）+ 本仓库 catalog 已同步的 DSH 社区技能仓库。
- * 收录门槛是「能解析出 SKILL.md」；某源拉取失败只会显示该源的重试行，不影响其它源出结果。
+ * DSH 社区精选仓库（归档式检测）。通用技能不再逐仓库预析，改由 skills.sh 索引提供。
+ * 某源拉取失败只会显示该源的重试行，不影响其它源出结果。
  */
 export const SKILL_MARKET_SOURCES: SkillMarketSource[] = [
-  { repository: 'anthropics/skills', defaultBranch: 'main', label: 'Anthropic 官方', kind: 'general' },
-  { repository: 'obra/superpowers', defaultBranch: 'main', label: 'Superpowers', kind: 'general' },
-  { repository: 'vercel-labs/skills', defaultBranch: 'main', label: 'Vercel Labs', kind: 'general' },
-  { repository: 'mattpocock/skills', defaultBranch: 'main', label: 'Matt Pocock', kind: 'general' },
-  { repository: 'firebase/agent-skills', defaultBranch: 'main', label: 'Firebase', kind: 'general' },
   { repository: 'hackerfish/awesome-dsh-skills', defaultBranch: 'main', label: 'DSH 社区精选', kind: 'dsh' },
   { repository: 'asakumizy/dsh-local-skills', defaultBranch: 'main', label: 'DSH 本地技能', kind: 'dsh' },
 ]
@@ -33,7 +29,12 @@ export interface SkillMarketEntry {
   description: string
   format: 'bundle' | 'flat'
   source: SkillMarketSource
-  target: SkillInstallTarget
+  /** 仓库分析条目携带安装 target；skills.sh 索引条目为 null（安装时主进程再定位）。 */
+  target: SkillInstallTarget | null
+  /** 条目来源：repo = 精选仓库归档分析；index = skills.sh 目录索引。 */
+  origin: 'repo' | 'index'
+  /** skills.sh 安装量（索引条目），仓库条目为 null。 */
+  installs: number | null
   installed: boolean
   enabled: boolean
   /** 展示用中文名（映射表命中时），否则回退原文名。 */
@@ -159,6 +160,8 @@ export function collectSkillMarketEntries(
         format: target.format,
         source,
         target,
+        origin: 'repo',
+        installs: null,
         installed: installed !== undefined,
         enabled: installed?.enabled === true,
         displayName: target.name,
@@ -169,6 +172,57 @@ export function collectSkillMarketEntries(
     }
   }
   return entries
+}
+
+/** skills.sh 索引条目转市场条目：保留安装量，target 安装时才由主进程定位。 */
+export function collectSkillsShEntries(skills: SkillsShSkill[], installedSkills: InstalledSkill[]): SkillMarketEntry[] {
+  const installedByName = new Map(installedSkills.map(skill => [skill.name, skill]))
+  const seen = new Set<string>()
+  const entries: SkillMarketEntry[] = []
+  for (const skill of skills) {
+    if (seen.has(skill.id)) continue
+    seen.add(skill.id)
+    const installed = installedByName.get(skill.name)
+    const base: SkillMarketEntry = {
+      key: `skills.sh#${skill.id}`,
+      name: skill.name,
+      description: '',
+      format: 'bundle',
+      source: {
+        repository: skill.source,
+        defaultBranch: 'main',
+        label: skill.source.split('/')[0] ?? skill.source,
+        kind: 'general',
+      },
+      target: null,
+      origin: 'index',
+      installs: skill.installs,
+      installed: installed !== undefined,
+      enabled: installed?.enabled === true,
+      displayName: skill.name,
+      displayDescription: `来自 ${skill.source}`,
+      category: '其它',
+    }
+    const localized = localizeSkillEntry(base)
+    entries.push({
+      ...base,
+      displayName: localized.displayName,
+      displayDescription: localized.displayDescription || base.displayDescription,
+      category: localized.category,
+    })
+  }
+  return entries
+}
+
+/** 安装量展示：一万以下原样；万以上折算「万」（≥100 万取整），亿级折算「亿」。 */
+export function formatInstalls(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0'
+  if (value < 10_000) return String(Math.floor(value))
+  if (value < 100_000_000) {
+    const wan = value / 10_000
+    return `${wan >= 100 ? Math.round(wan) : Math.round(wan * 10) / 10} 万`
+  }
+  return `${Math.round(value / 10_000_000) / 10} 亿`
 }
 
 /** 搜索（名称+描述，大小写不敏感）、按源类型与内容主题分类筛选。 */
@@ -189,6 +243,7 @@ export function filterSkillMarketEntries(
 
 /** 安装请求：meta-repo 子模块 target 指向其 sourceRepository 与精确 revision；普通 target 指向源仓库默认分支。 */
 export function skillInstallRequestFor(entry: SkillMarketEntry): SkillInstallRequest {
+  if (!entry.target) throw new Error('skills.sh 索引条目请走 skillMarketInstallByName。')
   const submodule = entry.target.sourceRepository
   return {
     repository: submodule ?? entry.source.repository,

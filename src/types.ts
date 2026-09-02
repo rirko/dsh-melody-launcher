@@ -369,6 +369,17 @@ export interface SkillRepositoryAnalysis {
   targets: SkillInstallTarget[]
 }
 
+/** skills.sh 目录索引条目：只有名字与来源仓库，安装时再按仓库解析定位 target。 */
+export interface SkillsShSkill {
+  /** "owner/repo/skillId" 形式的唯一 id。 */
+  id: string
+  skillId: string
+  name: string
+  installs: number
+  /** 来源 GitHub 仓库 owner/repo。 */
+  source: string
+}
+
 export interface InstalledSkill {
   name: string
   description: string
@@ -1080,6 +1091,10 @@ export interface LauncherApi {
   /** C 端技能市场：归档式检测（绕开 api.github.com 限流）与免重析安装。 */
   skillMarketAnalyze(repository: string, defaultBranch: string): Promise<SkillRepositoryAnalysis>
   skillMarketInstall(request: { repository: string; target: SkillInstallTarget }): Promise<SkillInstallResult>
+  /** skills.sh 目录索引（主进程聚合 + 磁盘缓存 24h），按安装量降序。 */
+  skillMarketCatalog(): Promise<SkillsShSkill[]>
+  /** 索引条目安装：主进程按来源仓库解析归档定位 target 后落盘。 */
+  skillMarketInstallByName(request: { sourceRepository: string; skillId: string }): Promise<SkillInstallResult>
   readInstalledSkills(): Promise<InstalledSkill[]>
   toggleSkill(name: string, enabled: boolean): Promise<InstalledSkill[]>
   installApplication(request: ApplicationInstallRequest): Promise<ApplicationInstallResult>

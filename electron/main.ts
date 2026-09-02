@@ -637,6 +637,7 @@ app.whenReady().then(async () => {
   services = createServices()
   registerIpcHandlers({
     ...services,
+    skillsShIndexPath: path.join(app.getPath('userData'), 'skills-sh-index.json'),
     getWindow,
     setWindowMode: (mode: WindowMode) => applyWindowMode(mainWindow, mode),
   })

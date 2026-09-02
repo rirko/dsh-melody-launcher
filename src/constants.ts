@@ -123,6 +123,8 @@ export const IPC = {
   presetsBuiltin: 'presets:builtin',
   skillMarketAnalyze: 'skill-market:analyze',
   skillMarketInstall: 'skill-market:install',
+  skillMarketCatalog: 'skill-market:catalog',
+  skillMarketInstallByName: 'skill-market:install-by-name',
   runtimeState: 'runtime:state',
   runtimeStart: 'runtime:start',
   runtimeStop: 'runtime:stop',

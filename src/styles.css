@@ -8318,6 +8318,22 @@ input:focus-visible {
   font-size: 11px;
 }
 
+/* skills.sh 索引条目的安装量徽章（卡片右上角，与「已装」徽章同位） */
+.skill-market-installs {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface-soft);
+  font-size: 9.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* 呼吸脉冲：启动页运行中状态点 */
 @keyframes status-pulse {
   0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); }

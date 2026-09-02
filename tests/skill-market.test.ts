@@ -3,13 +3,15 @@ import {
   SKILL_CATEGORIES,
   SKILL_MARKET_SOURCES,
   collectSkillMarketEntries,
+  collectSkillsShEntries,
   filterSkillMarketEntries,
+  formatInstalls,
   guessSkillCategory,
   localizeSkillEntry,
   partitionDshVersions,
   skillInstallRequestFor,
 } from '../src/lib/skill-market'
-import type { InstalledSkill, SkillInstallTarget, SkillRepositoryAnalysis } from '../src/types'
+import type { InstalledSkill, SkillInstallTarget, SkillRepositoryAnalysis, SkillsShSkill } from '../src/types'
 
 function target(overrides: Partial<SkillInstallTarget> & { id: string; name: string }): SkillInstallTarget {
   return {
@@ -35,48 +37,51 @@ const installed: InstalledSkill[] = [
 describe('collectSkillMarketEntries', () => {
   it('摊平各源 targets，按 name 去重（先出现的源优先），并标记已安装/启用', () => {
     const analyses = {
-      'anthropics/skills': analysis('anthropics/skills', [
-        target({ id: 'pdf:skills/pdf', name: 'pdf', description: 'PDF 处理' }),
-        target({ id: 'docx:skills/docx', name: 'docx', description: 'Word 处理' }),
-      ]),
       'hackerfish/awesome-dsh-skills': analysis('hackerfish/awesome-dsh-skills', [
         target({ id: 'pdf:pdf', name: 'pdf', description: '社区版 pdf' }),
+        target({ id: 'dsh-office:office', name: 'dsh-office-artifacts', description: 'Office 产物' }),
+      ]),
+      'asakumizy/dsh-local-skills': analysis('asakumizy/dsh-local-skills', [
+        target({ id: 'pdf:x', name: 'pdf', description: '重复的 pdf' }),
         target({ id: 'dsh-local-x:x', name: 'dsh-local-x', format: 'flat' }),
       ]),
-      'asakumizy/dsh-local-skills': null,
     }
     const entries = collectSkillMarketEntries(analyses, installed)
     const names = entries.map(entry => entry.name)
-    expect(names).toEqual(['pdf', 'docx', 'dsh-local-x'])
+    expect(names).toEqual(['pdf', 'dsh-office-artifacts', 'dsh-local-x'])
     const pdf = entries.find(entry => entry.name === 'pdf')!
-    expect(pdf.source.repository).toBe('anthropics/skills')
+    expect(pdf.source.repository).toBe('hackerfish/awesome-dsh-skills')
+    expect(pdf.origin).toBe('repo')
+    expect(pdf.installs).toBeNull()
     expect(pdf.installed).toBe(true)
     expect(pdf.enabled).toBe(true)
     const x = entries.find(entry => entry.name === 'dsh-local-x')!
     expect(x.installed).toBe(true)
     expect(x.enabled).toBe(false)
-    expect(entries.find(entry => entry.name === 'docx')!.installed).toBe(false)
+    expect(entries.find(entry => entry.name === 'dsh-office-artifacts')!.installed).toBe(false)
   })
 
   it('分析失败（null）的源被跳过而不是报错', () => {
-    const entries = collectSkillMarketEntries({ 'anthropics/skills': null }, [])
+    const entries = collectSkillMarketEntries({ 'hackerfish/awesome-dsh-skills': null }, [])
     expect(entries).toEqual([])
   })
 })
 
 describe('filterSkillMarketEntries', () => {
-  const analyses = {
-    'anthropics/skills': analysis('anthropics/skills', [target({ id: 'pdf:s', name: 'pdf', description: 'PDF 文档处理' })]),
+  const repoEntries = collectSkillMarketEntries({
     'hackerfish/awesome-dsh-skills': analysis('hackerfish/awesome-dsh-skills', [target({ id: 'x:s', name: 'dsh-x', description: 'DSH 专属' })]),
-  }
-  const entries = collectSkillMarketEntries(analyses, [])
+  }, [])
+  const indexEntries = collectSkillsShEntries([
+    { id: 'anthropics/skills/pdf', skillId: 'pdf', name: 'pdf', installs: 189038, source: 'anthropics/skills' },
+  ], [])
+  const entries = [...indexEntries, ...repoEntries]
 
   it('搜索匹配名称与描述，大小写不敏感', () => {
     expect(filterSkillMarketEntries(entries, 'PDF', 'all').map(e => e.name)).toEqual(['pdf'])
     expect(filterSkillMarketEntries(entries, 'dsh', 'all').map(e => e.name)).toEqual(['dsh-x'])
   })
 
-  it('按源类型筛选', () => {
+  it('按源类型筛选：索引条目属 general，仓库分析条目属 dsh', () => {
     expect(filterSkillMarketEntries(entries, '', 'general').map(e => e.name)).toEqual(['pdf'])
     expect(filterSkillMarketEntries(entries, '', 'dsh').map(e => e.name)).toEqual(['dsh-x'])
   })
@@ -98,18 +103,74 @@ describe('skillInstallRequestFor', () => {
 
   it('普通 target 指向源仓库与默认分支', () => {
     const entry = collectSkillMarketEntries({
-      'anthropics/skills': analysis('anthropics/skills', [target({ id: 'pdf:s', name: 'pdf' })]),
+      'asakumizy/dsh-local-skills': analysis('asakumizy/dsh-local-skills', [target({ id: 'pdf:s', name: 'pdf' })]),
     }, [])[0]
     expect(skillInstallRequestFor(entry)).toEqual({
-      repository: 'anthropics/skills',
+      repository: 'asakumizy/dsh-local-skills',
       defaultBranch: 'main',
       targetId: 'pdf:s',
     })
   })
 
-  it('源常量包含 Anthropic 官方与 DSH 社区仓库', () => {
-    expect(SKILL_MARKET_SOURCES.some(s => s.repository === 'anthropics/skills')).toBe(true)
-    expect(SKILL_MARKET_SOURCES.filter(s => s.kind === 'dsh').length).toBeGreaterThan(0)
+  it('源常量只含 DSH 社区仓库（通用技能走 skills.sh 索引）', () => {
+    expect(SKILL_MARKET_SOURCES.every(s => s.kind === 'dsh')).toBe(true)
+    expect(SKILL_MARKET_SOURCES.length).toBeGreaterThan(0)
+  })
+})
+
+function skillsSh(overrides: Partial<SkillsShSkill> & { id: string }): SkillsShSkill {
+  return {
+    skillId: overrides.id.split('/').at(-1)!,
+    name: overrides.id.split('/').at(-1)!,
+    installs: 0,
+    source: overrides.id.split('/').slice(0, 2).join('/'),
+    ...overrides,
+  }
+}
+
+describe('collectSkillsShEntries', () => {
+  it('索引条目转市场条目：installs/来源仓库/origin=index/target=null', () => {
+    const entries = collectSkillsShEntries([
+      skillsSh({ id: 'anthropics/skills/pdf', name: 'pdf', installs: 189038, source: 'anthropics/skills' }),
+      skillsSh({ id: 'vercel-labs/skills/find-skills', name: 'find-skills', installs: 5000, source: 'vercel-labs/skills' }),
+    ], installed)
+    expect(entries.map(e => e.name)).toEqual(['pdf', 'find-skills'])
+    const pdf = entries[0]
+    expect(pdf.origin).toBe('index')
+    expect(pdf.installs).toBe(189038)
+    expect(pdf.source.kind).toBe('general')
+    expect(pdf.source.repository).toBe('anthropics/skills')
+    expect(pdf.target).toBeNull()
+    expect(pdf.installed).toBe(true)
+    expect(pdf.enabled).toBe(true)
+    expect(entries[1].installed).toBe(false)
+  })
+
+  it('中文名与分类走映射表，描述缺省时回退「来自 owner/repo」', () => {
+    const entries = collectSkillsShEntries([
+      skillsSh({ id: 'anthropics/skills/pdf', name: 'pdf', installs: 1, source: 'anthropics/skills' }),
+      skillsSh({ id: 'some/repo/quantum-frob', name: 'quantum-frob', installs: 1, source: 'some/repo' }),
+    ], [])
+    expect(entries[0].displayName).toBe('PDF 文档处理')
+    expect(entries[0].displayDescription).toBe('对 PDF 文件做任何事：读取、合并、拆分、填写与转换。')
+    expect(entries[1].displayName).toBe('quantum-frob')
+    expect(entries[1].displayDescription).toBe('来自 some/repo')
+    expect(entries[1].category).toBe('其它')
+  })
+
+  it('按 id 去重', () => {
+    const dup = skillsSh({ id: 'a/b/c', name: 'c', installs: 2, source: 'a/b' })
+    expect(collectSkillsShEntries([dup, dup], [])).toHaveLength(1)
+  })
+})
+
+describe('formatInstalls', () => {
+  it('一万以下原样，万以上折算 万/亿', () => {
+    expect(formatInstalls(999)).toBe('999')
+    expect(formatInstalls(10_000)).toBe('1 万')
+    expect(formatInstalls(189_038)).toBe('18.9 万')
+    expect(formatInstalls(1_234_567_890)).toBe('12.3 亿')
+    expect(formatInstalls(-5)).toBe('0')
   })
 })
 
@@ -138,7 +199,7 @@ describe('guessSkillCategory', () => {
 
 describe('localizeSkillEntry', () => {
   const base = collectSkillMarketEntries({
-    'anthropics/skills': analysis('anthropics/skills', [target({ id: 'pdf:s', name: 'pdf', description: 'Use this skill for PDF files' })]),
+    'hackerfish/awesome-dsh-skills': analysis('hackerfish/awesome-dsh-skills', [target({ id: 'pdf:s', name: 'pdf', description: 'Use this skill for PDF files' })]),
   }, [])[0]
 
   it('命中映射表时给出中文名/中文简介/表内分类', () => {
@@ -161,7 +222,7 @@ describe('localizeSkillEntry', () => {
 describe('filterSkillMarketEntries 分类过滤', () => {
   it('category=all 不筛，指定分类时只留该组', () => {
     const entries = collectSkillMarketEntries({
-      'anthropics/skills': analysis('anthropics/skills', [
+      'hackerfish/awesome-dsh-skills': analysis('hackerfish/awesome-dsh-skills', [
         target({ id: 'pdf:s', name: 'pdf', description: 'PDF' }),
         target({ id: 'canvas-design:s', name: 'canvas-design', description: 'visual art' }),
       ]),

@@ -42,6 +42,7 @@ import type {
   RuntimeOutput,
   RuntimeState,
   SkillRepositoryAnalysis,
+  SkillsShSkill,
 } from './types'
 import { DSH_REPOSITORY } from './constants'
 import { parseGitHubImportUrl } from './lib/github-import'
@@ -634,6 +635,42 @@ function demoCatalogAnalysis(fullName: string, defaultBranch: string): CatalogRe
   }
 }
 
+/** 浏览器演示用的 skills.sh 索引切片（安装量为虚构值），供截图与离线体验。 */
+const DEMO_SKILLS_SH_INDEX: SkillsShSkill[] = [
+  { id: 'anthropics/skills/pdf', skillId: 'pdf', name: 'pdf', installs: 189038, source: 'anthropics/skills' },
+  { id: 'anthropics/skills/docx', skillId: 'docx', name: 'docx', installs: 96420, source: 'anthropics/skills' },
+  { id: 'anthropics/skills/xlsx', skillId: 'xlsx', name: 'xlsx', installs: 88210, source: 'anthropics/skills' },
+  { id: 'anthropics/skills/pptx', skillId: 'pptx', name: 'pptx', installs: 71550, source: 'anthropics/skills' },
+  { id: 'obra/superpowers/brainstorming', skillId: 'brainstorming', name: 'brainstorming', installs: 64300, source: 'obra/superpowers' },
+  { id: 'anthropics/skills/skill-creator', skillId: 'skill-creator', name: 'skill-creator', installs: 58970, source: 'anthropics/skills' },
+  { id: 'vercel-labs/skills/find-skills', skillId: 'find-skills', name: 'find-skills', installs: 52140, source: 'vercel-labs/skills' },
+  { id: 'obra/superpowers/writing-plans', skillId: 'writing-plans', name: 'writing-plans', installs: 47820, source: 'obra/superpowers' },
+  { id: 'obra/superpowers/test-driven-development', skillId: 'test-driven-development', name: 'test-driven-development', installs: 44100, source: 'obra/superpowers' },
+  { id: 'anthropics/skills/frontend-design', skillId: 'frontend-design', name: 'frontend-design', installs: 41260, source: 'anthropics/skills' },
+  { id: 'anthropics/skills/webapp-testing', skillId: 'webapp-testing', name: 'webapp-testing', installs: 38710, source: 'anthropics/skills' },
+  { id: 'obra/superpowers/systematic-debugging', skillId: 'systematic-debugging', name: 'systematic-debugging', installs: 35280, source: 'obra/superpowers' },
+  { id: 'anthropics/skills/mcp-builder', skillId: 'mcp-builder', name: 'mcp-builder', installs: 33900, source: 'anthropics/skills' },
+  { id: 'anthropics/skills/canvas-design', skillId: 'canvas-design', name: 'canvas-design', installs: 31450, source: 'anthropics/skills' },
+  { id: 'mattpocock/skills/tdd', skillId: 'tdd', name: 'tdd', installs: 28760, source: 'mattpocock/skills' },
+  { id: 'mattpocock/skills/grill-me', skillId: 'grill-me', name: 'grill-me', installs: 26310, source: 'mattpocock/skills' },
+  { id: 'anthropics/skills/brand-guidelines', skillId: 'brand-guidelines', name: 'brand-guidelines', installs: 24050, source: 'anthropics/skills' },
+  { id: 'anthropics/skills/internal-comms', skillId: 'internal-comms', name: 'internal-comms', installs: 21870, source: 'anthropics/skills' },
+  { id: 'anthropics/skills/doc-coauthoring', skillId: 'doc-coauthoring', name: 'doc-coauthoring', installs: 19940, source: 'anthropics/skills' },
+  { id: 'anthropics/skills/theme-factory', skillId: 'theme-factory', name: 'theme-factory', installs: 18320, source: 'anthropics/skills' },
+  { id: 'anthropics/skills/algorithmic-art', skillId: 'algorithmic-art', name: 'algorithmic-art', installs: 16480, source: 'anthropics/skills' },
+  { id: 'anthropics/skills/slack-gif-creator', skillId: 'slack-gif-creator', name: 'slack-gif-creator', installs: 14930, source: 'anthropics/skills' },
+  { id: 'obra/superpowers/executing-plans', skillId: 'executing-plans', name: 'executing-plans', installs: 13260, source: 'obra/superpowers' },
+  { id: 'obra/superpowers/requesting-code-review', skillId: 'requesting-code-review', name: 'requesting-code-review', installs: 11840, source: 'obra/superpowers' },
+  { id: 'vercel-labs/json-render/react-pdf', skillId: 'react-pdf', name: 'react-pdf', installs: 10250, source: 'vercel-labs/json-render' },
+  { id: 'firebase/agent-skills/firebase-security-rules', skillId: 'firebase-security-rules', name: 'firebase-security-rules', installs: 9310, source: 'firebase/agent-skills' },
+  { id: 'firebase/agent-skills/firebase-firestore', skillId: 'firebase-firestore', name: 'firebase-firestore', installs: 8720, source: 'firebase/agent-skills' },
+  { id: 'anthropics/skills/web-artifacts-builder', skillId: 'web-artifacts-builder', name: 'web-artifacts-builder', installs: 7940, source: 'anthropics/skills' },
+  { id: 'shadcn/ui/shadcn', skillId: 'shadcn', name: 'shadcn', installs: 6850, source: 'shadcn/ui' },
+  { id: 'emilkowalski/skills/motion', skillId: 'motion', name: 'motion', installs: 5230, source: 'emilkowalski/skills' },
+  { id: 'anthropics/skills/claude-api', skillId: 'claude-api', name: 'claude-api', installs: 4680, source: 'anthropics/skills' },
+  { id: 'coreyhaines31/marketingskills/seo-audit', skillId: 'seo-audit', name: 'seo-audit', installs: 3120, source: 'coreyhaines31/marketingskills' },
+]
+
 export const demoApi: LauncherApi = {
   getSettings: async () => demoSettings,
   saveSettings: async settings => (demoSettings = settings),
@@ -1187,6 +1224,26 @@ export const demoApi: LauncherApi = {
     }
     demoInstalledSkills = [...demoInstalledSkills.filter(skill => skill.name !== target.name), installedSkill]
     installProgressListeners.forEach(listener => listener({ repository, kind: 'skill', phase: 'complete', percent: 100, message: `${target.name} 已安装` }))
+    return { installedSkill, installedSkills: demoInstalledSkills }
+  },
+  skillMarketCatalog: async () => {
+    await wait(400)
+    return DEMO_SKILLS_SH_INDEX
+  },
+  skillMarketInstallByName: async ({ sourceRepository, skillId }) => {
+    installProgressListeners.forEach(listener => listener({ repository: sourceRepository, kind: 'skill', phase: 'downloading', percent: 42, message: `正在解析来源仓库并安装 ${skillId}` }))
+    await wait(500)
+    const installedSkill: InstalledSkill = {
+      name: skillId,
+      description: `来自 ${sourceRepository}（演示数据）`,
+      path: `${demoSettings.dshHome}\\skills\\${skillId}`,
+      format: 'bundle',
+      enabled: true,
+      modelInvocable: true,
+      userInvocable: true,
+    }
+    demoInstalledSkills = [...demoInstalledSkills.filter(skill => skill.name !== skillId), installedSkill]
+    installProgressListeners.forEach(listener => listener({ repository: sourceRepository, kind: 'skill', phase: 'complete', percent: 100, message: `${skillId} 已安装` }))
     return { installedSkill, installedSkills: demoInstalledSkills }
   },
   installApplication: async request => {
