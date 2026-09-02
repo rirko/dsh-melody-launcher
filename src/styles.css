@@ -6986,29 +6986,30 @@ input:focus-visible {
 
 /* ---- DSH Market (独立于资源市场) ---- */
 .dsh-market-page { min-height: 0; overflow: auto; }
-.dsh-market-note { display: flex; min-height: 34px; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 0 11px; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); background: var(--surface-soft); font-size: 10px; }
+.dsh-market-note { display: flex; min-height: 34px; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: var(--surface-soft); font-size: 10px; }
 .dsh-market-note span { display: inline-flex; align-items: center; gap: 6px; }
 .dsh-market-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 150px 120px; align-items: center; margin-bottom: 12px; gap: 8px; }
-.dsh-market-search { display: flex; height: 34px; align-items: center; padding: 0 9px; gap: 7px; border: 1px solid var(--line-strong); border-radius: 5px; background: #fff; color: var(--muted); }
+.dsh-market-search { display: flex; height: 34px; align-items: center; padding: 0 11px; gap: 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--muted); }
 .dsh-market-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 11px; }
-.dsh-market-toolbar select { height: 34px; min-width: 0; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--ink); background: #fff; font-size: 11px; }
-.dsh-market-progress { display: flex; min-height: 34px; align-items: center; margin-bottom: 10px; padding: 0 11px; gap: 7px; border: 1px solid #c3d7ca; border-radius: 5px; color: var(--accent); background: var(--accent-soft); font-size: 11px; }
+.dsh-market-toolbar select { height: 34px; min-width: 0; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); font-size: 11px; }
+.dsh-market-progress { display: flex; min-height: 34px; align-items: center; margin-bottom: 10px; padding: 0 11px; gap: 7px; border: 1px solid color-mix(in srgb, var(--accent) 22%, white); border-radius: 8px; color: var(--accent); background: var(--accent-soft); font-size: 11px; }
 .dsh-market-progress-track { flex: 1; min-width: 110px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .dsh-market-progress-track.determinate span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 180ms ease; }
 .dsh-market-progress-track.indeterminate span { display: block; width: 38%; height: 100%; border-radius: inherit; background: var(--accent); animation: install-progress-slide 1.25s ease-in-out infinite; }
 .dsh-market-progress strong { flex: 0 0 auto; font-family: Consolas, monospace; font-size: 10px; }
-.dsh-market-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); align-items: start; gap: 10px; }
-.dsh-market-card { display: flex; min-width: 0; min-height: 190px; flex-direction: column; padding: 13px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); box-shadow: 0 2px 7px rgb(40 55 45 / 4%); }
-.dsh-market-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 9px; }
-.dsh-market-card-head h2 { margin: 0; overflow-wrap: anywhere; font-size: 13px; }
-.dsh-market-card-head span { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
-.dsh-market-stars { display: inline-flex !important; align-items: center; gap: 3px; color: #8a6b16 !important; white-space: nowrap; }
-.dsh-market-meta { display: flex; align-items: center; margin-top: 9px; gap: 6px; color: var(--muted); font-size: 10px; }
-.dsh-market-meta > span, .dsh-market-meta code { padding: 2px 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-soft); font-family: inherit; }
+.dsh-market-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); align-items: start; gap: 10px; }
+.dsh-market-card { display: flex; min-width: 0; min-height: 150px; flex-direction: column; padding: 12px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 2px 7px rgb(40 55 45 / 4%); }
+.dsh-market-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.dsh-market-card-head h2 { margin: 0; overflow-wrap: anywhere; color: var(--ink); font-size: 13.5px; }
+.dsh-market-card-head > div > span { display: block; margin-top: 2px; color: var(--quiet); font-size: 10.5px; }
+.dsh-market-stars { display: inline-flex !important; align-items: center; margin-top: 0; gap: 3px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted) !important; background: var(--surface-soft); font-size: 9.5px; font-weight: 700; white-space: nowrap; }
+.dsh-market-stars svg { color: #d9a514; }
+.dsh-market-meta { display: flex; flex-wrap: wrap; align-items: center; margin-top: 8px; gap: 5px; color: var(--muted); font-size: 10px; }
+.dsh-market-meta > span, .dsh-market-meta code { padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--surface-soft); font-family: inherit; font-size: 10.5px; }
 .dsh-market-meta b { margin-left: auto; font-weight: 650; }
 .market-enabled { color: var(--accent); }
 .market-disabled { color: var(--muted); }
-.dsh-market-card p { display: -webkit-box; min-height: 48px; margin: 10px 0; overflow: hidden; color: var(--muted); font-size: 11px; line-height: 16px; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.dsh-market-card p { display: -webkit-box; flex: 1; margin: 9px 0; overflow: hidden; color: var(--muted); font-size: 11.5px; line-height: 16px; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .dsh-market-card-foot { display: flex; min-height: 30px; align-items: center; margin-top: auto; gap: 6px; }
 .dsh-market-grow { flex: 1; }
 .dsh-market-link { display: inline-flex; align-items: center; padding: 0; border: 0; color: var(--muted); background: transparent; font-size: 10px; cursor: pointer; gap: 4px; }
@@ -8102,7 +8103,7 @@ input:focus-visible {
 }
 
 .dsh-market-embedded .dsh-market-grid {
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
 }
 
 .settings-version-group {
