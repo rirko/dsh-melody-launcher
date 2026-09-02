@@ -18,7 +18,7 @@ const baseSettings: AppSettings = {
   launchArgs: ['web'],
   webPort: 3080,
   openAfterLaunch: true,
-  uiTheme: 'forest',
+  uiTheme: 'deepseek',
   aiDeveloperMode: false,
   aiPrompt: '',
   network: { npmRegistry: 'https://registry.npmmirror.com', proxy: '', githubMirror: 'https://gh-proxy.com' },
@@ -38,7 +38,7 @@ describe('packLauncherConfig / parseLauncherConfig', () => {
       launchArgs: ['web'],
       webPort: 3080,
       openAfterLaunch: true,
-      uiTheme: 'forest',
+      uiTheme: 'deepseek',
     })
     expect(parsed.network?.npmRegistry).toBe('https://registry.npmmirror.com')
   })

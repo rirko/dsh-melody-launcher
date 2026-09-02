@@ -16,7 +16,6 @@ interface SettingsDialogProps {
 
 const UI_THEMES: Array<{ id: UiTheme; label: string }> = [
   { id: 'deepseek', label: 'DeepSeek 蓝' },
-  { id: 'forest', label: '松林' },
   { id: 'ocean', label: '海湾' },
   { id: 'berry', label: '莓果' },
   { id: 'graphite', label: '石墨' },

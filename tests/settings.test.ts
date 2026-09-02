@@ -117,7 +117,7 @@ describe('validateSettings', () => {
   it('accepts known UI themes and falls back for invalid values', () => {
     expect(validateSettings({ ...baseSettings, uiTheme: 'ocean' }).uiTheme).toBe('ocean')
     expect(validateSettings({ ...baseSettings, uiTheme: 'neon' as never }).uiTheme).toBe('deepseek')
-    expect(validateSettings({ ...baseSettings, uiTheme: 'forest' }).uiTheme).toBe('forest')
+    expect(validateSettings({ ...baseSettings, uiTheme: 'forest' as never }).uiTheme).toBe('deepseek')
     expect(validateSettings({ ...baseSettings, uiTheme: 'deepseek' }).uiTheme).toBe('deepseek')
   })
 })
