@@ -361,6 +361,7 @@ function createServices(): Services {
     presetReceiptsPath,
     skillReceiptsPath,
     skillSourceRoot,
+    skillMarketCachePath: path.join(userData, 'skill-market-cache.json'),
     emitOutput: (level, text) => events.output('plugin', level, text),
     emitProgress: progress => events.installProgress(progress),
     isRuntimeRunning: () => runtime.isRunning(),

@@ -23,11 +23,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLauncherApi } from '../api/client'
 import { DshMarketView } from './DshMarketView'
 import {
+  SKILL_CATEGORIES,
   SKILL_MARKET_SOURCES,
   collectSkillMarketEntries,
   filterSkillMarketEntries,
   partitionDshVersions,
+  type SkillCategory,
   type SkillMarketEntry,
+  type SkillMarketSource,
   type SkillMarketSourceKind,
 } from '../lib/skill-market'
 import type {
@@ -557,6 +560,12 @@ function SettingsPresetsTab({
   )
 }
 
+interface SkillSourceState {
+  status: 'loading' | 'ready' | 'failed'
+  analysis: SkillRepositoryAnalysis | null
+  error: string | null
+}
+
 function SkillMarketPanel({
   installedSkills,
   busy,
@@ -569,39 +578,39 @@ function SkillMarketPanel({
   onRefresh: () => void
 }) {
   const api = useLauncherApi()
-  const [analyses, setAnalyses] = useState<Record<string, SkillRepositoryAnalysis | null>>({})
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [sources, setSources] = useState<Record<string, SkillSourceState>>({})
   const [query, setQuery] = useState('')
   const [sourceKind, setSourceKind] = useState<'all' | SkillMarketSourceKind>('all')
+  const [category, setCategory] = useState<'all' | SkillCategory>('all')
   const [busyName, setBusyName] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    const results = await Promise.allSettled(
-      SKILL_MARKET_SOURCES.map(source => api.skillMarketAnalyze(source.repository, source.defaultBranch)),
-    )
-    const next: Record<string, SkillRepositoryAnalysis | null> = {}
-    let failures = 0
-    results.forEach((result, index) => {
-      const repository = SKILL_MARKET_SOURCES[index].repository
-      if (result.status === 'fulfilled') next[repository] = result.value
-      else { next[repository] = null; failures += 1 }
-    })
-    setAnalyses(next)
-    setLoading(false)
-    if (failures === SKILL_MARKET_SOURCES.length) setError('技能市场暂时不可用（GitHub 访问失败）。可在「开发者模式 → 网络」配置 GitHub 镜像，或登录 GitHub 后重试。')
+  // 每个源独立发起、独立落地：小仓库先出结果，anthropics 大包稍后，互不阻塞。
+  const loadSource = useCallback((source: SkillMarketSource) => {
+    setSources(current => ({ ...current, [source.repository]: { status: 'loading', analysis: current[source.repository]?.analysis ?? null, error: null } }))
+    api.skillMarketAnalyze(source.repository, source.defaultBranch)
+      .then(analysis => setSources(current => ({ ...current, [source.repository]: { status: 'ready', analysis, error: null } })))
+      .catch((cause: unknown) => {
+        console.error(`[skill-market] ${source.repository}`, cause)
+        setSources(current => ({ ...current, [source.repository]: { status: 'failed', analysis: current[source.repository]?.analysis ?? null, error: cause instanceof Error ? cause.message : '读取失败' } }))
+      })
   }, [api])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    SKILL_MARKET_SOURCES.forEach(loadSource)
+  }, [loadSource])
 
+  const analyses = useMemo(() => {
+    const map: Record<string, SkillRepositoryAnalysis | null> = {}
+    for (const source of SKILL_MARKET_SOURCES) map[source.repository] = sources[source.repository]?.analysis ?? null
+    return map
+  }, [sources])
   const entries = useMemo(() => collectSkillMarketEntries(analyses, installedSkills), [analyses, installedSkills])
-  const visible = useMemo(() => filterSkillMarketEntries(entries, query, sourceKind), [entries, query, sourceKind])
+  const visible = useMemo(() => filterSkillMarketEntries(entries, query, sourceKind, category), [entries, query, sourceKind, category])
+  const loading = SKILL_MARKET_SOURCES.some(source => (sources[source.repository]?.status ?? 'loading') === 'loading')
+  const allFailed = SKILL_MARKET_SOURCES.every(source => sources[source.repository]?.status === 'failed')
 
   const install = async (entry: SkillMarketEntry) => {
     setBusyName(entry.name)
-    setError(null)
     try {
       const result = await api.skillMarketInstall({
         repository: entry.target.sourceRepository ?? entry.source.repository,
@@ -609,7 +618,11 @@ function SkillMarketPanel({
       })
       onInstalled(result)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : `安装「${entry.name}」失败`)
+      console.error(`[skill-market] install ${entry.name}`, cause)
+      setSources(current => ({
+        ...current,
+        [entry.source.repository]: { status: 'failed', analysis: current[entry.source.repository]?.analysis ?? null, error: cause instanceof Error ? cause.message : `安装「${entry.name}」失败` },
+      }))
     } finally {
       setBusyName(null)
     }
@@ -621,7 +634,6 @@ function SkillMarketPanel({
         <div className="settings-panel-title"><Store size={17} /><span>技能市场</span>{entries.length > 0 && <span className="settings-count">{entries.length}</span>}</div>
         <div className="settings-market-heading-actions">
           <button type="button" className="settings-nav-link" onClick={() => void api.openExternal('https://skills.sh')} title="skills.sh 开放目录（浏览）"><ExternalLink size={13} />在 skills.sh 浏览更多</button>
-          <button type="button" className="icon-button" onClick={() => void load()} disabled={loading} title="重新读取目录" aria-label="重新读取目录"><RefreshCw size={15} className={loading ? 'spin' : undefined} /></button>
         </div>
       </div>
       <div className="settings-market-toolbar">
@@ -632,34 +644,64 @@ function SkillMarketPanel({
           ))}
         </div>
       </div>
-      {error && <div className="error-banner"><span>{error}</span><button type="button" onClick={() => void load()}>重试</button></div>}
-      {loading && Object.keys(analyses).length === 0 && <div className="settings-empty"><LoaderCircle size={20} className="spin" />正在读取技能目录（首次加载需扫描 GitHub，稍候）…</div>}
-      {!loading && Object.keys(analyses).length > 0 && visible.length === 0 && <div className="settings-empty"><Search size={20} />没有匹配的技能。</div>}
-      <div className="settings-list">
+      <div className="settings-market-chips settings-market-categories">
+        <button type="button" className={category === 'all' ? 'active' : ''} onClick={() => setCategory('all')}>全部分类</button>
+        {SKILL_CATEGORIES.map(item => (
+          <button key={item} type="button" className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{item}</button>
+        ))}
+      </div>
+      {SKILL_MARKET_SOURCES.map(source => {
+        const state = sources[source.repository]
+        if (!state || state.status === 'ready') return null
+        return (
+          <div key={source.repository} className={`settings-market-source ${state.status === 'failed' ? 'failed' : ''}`}>
+            {state.status === 'failed'
+              ? <><span>{source.label}：{state.error}</span><button type="button" className="settings-nav-link" onClick={() => loadSource(source)}>重试</button></>
+              : <><LoaderCircle size={13} className="spin" /><span>正在读取 {source.label}…</span></>}
+          </div>
+        )
+      })}
+      {allFailed && <div className="error-banner"><span>所有技能源都读取失败。若你的网络需要代理才能访问 GitHub，请在「开发者模式 → 网络」配置代理或 GitHub 镜像后重试。</span><button type="button" onClick={() => SKILL_MARKET_SOURCES.forEach(loadSource)}>全部重试</button></div>}
+      {!loading && !allFailed && visible.length === 0 && <div className="settings-empty"><Search size={20} />没有匹配的技能。</div>}
+      <div className="skill-market-grid">
         {visible.map(entry => {
           const isBusy = busyName === entry.name
           return (
-            <div key={entry.key} className={`settings-row ${entry.installed ? 'enabled' : ''}`}>
-              <div className="settings-row-copy">
-                <strong>{entry.name}</strong>
-                <span>{entry.description || '暂无描述'} · {entry.source.label} · {entry.format === 'bundle' ? '技能包' : '单文件'}</span>
+            <article key={entry.key} className="skill-market-card">
+              <div className="skill-market-card-head">
+                <div>
+                  <h2>{entry.displayName}</h2>
+                  {entry.displayName !== entry.name && <span>{entry.name}</span>}
+                </div>
+                {entry.installed && <span className="settings-row-badge"><Check size={12} />已装</span>}
               </div>
-              <div className="settings-row-actions">
+              <div className="skill-market-meta">
+                <span>{entry.category}</span>
+                <span>{entry.format === 'bundle' ? '技能包' : '单文件'}</span>
+                <span>{entry.source.label}</span>
+              </div>
+              <p>{entry.displayDescription || '暂无描述'}</p>
+              <div className="skill-market-card-foot">
                 {entry.installed ? (
                   <>
-                    <span className="settings-row-badge"><Check size={12} />已安装</span>
                     <label className="switch" title={entry.enabled ? '停用技能' : '启用技能'}>
                       <input type="checkbox" checked={entry.enabled} disabled={busy} onChange={event => { void api.toggleSkill(entry.name, event.target.checked).then(onRefresh) }} />
                       <span />
                     </label>
+                    <span className="dsh-market-grow" />
+                    <button type="button" className="dsh-market-link" onClick={() => void api.openExternal(`https://github.com/${entry.target.sourceRepository ?? entry.source.repository}`)}><ExternalLink size={12} />仓库</button>
                   </>
                 ) : (
-                  <button type="button" className="primary-command" disabled={busy || isBusy} onClick={() => { void install(entry) }}>
-                    {isBusy ? <LoaderCircle size={13} className="spin" /> : <Download size={13} />}安装
-                  </button>
+                  <>
+                    <button type="button" className="primary-command" disabled={busy || isBusy} onClick={() => { void install(entry) }}>
+                      {isBusy ? <LoaderCircle size={13} className="spin" /> : <Download size={13} />}安装
+                    </button>
+                    <span className="dsh-market-grow" />
+                    <button type="button" className="dsh-market-link" onClick={() => void api.openExternal(`https://github.com/${entry.target.sourceRepository ?? entry.source.repository}`)}><ExternalLink size={12} />仓库</button>
+                  </>
                 )}
               </div>
-            </div>
+            </article>
           )
         })}
       </div>

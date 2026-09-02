@@ -50,6 +50,7 @@ import { isSafePackageName, isSafeProfileName, readProfile } from './profile'
 import { withExecutableDirectoryOnPath } from './process'
 import { buildNetworkEnvironment } from './proxy'
 import { analyzeSkillRepository, analyzeSkillRepositoryFromArchive } from './skill-catalog'
+import { SKILL_MARKET_CACHE_TTL_MS, createSkillMarketCacheStore, lookupSkillMarketCache } from './skill-market-cache'
 import { readInstalledSkills as readLocalSkills, toggleInstalledSkill } from './skill-format'
 import { installPresetFromRepository, readInstalledPresets as readLocalPresets, toggleInstalledPreset, uninstallInstalledPreset } from './preset-install'
 import { downloadReleaseAsset } from './release-download'
@@ -143,6 +144,8 @@ export interface InstallerOptions {
   runCommand?: (executable: string, args: string[], options: CommandOptions) => Promise<CommandResult>
   /** 所有 GitHub HTTP 请求统一从这里注入认证。 */
   githubFetch?: typeof fetch
+  /** 技能市场磁盘缓存路径（userData/skill-market-cache.json）；缺省只保留内存缓存。 */
+  skillMarketCachePath?: string
 }
 
 export interface Installer {
@@ -314,14 +317,49 @@ export function createInstaller(options: InstallerOptions): Installer {
     return analysis
   }
 
-  /** C 端技能市场专用：codeload 归档 + 本地扫描，与 analyzeSkill 共享 5 分钟缓存。 */
+  /** C 端技能市场专用：codeload 归档 + 本地扫描，内存 5 分钟 + 磁盘 24 小时（过期先回旧、后台刷新）。 */
+  const skillMarketCache = options.skillMarketCachePath ? createSkillMarketCacheStore(options.skillMarketCachePath) : null
+  const archiveAnalysisFromTargets = (repository: string, defaultBranch: string, targets: SkillRepositoryAnalysis['targets']): SkillRepositoryAnalysis => ({
+    repository,
+    defaultBranch,
+    installability: targets.length === 1 ? 'ready' : targets.length > 1 ? 'choice' : 'invalid',
+    summary: '',
+    targets,
+  })
   const analyzeSkillArchive = async (fullName: string, defaultBranch: string, bypassCache = false): Promise<SkillRepositoryAnalysis> => {
     const cacheKey = `${fullName.toLowerCase()}#${defaultBranch}`
     const cached = skillAnalysisCache.get(cacheKey)
     if (!bypassCache && cached && cached.expiresAt > Date.now()) return cached.analysis
-    const analysis = await analyzeSkillRepositoryFromArchive(fullName, defaultBranch)
-    skillAnalysisCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, analysis })
-    return analysis
+
+    const fetchAnalysis = async (): Promise<SkillRepositoryAnalysis> => {
+      const settings = await options.readSettings()
+      const analysis = await analyzeSkillRepositoryFromArchive(fullName, defaultBranch, {
+        fetchImpl: options.githubFetch,
+        mirror: settings.network?.githubMirror,
+      })
+      skillAnalysisCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, analysis })
+      await skillMarketCache?.write({ repository: fullName, branch: defaultBranch, fetchedAt: Date.now(), targets: analysis.targets }).catch(() => undefined)
+      return analysis
+    }
+
+    if (!bypassCache && skillMarketCache) {
+      try {
+        const disk = lookupSkillMarketCache(await skillMarketCache.read(), fullName, defaultBranch)
+        if (disk.state === 'fresh') {
+          const analysis = archiveAnalysisFromTargets(fullName, defaultBranch, disk.entry.targets)
+          skillAnalysisCache.set(cacheKey, { expiresAt: disk.entry.fetchedAt + SKILL_MARKET_CACHE_TTL_MS, analysis })
+          return analysis
+        }
+        if (disk.state === 'stale') {
+          // 过期条目先原样返回保证秒开，同时后台刷新写回两级缓存。
+          void fetchAnalysis().catch(() => undefined)
+          return archiveAnalysisFromTargets(fullName, defaultBranch, disk.entry.targets)
+        }
+      } catch {
+        // 磁盘缓存损坏时直接走网络重建。
+      }
+    }
+    return fetchAnalysis()
   }
 
   const analyzeApplication = async (

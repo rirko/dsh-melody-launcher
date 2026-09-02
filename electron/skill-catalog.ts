@@ -1,7 +1,7 @@
 import path from 'node:path'
 import AdmZip from 'adm-zip'
 import type { SkillInstallTarget, SkillRepositoryAnalysis } from '../src/types'
-import { downloadGitHubArchive } from './github-archive'
+import { downloadGitHubArchive, fetchGitHubArchiveBytes } from './github-archive'
 import { isSafeRepositoryName } from './profile'
 import { parseSkillDocument } from './skill-format'
 
@@ -270,11 +270,13 @@ export function skillTargetsFromArchiveEntries(
 export async function analyzeSkillRepositoryFromArchive(
   repository: string,
   defaultBranch: string,
-  onProgress?: (received: number, total: number | null) => void,
+  options?: { fetchImpl?: typeof fetch; mirror?: string; onProgress?: (received: number, total: number | null) => void },
 ): Promise<SkillRepositoryAnalysis> {
   if (!isSafeRepositoryName(repository) || !safeRevision(defaultBranch)) throw new Error('仓库名称或默认分支无效。')
 
-  const buffer = await downloadGitHubArchive(repository, defaultBranch, MAX_ARCHIVE_BYTES, onProgress)
+  const buffer = options?.fetchImpl
+    ? await fetchGitHubArchiveBytes(repository, defaultBranch, MAX_ARCHIVE_BYTES, options.fetchImpl, options.mirror)
+    : await downloadGitHubArchive(repository, defaultBranch, MAX_ARCHIVE_BYTES, options?.onProgress)
   const archive = new AdmZip(buffer)
   const entries = archive.getEntries().filter(entry => !entry.isDirectory)
   if (entries.length > MAX_FILES) throw new Error('仓库文件数量超过安全限制，已停止 Skill 检测。')

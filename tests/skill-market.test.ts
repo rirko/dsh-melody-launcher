@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  SKILL_CATEGORIES,
   SKILL_MARKET_SOURCES,
   collectSkillMarketEntries,
   filterSkillMarketEntries,
+  guessSkillCategory,
+  localizeSkillEntry,
   partitionDshVersions,
   skillInstallRequestFor,
 } from '../src/lib/skill-market'
@@ -120,5 +123,52 @@ describe('partitionDshVersions', () => {
     )
     expect(grouped.stable.map(item => item.version)).toEqual(['0.0.9'])
     expect(grouped.prerelease.map(item => item.version)).toEqual(['0.1.1-rc.2'])
+  })
+})
+
+describe('guessSkillCategory', () => {
+  it('按关键词启发式归类，未命中落入其它', () => {
+    expect(guessSkillCategory('pdf', 'anything')).toBe('文档')
+    expect(guessSkillCategory('canvas-design', 'Create beautiful visual art')).toBe('设计')
+    expect(guessSkillCategory('mcp-builder', 'Guide for creating MCP servers')).toBe('开发')
+    expect(guessSkillCategory('dsh-chinese-docs', '撰写中文技术文档时使用')).toBe('文档')
+    expect(guessSkillCategory('quantum-frobnicator', 'zzz')).toBe('其它')
+  })
+})
+
+describe('localizeSkillEntry', () => {
+  const base = collectSkillMarketEntries({
+    'anthropics/skills': analysis('anthropics/skills', [target({ id: 'pdf:s', name: 'pdf', description: 'Use this skill for PDF files' })]),
+  }, [])[0]
+
+  it('命中映射表时给出中文名/中文简介/表内分类', () => {
+    const localized = localizeSkillEntry(base)
+    expect(localized.displayName).toBe('PDF 文档处理')
+    expect(localized.displayDescription).toContain('PDF')
+    expect(localized.category).toBe('文档')
+  })
+
+  it('未命中映射表时：描述含中文则原样优先，分类回退启发式', () => {
+    const zh = collectSkillMarketEntries({
+      'hackerfish/awesome-dsh-skills': analysis('hackerfish/awesome-dsh-skills', [target({ id: 'x:s', name: 'totally-unknown', description: '排查 DSH 启动失败时使用' })]),
+    }, [])[0]
+    const localized = localizeSkillEntry(zh)
+    expect(localized.displayName).toBe('totally-unknown')
+    expect(localized.displayDescription).toBe('排查 DSH 启动失败时使用')
+  })
+})
+
+describe('filterSkillMarketEntries 分类过滤', () => {
+  it('category=all 不筛，指定分类时只留该组', () => {
+    const entries = collectSkillMarketEntries({
+      'anthropics/skills': analysis('anthropics/skills', [
+        target({ id: 'pdf:s', name: 'pdf', description: 'PDF' }),
+        target({ id: 'canvas-design:s', name: 'canvas-design', description: 'visual art' }),
+      ]),
+    }, [])
+    expect(filterSkillMarketEntries(entries, '', 'all', 'all').length).toBe(2)
+    expect(filterSkillMarketEntries(entries, '', 'all', '文档').map(e => e.name)).toEqual(['pdf'])
+    expect(filterSkillMarketEntries(entries, '', 'all', '设计').map(e => e.name)).toEqual(['canvas-design'])
+    expect(SKILL_CATEGORIES).toContain('其它')
   })
 })

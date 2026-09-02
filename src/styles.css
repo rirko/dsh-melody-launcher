@@ -8060,3 +8060,110 @@ input:focus-visible {
   font-weight: 700;
   font-style: normal;
 }
+
+/* ---- 技能市场卡片 ---- */
+.settings-market-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+
+.settings-market-source {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-market-source.failed {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.skill-market-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  align-items: start;
+  gap: 10px;
+}
+
+.skill-market-card {
+  display: flex;
+  min-height: 150px;
+  flex-direction: column;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 2px 7px rgb(40 55 45 / 4%);
+}
+
+.skill-market-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.skill-market-card-head h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.skill-market-card-head > div > span {
+  display: block;
+  margin-top: 2px;
+  color: var(--quiet);
+  font-size: 10.5px;
+}
+
+.skill-market-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.skill-market-meta span {
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.skill-market-card p {
+  display: -webkit-box;
+  flex: 1;
+  overflow: hidden;
+  margin: 9px 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 16px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.skill-market-card-foot {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.skill-market-card-foot .primary-command {
+  padding: 5px 12px;
+  font-size: 12px;
+}
