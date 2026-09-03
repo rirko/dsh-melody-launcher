@@ -36,10 +36,14 @@ export function LauncherHome({
   return (
     <div className="launcher-home">
       <section className="home-brand">
-        <img className="home-brand-logo" src="/launcher-logo.png" alt="" width={96} height={96} draggable={false} />
-        <h1>DSH-Melody-Launcher</h1>
-        <span className="home-brand-version">v{packageMetadata.version}</span>
-        <span className="home-brand-qq">官方用户QQ群：625155044</span>
+        <div className="home-brand-head">
+          <img className="home-brand-logo" src="/launcher-logo.png" alt="" width={96} height={96} draggable={false} />
+          <h1>DSH-Melody-Launcher</h1>
+        </div>
+        <div className="home-brand-meta">
+          <span className="home-brand-version">v{packageMetadata.version}</span>
+          <span className="home-brand-qq">官方用户QQ群：625155044</span>
+        </div>
       </section>
 
       <section className="home-actions">
@@ -62,7 +66,7 @@ export function LauncherHome({
             </button>
           )}
         </div>
-        <button type="button" className="launcher-utility-button home-version-button" onClick={onVersionSelect} title="切换整合包 / 版本"><Package size={16} /><span>版本选择（整合包）</span></button>
+        <button type="button" className="launcher-utility-button home-version-button" onClick={onVersionSelect} title="选择要使用的整合包"><Package size={16} /><span>整合包选择</span></button>
       </section>
     </div>
   )

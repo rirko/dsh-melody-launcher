@@ -317,9 +317,9 @@ input:focus-visible {
   z-index: 7;
   display: flex;
   flex: none;
-  height: 46px;
+  height: 50px;
   align-items: center;
-  padding-left: 14px;
+  padding-left: 16px;
   gap: 12px;
   color: #ffffff;
   background: var(--accent);
@@ -327,25 +327,28 @@ input:focus-visible {
 }
 
 .topbar-mark {
-  font-size: 16px;
+  font-size: 17.5px;
   font-weight: 900;
   letter-spacing: 0.06em;
 }
 
 .topbar-tabs {
+  position: absolute;
+  left: 50%;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  transform: translateX(-50%);
   -webkit-app-region: no-drag;
 }
 
 .topbar-tab {
-  padding: 5px 13px;
+  padding: 7px 18px;
   border: 0;
-  border-radius: 7px;
-  color: rgba(255, 255, 255, 0.86);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.88);
   background: transparent;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   cursor: pointer;
   transition: background 150ms ease, color 150ms ease;
@@ -368,14 +371,14 @@ input:focus-visible {
 .topbar-developer {
   display: inline-flex;
   margin-right: 8px;
-  padding: 5px 11px;
+  padding: 7px 13px;
   align-items: center;
   gap: 6px;
   border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 7px;
-  color: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.92);
   background: transparent;
-  font-size: 11.5px;
+  font-size: 12.5px;
   font-weight: 650;
   cursor: pointer;
   transition: background 150ms ease, color 150ms ease;
@@ -390,7 +393,7 @@ input:focus-visible {
 .topbar-window-button,
 .topbar-window-close {
   display: grid;
-  width: 46px;
+  width: 50px;
   height: 100%;
   padding: 0;
   place-items: center;
@@ -425,6 +428,7 @@ input:focus-visible {
   height: 100%;
   flex-direction: column;
   overflow: hidden;
+  border-radius: 12px;
   color: var(--ink);
 }
 
@@ -442,27 +446,36 @@ input:focus-visible {
   width: 100%;
   height: 100%;
   min-width: 0;
-  grid-template-columns: minmax(250px, 330px) minmax(0, 1fr);
-  gap: 28px;
-  padding: 30px 36px 26px;
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
   overflow: hidden;
   color: var(--ink);
   background: linear-gradient(180deg, var(--app-bg) 0%, var(--workspace-bg) 100%);
 }
 
+/* 全高白色品牌栏：logo+名称居中于上四分之一，版本/QQ群沉底 */
 .home-brand {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 5px;
+  align-items: center;
+  padding: 0 26px 16px;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
   animation: launcher-rise 320ms cubic-bezier(.22,.61,.36,1) both;
+}
+
+.home-brand-head {
+  display: flex;
+  margin-top: 24%;
+  align-items: center;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
 }
 
 .home-brand-logo {
   width: 96px;
   height: 96px;
-  margin-bottom: 10px;
   filter: drop-shadow(0 10px 22px rgba(38, 52, 104, 0.2));
 }
 
@@ -473,6 +486,14 @@ input:focus-visible {
   font-weight: 800;
   line-height: 27px;
   letter-spacing: -0.01em;
+}
+
+.home-brand-meta {
+  display: flex;
+  margin-top: auto;
+  align-items: center;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .home-brand-version {
@@ -493,14 +514,21 @@ input:focus-visible {
   display: flex;
   min-width: 0;
   flex-direction: column;
+  align-items: flex-end;
   justify-content: flex-end;
   gap: 12px;
+  padding: 0 28px 26px;
   animation: launcher-rise 320ms cubic-bezier(.22,.61,.36,1) 90ms both;
 }
 
 .home-start-row {
   display: flex;
+  width: min(400px, 100%);
   gap: 12px;
+}
+
+.home-version-button {
+  width: min(400px, 100%);
 }
 
 @keyframes launcher-rise {
@@ -6146,13 +6174,13 @@ input:focus-visible {
 
 @media (max-width: 1000px), (max-height: 620px) {
   .topbar {
-    height: 42px;
+    height: 46px;
     padding-left: 12px;
   }
 
   .topbar-tab {
-    padding: 4px 10px;
-    font-size: 11.5px;
+    padding: 5px 12px;
+    font-size: 12px;
   }
 
   .topbar-window-button,
@@ -6161,15 +6189,16 @@ input:focus-visible {
   }
 
   .launcher-home {
-    grid-template-columns: minmax(210px, 260px) minmax(0, 1fr);
-    gap: 20px;
-    padding: 22px 26px 20px;
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  }
+
+  .home-brand-head {
+    margin-top: 16%;
   }
 
   .home-brand-logo {
     width: 72px;
     height: 72px;
-    margin-bottom: 8px;
   }
 
   .home-brand h1 {
