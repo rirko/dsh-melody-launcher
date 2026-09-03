@@ -639,6 +639,7 @@ app.whenReady().then(async () => {
   registerIpcHandlers({
     ...services,
     skillsShIndexPath: path.join(app.getPath('userData'), 'skills-sh-index.json'),
+    newsCachePath: path.join(app.getPath('userData'), 'juya-news-cache.json'),
     getWindow,
     setWindowMode: (mode: WindowMode) => applyWindowMode(mainWindow, mode),
   })

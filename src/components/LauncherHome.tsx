@@ -1,35 +1,52 @@
 import { CircleStop, Download, ExternalLink, LoaderCircle, Package, Play } from 'lucide-react'
 import packageMetadata from '../../package.json'
-import type { DshInstallationStatus, InstallProgress, InstalledApplicationAddon, RuntimeState } from '../types'
+import { WidgetZone } from './WidgetZone'
+import type { DshInstallationStatus, DshUpdateStatus, InstallProgress, InstalledApplicationAddon, LauncherUpdateStatus, RuntimeState } from '../types'
 
 /**
  * 「启动」tab：PCL2 式首页。左列品牌（logo/名称/版本/QQ群），
- * 右列上方留白、底部动作区——启动大按钮（描边）+ 运行时才出现的「打开网页」小方块，
- * 其下「版本选择（整合包）」跳到整合包 tab。运行状态直接写进启动按钮文案。
+ * 右列 = 小部件轮播区（更新/环境/余额/AI日报）+ 底部动作区
+ * （启动大按钮 + 运行时「打开网页」小方块 + 切换整合包）。
  */
 
 interface LauncherHomeProps {
   runtime: RuntimeState
   dshInstallation: DshInstallationStatus
+  dshUpdate: DshUpdateStatus | null
+  launcherUpdate: LauncherUpdateStatus | null
   installProgress: InstallProgress | null
   busy: boolean
   installingDsh: boolean
   activeRuntimeReplacement: InstalledApplicationAddon | null
+  bundleCount: number
+  pluginCount: number
+  skillCount: number
+  presetCount: number
   onToggleRuntime: () => void
   onOpenHarness: () => void
   onVersionSelect: () => void
+  onUpdateDsh: () => void
+  onOpenLauncherUpdate: () => void
 }
 
 export function LauncherHome({
   runtime,
   dshInstallation,
+  dshUpdate,
+  launcherUpdate,
   installProgress,
   busy,
   installingDsh,
   activeRuntimeReplacement,
+  bundleCount,
+  pluginCount,
+  skillCount,
+  presetCount,
   onToggleRuntime,
   onOpenHarness,
   onVersionSelect,
+  onUpdateDsh,
+  onOpenLauncherUpdate,
 }: LauncherHomeProps) {
   const needsInstallation = !dshInstallation.installed && !activeRuntimeReplacement
 
@@ -46,7 +63,20 @@ export function LauncherHome({
         </div>
       </section>
 
-      <section className="home-actions">
+      <section className="home-side">
+        <WidgetZone
+          dshUpdate={dshUpdate}
+          launcherUpdate={launcherUpdate}
+          busy={busy}
+          dshVersion={dshInstallation.version ?? null}
+          bundleCount={bundleCount}
+          pluginCount={pluginCount}
+          skillCount={skillCount}
+          presetCount={presetCount}
+          onUpdateDsh={onUpdateDsh}
+          onOpenLauncherUpdate={onOpenLauncherUpdate}
+        />
+        <div className="home-actions">
         <div className="home-start-row">
           <button
             type="button"
@@ -67,6 +97,7 @@ export function LauncherHome({
           )}
         </div>
         <button type="button" className="launcher-utility-button home-version-button" onClick={onVersionSelect} title="切换到其它整合包"><Package size={16} /><span>切换整合包</span></button>
+        </div>
       </section>
     </div>
   )

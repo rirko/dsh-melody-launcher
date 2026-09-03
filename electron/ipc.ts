@@ -7,7 +7,7 @@ import type { AiSessionCreateInput, ApplicationInstallRequest, AppSettings, Cust
 import type { ApplicationAddonManager } from './application-addons'
 import type { RecommendedWebUiService } from './recommended-web-ui'
 import { isWindowMode } from './app-window'
-import { clearDeepSeekApiKey, getDeepSeekCredentialStatus, setDeepSeekApiKey } from './credentials'
+import { clearDeepSeekApiKey, getDeepSeekCredentialStatus, readDeepSeekApiKey, setDeepSeekApiKey } from './credentials'
 import { listCustomApiProviders, removeCustomApiProvider, saveCustomApiProvider } from './custom-api'
 import { listCopilotModels } from './copilot-api'
 import { searchCatalogRepositories, type DiscoverySort } from './discovery'
@@ -43,6 +43,8 @@ import { dshVersionRoot } from './runtime-versions'
 import { readBuiltinAgentPresets } from './preset-install'
 import { writeProfileMetadata } from './profile-service'
 import { createSkillsShIndexStore, fetchSkillsShIndex, lookupSkillsShIndexCache, matchSkillsShTarget, shouldPersistSkillsShIndex } from './skills-sh'
+import { createDeepSeekBalanceService } from './deepseek-balance'
+import { createNewsCacheStore, fetchNewsFeed, JUYA_NEWS_FEED_URL, lookupNewsCache } from './juya-news'
 import { readPluginReceipts } from './plugin-receipts'
 import { analyzeProfileRepository, applyReceiptMatches, applySelectedMatches, loadProfileRepositoryManifest, manifestText, readProfileRepositoryArchive, validateFullArchive } from './profile-repository-import'
 
@@ -70,12 +72,14 @@ export interface IpcDependencies {
   profiles: ProfileService
   /** skills.sh 索引磁盘缓存路径（userData/skills-sh-index.json）。 */
   skillsShIndexPath: string
+  /** juya AI 日报 RSS 磁盘缓存路径（userData/juya-news-cache.json）。 */
+  newsCachePath: string
   getWindow: () => BrowserWindow | null
   setWindowMode: (mode: WindowMode) => void
 }
 
 export function registerIpcHandlers(deps: IpcDependencies): void {
-  const { settings, pluginReceiptsPath, runtime, installer, launcherUpdater, pluginTrial, aiInstaller, copilot, packManager, githubAuth, applicationAddons, catalogSync, dshMarket, recommendedWebUi, runtimeVersions, profiles, skillsShIndexPath } = deps
+  const { settings, pluginReceiptsPath, runtime, installer, launcherUpdater, pluginTrial, aiInstaller, copilot, packManager, githubAuth, applicationAddons, catalogSync, dshMarket, recommendedWebUi, runtimeVersions, profiles, skillsShIndexPath, newsCachePath } = deps
   const linkedComponents = createLinkedComponentController({
     readSettings: () => settings.read(),
     readProfile,
@@ -738,6 +742,42 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     const target = analysis ? matchSkillsShTarget(analysis.targets, payload.skillId) : null
     if (!target) throw new Error(`来源仓库 ${payload.sourceRepository} 中找不到技能「${payload.skillId}」，可能仓库结构已变化。`)
     return installer.installSkillFromMarket({ repository: payload.sourceRepository, target })
+  })
+
+  // 首页小部件：DeepSeek 余额（key 只留在主进程，5 分钟内存缓存）。
+  const deepSeekBalance = createDeepSeekBalanceService({
+    fetchImpl: githubAuth.fetch,
+    readApiKey: async () => {
+      try { return await readDeepSeekApiKey((await settings.read()).dshHome) } catch { return null }
+    },
+  })
+  ipcMain.handle(IPC.deepseekBalance, (_event, force?: boolean) => deepSeekBalance.get(force === true))
+
+  // 首页小部件：juya AI 日报 RSS，磁盘缓存 + stale-while-revalidate。
+  const newsStore = createNewsCacheStore(newsCachePath)
+  let newsRefreshing = false
+  const refreshNews = () => {
+    if (newsRefreshing) return
+    newsRefreshing = true
+    void fetchNewsFeed(githubAuth.fetch)
+      .then(items => newsStore.write({ version: 1, fetchedAt: Date.now(), items }))
+      .catch((cause: unknown) => console.error('[juya-news] background refresh failed', cause))
+      .finally(() => { newsRefreshing = false })
+  }
+  ipcMain.handle(IPC.newsFeed, async () => {
+    const lookup = lookupNewsCache(await newsStore.read(), Date.now())
+    if (lookup.status === 'fresh') return { status: 'ok' as const, items: lookup.items }
+    if (lookup.status === 'stale') {
+      refreshNews()
+      return { status: 'ok' as const, items: lookup.items }
+    }
+    try {
+      const items = await fetchNewsFeed(githubAuth.fetch, JUYA_NEWS_FEED_URL)
+      await newsStore.write({ version: 1, fetchedAt: Date.now(), items })
+      return { status: 'ok' as const, items }
+    } catch (cause) {
+      return { status: 'error' as const, message: cause instanceof Error ? cause.message : '订阅源读取失败' }
+    }
   })
 
   ipcMain.handle(IPC.aiStatus, () => aiInstaller.status())

@@ -371,6 +371,32 @@ export interface SkillRepositoryAnalysis {
   targets: SkillInstallTarget[]
 }
 
+export interface NewsItem {
+  title: string
+  link: string
+  pubDate: string
+  summary: string
+}
+
+export type NewsFeedResult = { status: 'ok'; items: NewsItem[] } | { status: 'error'; message: string }
+
+export interface DeepSeekBalanceInfo {
+  currency: string
+  totalBalance: number | null
+  grantedBalance: number | null
+  toppedUpBalance: number | null
+}
+
+export interface DeepSeekBalance {
+  isAvailable: boolean
+  infos: DeepSeekBalanceInfo[]
+}
+
+export type DeepSeekBalanceResult =
+  | { status: 'no-key' }
+  | { status: 'ok'; balance: DeepSeekBalance }
+  | { status: 'error'; message: string }
+
 /** skills.sh 目录索引条目：只有名字与来源仓库，安装时再按仓库解析定位 target。 */
 export interface SkillsShSkill {
   /** "owner/repo/skillId" 形式的唯一 id。 */
@@ -1095,6 +1121,10 @@ export interface LauncherApi {
   skillMarketInstall(request: { repository: string; target: SkillInstallTarget }): Promise<SkillInstallResult>
   /** skills.sh 目录索引（主进程聚合 + 磁盘缓存 24h），按安装量降序。 */
   skillMarketCatalog(refresh?: boolean): Promise<SkillsShSkill[]>
+  /** 首页小部件：DeepSeek 官方余额（主进程缓存 5 分钟，force 强刷）。 */
+  deepseekBalance(force?: boolean): Promise<DeepSeekBalanceResult>
+  /** 首页小部件：juya AI 日报 RSS（主进程磁盘缓存 + SWR）。 */
+  newsFeed(): Promise<NewsFeedResult>
   /** 索引条目安装：主进程按来源仓库解析归档定位 target 后落盘。 */
   skillMarketInstallByName(request: { sourceRepository: string; skillId: string }): Promise<SkillInstallResult>
   readInstalledSkills(): Promise<InstalledSkill[]>

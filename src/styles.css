@@ -513,16 +513,191 @@ input:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
-.home-actions {
+/* 首页右列：小部件轮播区在上、动作区沉底 */
+.home-side {
   display: flex;
   min-width: 0;
+  height: 100%;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
   padding: 0 28px 26px;
+}
+
+.home-actions {
+  display: flex;
+  width: min(560px, 100%);
+  min-width: 0;
+  margin-top: auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   animation: launcher-rise 320ms cubic-bezier(.22,.61,.36,1) 90ms both;
 }
+
+/* ===== 小部件轮播区 ===== */
+.widget-zone {
+  display: flex;
+  width: min(560px, 100%);
+  margin-top: 9%;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.widget-pane {
+  animation: launcher-rise 220ms cubic-bezier(.22,.61,.36,1) both;
+}
+
+.widget-card {
+  display: flex;
+  min-height: 260px;
+  flex-direction: column;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 10px 26px rgba(38, 60, 88, 0.1);
+}
+
+.widget-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.widget-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.widget-rows { display: flex; flex-direction: column; gap: 10px; }
+
+.widget-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.widget-row > span { display: flex; min-width: 0; flex-direction: column; }
+.widget-row strong { font-size: 12.5px; }
+.widget-row small { color: var(--quiet); font-size: 10px; }
+.widget-muted { color: var(--muted); font-size: 11px; }
+.widget-good { color: var(--accent); font-size: 11.5px; font-weight: 700; }
+.widget-bad { color: var(--danger); font-size: 11px; }
+
+.widget-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.widget-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.widget-stat span { color: var(--quiet); font-size: 9.5px; font-weight: 650; }
+.widget-stat strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+
+.widget-balance-main { display: flex; flex-direction: column; gap: 2px; }
+.widget-balance-main > span { color: var(--quiet); font-size: 10px; }
+.widget-balance-main > strong { color: var(--accent); font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.widget-balance-main em { font-style: normal; }
+.widget-balance-split { display: flex; gap: 12px; color: var(--muted); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+
+.widget-pricing {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 10px;
+  gap: 4px 12px;
+  border-top: 1px dashed var(--line);
+  color: var(--quiet);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.widget-news {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+}
+
+.widget-news button {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--ink);
+  background: transparent;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.widget-news button:hover { color: var(--accent); background: var(--accent-soft); }
+.widget-news-date { flex: none; width: 34px; color: var(--quiet); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+
+.widget-news-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.widget-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.widget-arrow {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--muted);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.widget-arrow:hover { color: var(--accent); border-color: var(--accent); }
+
+.widget-dots { display: flex; gap: 6px; }
+
+.widget-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--line-strong);
+  cursor: pointer;
+  transition: background 150ms ease, transform 150ms ease;
+}
+
+.widget-dot.active { background: var(--accent); transform: scale(1.25); }
 
 .home-start-row {
   display: flex;
@@ -8055,7 +8230,8 @@ input:focus-visible {
   }
 
   .home-brand,
-  .home-actions {
+  .home-actions,
+  .widget-pane {
     animation: none;
   }
 }

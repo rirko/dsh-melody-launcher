@@ -95,3 +95,10 @@
 - **首页**：左品牌列（96px logo + DSH-Melody-Launcher + 版本 + QQ群）；右列上方留白，底部=描边启动大按钮（状态写进文案）+ 运行时「打开网页」小方块 + 「版本选择（整合包）」跳转。启动配置/Profile 行从启动页删除（切换入口在管理界面顶栏）。
 - **视觉**：PCL2 式天蓝顶栏（DML 缩写 + 白胶囊 active tab）；「晴空蓝」主题色板（accent #2B7CD8）；鲸鱼水印按用户要求移除；动效沿用 emilkowalski 规范（描边按钮、scale(.97) 按压、hover gating）。
 - **工程**：`WindowMode` 收敛为 launcher|manager；`use-navigation` 增 `homeTab/goHome`；`SettingsView` 拆壳为 `SettingsPanels`（tab 受控 + 悬浮刷新钮）；AppHeader/manager-back 自带窗口键移除，窗口键统一在 TopBar。
+
+### 改版增补（2026-09-03 · 首页小部件区一期）
+
+- 首页右侧画布上半部 = **小部件轮播区**（左右箭头+圆点，一次一张大卡，卡片保持挂载切可见性）。
+- 一期四卡：**版本更新**（DSH+启动器合并）、**本地环境**（DSH版本/加载层/插件/技能/预设）、**DeepSeek 余额**（官方 /user/balance，赠金/充值分列+低余额预警+内置峰谷价目快照；key 只留在主进程，5 分钟内存缓存）、**AI 日报**（juya RSS 纯文字列表，磁盘缓存 6h + SWR，点条目开浏览器）。
+- 官方无公开用量 API：累计消费/按天用量/缓存命中率一期不做；二期走 DSH 本地会话日志聚合（dsh-usage-stats 同款思路）。
+- 三期：自定义模式（勾选启用卡片+排序，持久化）。

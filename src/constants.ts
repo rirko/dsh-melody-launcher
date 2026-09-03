@@ -124,6 +124,8 @@ export const IPC = {
   skillMarketAnalyze: 'skill-market:analyze',
   skillMarketInstall: 'skill-market:install',
   skillMarketCatalog: 'skill-market:catalog',
+  deepseekBalance: 'deepseek:balance',
+  newsFeed: 'news:feed',
   skillMarketInstallByName: 'skill-market:install-by-name',
   runtimeState: 'runtime:state',
   runtimeStart: 'runtime:start',

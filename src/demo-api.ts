@@ -1226,6 +1226,32 @@ export const demoApi: LauncherApi = {
     installProgressListeners.forEach(listener => listener({ repository, kind: 'skill', phase: 'complete', percent: 100, message: `${target.name} 已安装` }))
     return { installedSkill, installedSkills: demoInstalledSkills }
   },
+  deepseekBalance: async (force?: boolean) => {
+    await wait(force ? 600 : 200)
+    return {
+      status: 'ok' as const,
+      balance: {
+        isAvailable: true,
+        infos: [{ currency: 'CNY', totalBalance: 118.5, grantedBalance: 0.5, toppedUpBalance: 118 }],
+      },
+    }
+  },
+  newsFeed: async () => {
+    await wait(300)
+    return {
+      status: 'ok' as const,
+      items: [
+        { title: 'DeepSeek 发布新一代推理模型，缓存命中率提升至 82%', link: 'https://example.com/1', pubDate: 'Thu, 03 Sep 2026 08:00:00 GMT', summary: '新模型在长上下文场景下的前缀缓存复用率显著提高，API 价格不变。' },
+        { title: 'OpenAI 推出 Agent 编排框架，支持跨会话记忆', link: 'https://example.com/2', pubDate: 'Thu, 03 Sep 2026 07:40:00 GMT', summary: '框架主打多智能体协作与工具调用的持久化状态管理。' },
+        { title: 'Anthropic 公布 Claude 技能生态年度报告', link: 'https://example.com/3', pubDate: 'Thu, 03 Sep 2026 07:20:00 GMT', summary: '社区技能仓库数量同比增长 4 倍，文档处理类下载量居首。' },
+        { title: '具身智能大模型首次在真实工厂完成 72 小时连续作业', link: 'https://example.com/4', pubDate: 'Wed, 02 Sep 2026 09:00:00 GMT', summary: '端到端视觉-动作模型在分拣产线上验证了长时程稳定性。' },
+        { title: '开源社区发布本地推理套件 v3，全面支持投机解码', link: 'https://example.com/5', pubDate: 'Wed, 02 Sep 2026 08:30:00 GMT', summary: '新版推理引擎在消费级显卡上吞吐提升 60%。' },
+        { title: '谷歌公开 Gemini 多模态检索新基准', link: 'https://example.com/6', pubDate: 'Wed, 02 Sep 2026 08:00:00 GMT', summary: '基准覆盖图文、视频与 3D 场景的统一嵌入评测。' },
+        { title: 'DeepSeek 高峰时段计费规则微调，夜间折扣维持', link: 'https://example.com/7', pubDate: 'Tue, 01 Sep 2026 10:00:00 GMT', summary: '工作日高峰定义不变，缓存命中价继续维持一折。' },
+        { title: 'Meta 开源 4000 亿参数多语言模型', link: 'https://example.com/8', pubDate: 'Tue, 01 Sep 2026 09:00:00 GMT', summary: '权重与训练代码同步释出，支持商用许可。' },
+      ],
+    }
+  },
   skillMarketCatalog: async () => {
     await wait(400)
     return DEMO_SKILLS_SH_INDEX

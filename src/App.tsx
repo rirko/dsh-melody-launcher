@@ -333,13 +333,21 @@ function LauncherShell() {
                 <LauncherHome
                   runtime={store.runtime}
                   dshInstallation={store.dshInstallation}
+                  dshUpdate={store.dshUpdate}
+                  launcherUpdate={store.launcherUpdate}
                   installProgress={store.installProgress?.repository === DSH_REPOSITORY ? store.installProgress : null}
                   busy={runtimeBusy}
                   installingDsh={installingDsh}
                   activeRuntimeReplacement={store.activeRuntimeReplacement}
+                  bundleCount={profile.activeBundles.length}
+                  pluginCount={profile.dependencyCount}
+                  skillCount={store.installedSkills.length}
+                  presetCount={store.installedPresets.length}
                   onToggleRuntime={toggleRuntime}
                   onOpenHarness={openHarness}
                   onVersionSelect={() => navigation.goHome('packs')}
+                  onUpdateDsh={() => { void store.updateDsh() }}
+                  onOpenLauncherUpdate={() => setUpdateOpen(true)}
                 />
               ) : (
                 <SettingsPanels
