@@ -94,8 +94,8 @@ function EnvironmentCard({ dshVersion, bundleCount, pluginCount, skillCount, pre
 
 /** 内置价目快照（元 / 百万 tokens，高峰价；空闲时段减半）。价格页改版时手动更新。 */
 const DEEPSEEK_PRICING = [
-  { model: 'deepseek-v4-flash', hit: '0.02', miss: '1.0', output: '2.0' },
-  { model: 'deepseek-v4-pro', hit: '0.025', miss: '0.6', output: '2.4' },
+  { model: 'deepseek-v4-flash', hit: '0.10', miss: '3.0', output: '9.0' },
+  { model: 'deepseek-v4-pro', hit: '0.30', miss: '9.0', output: '27.0' },
 ]
 
 function BalanceCard() {
@@ -143,7 +143,7 @@ function BalanceCard() {
         {DEEPSEEK_PRICING.map(row => (
           <span key={row.model}>{row.model.replace('deepseek-', '')} 命中{row.hit} / 未命中{row.miss} / 输出{row.output}</span>
         ))}
-        <span className="widget-muted">元/百万 tokens · 空闲时段半价</span>
+        <span className="widget-muted">元/百万 tokens · 高峰价，空闲时段半价</span>
       </div>
     </WidgetCard>
   )
