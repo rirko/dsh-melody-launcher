@@ -581,9 +581,9 @@ function SkillMarketPanel({
   const [installError, setInstallError] = useState<string | null>(null)
 
   // 通用技能 = skills.sh 目录索引（主进程聚合+缓存）；DSH 社区 = 精选仓库归档分析。
-  const loadCatalog = useCallback(() => {
+  const loadCatalog = useCallback((refresh?: boolean) => {
     setCatalog(current => ({ status: 'loading', skills: current.skills, error: null }))
-    api.skillMarketCatalog()
+    api.skillMarketCatalog(refresh)
       .then(skills => setCatalog({ status: 'ready', skills, error: null }))
       .catch((cause: unknown) => {
         console.error('[skill-market] skills.sh catalog', cause)
@@ -646,7 +646,8 @@ function SkillMarketPanel({
       <div className="settings-panel-heading">
         <div className="settings-panel-title"><Store size={17} /><span>技能市场</span>{entries.length > 0 && <span className="settings-count">{entries.length}</span>}</div>
         <div className="settings-market-heading-actions">
-          <PanelRefresh onClick={onRefresh} disabled={refreshLocked} />
+          {/* 刷新 = 重刷本机资源 + 强制重拉 skills.sh 目录（绕过缓存） */}
+          <PanelRefresh onClick={() => { onRefresh(); loadCatalog(true) }} disabled={refreshLocked} />
           <button type="button" className="settings-nav-link" onClick={() => void api.openExternal('https://skills.sh')} title="skills.sh 开放目录（浏览）"><ExternalLink size={13} />在 skills.sh 浏览更多</button>
         </div>
       </div>
@@ -668,7 +669,7 @@ function SkillMarketPanel({
       {catalog.status === 'failed' && (
         <div className="settings-market-source failed">
           <span>skills.sh 目录：{catalog.error}</span>
-          <button type="button" className="settings-nav-link" onClick={loadCatalog}>重试</button>
+          <button type="button" className="settings-nav-link" onClick={() => loadCatalog(true)}>重试</button>
         </div>
       )}
       {SKILL_MARKET_SOURCES.map(source => {

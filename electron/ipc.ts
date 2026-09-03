@@ -42,7 +42,7 @@ import { ensureDshVersionInstalled } from './runtime-versions'
 import { dshVersionRoot } from './runtime-versions'
 import { readBuiltinAgentPresets } from './preset-install'
 import { writeProfileMetadata } from './profile-service'
-import { createSkillsShIndexStore, fetchSkillsShIndex, lookupSkillsShIndexCache, matchSkillsShTarget } from './skills-sh'
+import { createSkillsShIndexStore, fetchSkillsShIndex, lookupSkillsShIndexCache, matchSkillsShTarget, shouldPersistSkillsShIndex } from './skills-sh'
 import { readPluginReceipts } from './plugin-receipts'
 import { analyzeProfileRepository, applyReceiptMatches, applySelectedMatches, loadProfileRepositoryManifest, manifestText, readProfileRepositoryArchive, validateFullArchive } from './profile-repository-import'
 
@@ -689,15 +689,25 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   // skills.sh 目录索引：fresh 直接回；stale 先回旧数据并后台刷新；miss 现场拉取。
   const skillsShIndexStore = createSkillsShIndexStore(skillsShIndexPath)
   let skillsShRefreshing = false
+  const persistSkillsShIndex = async (skills: Awaited<ReturnType<typeof fetchSkillsShIndex>>) => {
+    // 质量闸门：残缺结果（多半是批量查询失败）不写盘，避免把小目录钉住 24 小时。
+    if (shouldPersistSkillsShIndex(skills.length)) await skillsShIndexStore.write({ version: 1, fetchedAt: Date.now(), skills })
+    else console.warn(`[skills-sh] 聚合结果仅 ${skills.length} 条，低于持久化门槛，本次不写缓存`)
+  }
   const refreshSkillsShIndex = () => {
     if (skillsShRefreshing) return
     skillsShRefreshing = true
     void fetchSkillsShIndex(githubAuth.fetch)
-      .then(skills => skillsShIndexStore.write({ version: 1, fetchedAt: Date.now(), skills }))
+      .then(skills => persistSkillsShIndex(skills))
       .catch((cause: unknown) => console.error('[skills-sh] background refresh failed', cause))
       .finally(() => { skillsShRefreshing = false })
   }
-  ipcMain.handle(IPC.skillMarketCatalog, async () => {
+  ipcMain.handle(IPC.skillMarketCatalog, async (_event, payload?: { refresh?: boolean }) => {
+    if (payload?.refresh) {
+      const skills = await fetchSkillsShIndex(githubAuth.fetch)
+      await persistSkillsShIndex(skills)
+      return skills
+    }
     const lookup = lookupSkillsShIndexCache(await skillsShIndexStore.read(), Date.now())
     if (lookup.status === 'fresh') return lookup.skills
     if (lookup.status === 'stale') {
@@ -705,7 +715,7 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
       return lookup.skills
     }
     const skills = await fetchSkillsShIndex(githubAuth.fetch)
-    await skillsShIndexStore.write({ version: 1, fetchedAt: Date.now(), skills })
+    await persistSkillsShIndex(skills)
     return skills
   })
   ipcMain.handle(IPC.skillMarketInstallByName, async (_event, payload: { sourceRepository: string; skillId: string }) => {

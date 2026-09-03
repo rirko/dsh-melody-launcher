@@ -1094,7 +1094,7 @@ export interface LauncherApi {
   skillMarketAnalyze(repository: string, defaultBranch: string): Promise<SkillRepositoryAnalysis>
   skillMarketInstall(request: { repository: string; target: SkillInstallTarget }): Promise<SkillInstallResult>
   /** skills.sh 目录索引（主进程聚合 + 磁盘缓存 24h），按安装量降序。 */
-  skillMarketCatalog(): Promise<SkillsShSkill[]>
+  skillMarketCatalog(refresh?: boolean): Promise<SkillsShSkill[]>
   /** 索引条目安装：主进程按来源仓库解析归档定位 target 后落盘。 */
   skillMarketInstallByName(request: { sourceRepository: string; skillId: string }): Promise<SkillInstallResult>
   readInstalledSkills(): Promise<InstalledSkill[]>

@@ -113,13 +113,38 @@ describe('matchSkillsShTarget', () => {
 })
 
 describe('skillsShIndexQueries', () => {
-  it('覆盖 26 字母、10 数字与常用词', () => {
+  it('覆盖 26 字母、10 数字与大量常用词根（≥100 个查询）', () => {
     const queries = skillsShIndexQueries()
     for (const letter of 'abcdefghijklmnopqrstuvwxyz') expect(queries).toContain(letter)
     for (const digit of '0123456789') expect(queries).toContain(digit)
     expect(queries).toContain('doc')
     expect(queries).toContain('code')
+    expect(queries).toContain('react')
+    expect(queries.length).toBeGreaterThanOrEqual(100)
     expect(new Set(queries).size).toBe(queries.length)
+  })
+})
+
+describe('fetchSkillsShIndex 重试与质量闸门', () => {
+  const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as Response
+
+  it('单查询失败一次后重试成功', async () => {
+    let calls = 0
+    const fetchImpl = (async () => {
+      calls += 1
+      if (calls === 1) throw new Error('transient')
+      return json({ skills: [{ id: 'a/b/c', skillId: 'c', name: 'c', installs: 3, source: 'a/b' }] })
+    }) as typeof fetch
+    const merged = await fetchSkillsShIndex(fetchImpl, { queries: ['only'] })
+    expect(calls).toBe(2)
+    expect(merged).toHaveLength(1)
+  })
+
+  it('低于持久化门槛的结果不写入缓存（shouldPersistSkillsShIndex）', async () => {
+    const { shouldPersistSkillsShIndex, SKILLS_SH_MIN_PERSIST } = await import('../electron/skills-sh')
+    expect(shouldPersistSkillsShIndex(SKILLS_SH_MIN_PERSIST)).toBe(true)
+    expect(shouldPersistSkillsShIndex(SKILLS_SH_MIN_PERSIST - 1)).toBe(false)
+    expect(shouldPersistSkillsShIndex(0)).toBe(false)
   })
 })
 

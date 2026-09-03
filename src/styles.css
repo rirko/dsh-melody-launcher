@@ -2446,7 +2446,7 @@ input:focus-visible {
 
 .management-runtime-control {
   justify-content: flex-start;
-  background: #fffdf7;
+  background: var(--accent-soft);
 }
 
 .management-runtime-label {
@@ -2658,8 +2658,8 @@ input:focus-visible {
 
 .management-secondary-panel > .management-runtime-control {
   flex-basis: 56px;
-  border: 1px solid #e5dfc9;
-  background: #fffdf7;
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, white);
+  background: var(--accent-soft);
 }
 
 .management-secondary-panel > .management-runtime-control > .management-runtime-action {

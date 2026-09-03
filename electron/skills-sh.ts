@@ -11,7 +11,19 @@ export const SKILLS_SH_SEARCH_URL = 'https://www.skills.sh/api/search'
 export const SKILLS_SH_INDEX_LIMIT = 2500
 export const SKILLS_SH_INDEX_TTL_MS = 24 * 60 * 60 * 1000
 
-const WORD_QUERIES = ['doc', 'code', 'test', 'web', 'api', 'data', 'git', 'pdf', 'json', 'ui']
+/** 高频词根：skills.sh 搜索是模糊匹配，词根越多样、并集覆盖的技能族越全。 */
+const WORD_QUERIES = [
+  'doc', 'docs', 'document', 'pdf', 'docx', 'xlsx', 'pptx', 'markdown', 'write', 'writing',
+  'report', 'email', 'research', 'summary', 'translate', 'code', 'coding', 'debug', 'testing', 'test',
+  'review', 'refactor', 'git', 'commit', 'deploy', 'build', 'api', 'web', 'frontend', 'backend',
+  'react', 'vue', 'next', 'node', 'python', 'rust', 'sql', 'database', 'docker', 'kubernetes',
+  'security', 'design', 'ui', 'ux', 'css', 'figma', 'animation', 'icon', 'data', 'analysis',
+  'ai', 'llm', 'prompt', 'agent', 'automation', 'workflow', 'task', 'plan', 'planning', 'brainstorm',
+  'skill', 'claude', 'cursor', 'copilot', 'vscode', 'terminal', 'cli', 'http', 'json', 'yaml',
+  'csv', 'excel', 'slides', 'image', 'video', 'audio', 'music', 'game', 'marketing', 'seo',
+  'sales', 'startup', 'product', 'learn', 'teach', 'memory', 'search', 'scrape', 'blog', 'github',
+  'notion', 'obsidian', 'supabase', 'firebase', 'stripe', 'aws', 'vercel', 'tailwind', 'shadcn', 'devops',
+]
 
 /** 聚合查询词：26 字母 + 10 数字 + 常用词。字母/数字保证任意技能名至少命中一次查询。 */
 export function skillsShIndexQueries(): string[] {
@@ -55,6 +67,13 @@ export function mergeSkillsShIndex(pages: SkillsShSkill[][], limit = SKILLS_SH_I
   return [...byId.values()]
     .sort((a, b) => b.installs - a.installs || a.id.localeCompare(b.id))
     .slice(0, limit)
+}
+
+/** 聚合结果低于该条数视为"残缺索引"（多半是批量查询失败），不写磁盘缓存，下次启动重拉。 */
+export const SKILLS_SH_MIN_PERSIST = 600
+
+export function shouldPersistSkillsShIndex(count: number): boolean {
+  return count >= SKILLS_SH_MIN_PERSIST
 }
 
 export interface SkillsShIndexCacheFile {
@@ -127,7 +146,7 @@ export async function fetchSkillsShIndex(fetchImpl: typeof fetch, options: Fetch
   const concurrency = Math.max(1, options.concurrency ?? 4)
   const pages: SkillsShSkill[][] = []
   let failures = 0
-  const request = async (query: string): Promise<SkillsShSkill[]> => {
+  const requestOnce = async (query: string): Promise<SkillsShSkill[]> => {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
@@ -136,6 +155,14 @@ export async function fetchSkillsShIndex(fetchImpl: typeof fetch, options: Fetch
       return parseSkillsShSearchResponse(await response.json())
     } finally {
       clearTimeout(timer)
+    }
+  }
+  // 单查询重试一次：skills.sh 偶发 5xx/限流不该拖垮整个聚合。
+  const request = async (query: string): Promise<SkillsShSkill[]> => {
+    try {
+      return await requestOnce(query)
+    } catch {
+      return requestOnce(query)
     }
   }
   for (let offset = 0; offset < queries.length; offset += concurrency) {
