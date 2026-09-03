@@ -705,24 +705,19 @@ function SkillMarketPanel({
                 <span>{entry.origin === 'index' ? entry.source.repository : entry.source.label}</span>
               </div>
               <p>{entry.displayDescription || '暂无描述'}</p>
+              {/* 卡脚与 DSH Market 对齐：仓库链接在左，安装/开关在右 */}
               <div className="skill-market-card-foot">
+                <button type="button" className="dsh-market-link" onClick={() => void api.openExternal(`https://github.com/${repositoryUrl}`)}><ExternalLink size={12} />仓库</button>
+                <span className="dsh-market-grow" />
                 {entry.installed ? (
-                  <>
-                    <label className="switch" title={entry.enabled ? '停用技能' : '启用技能'}>
-                      <input type="checkbox" checked={entry.enabled} disabled={busy} onChange={event => { void api.toggleSkill(entry.name, event.target.checked).then(onRefresh) }} />
-                      <span />
-                    </label>
-                    <span className="dsh-market-grow" />
-                    <button type="button" className="dsh-market-link" onClick={() => void api.openExternal(`https://github.com/${repositoryUrl}`)}><ExternalLink size={12} />仓库</button>
-                  </>
+                  <label className="switch" title={entry.enabled ? '停用技能' : '启用技能'}>
+                    <input type="checkbox" checked={entry.enabled} disabled={busy} onChange={event => { void api.toggleSkill(entry.name, event.target.checked).then(onRefresh) }} />
+                    <span />
+                  </label>
                 ) : (
-                  <>
-                    <button type="button" className="primary-command" disabled={busy || isBusy} onClick={() => { void install(entry) }}>
-                      {isBusy ? <LoaderCircle size={13} className="spin" /> : <Download size={13} />}安装
-                    </button>
-                    <span className="dsh-market-grow" />
-                    <button type="button" className="dsh-market-link" onClick={() => void api.openExternal(`https://github.com/${repositoryUrl}`)}><ExternalLink size={12} />仓库</button>
-                  </>
+                  <button type="button" className="primary-command" disabled={busy || isBusy} onClick={() => { void install(entry) }}>
+                    {isBusy ? <LoaderCircle size={13} className="spin" /> : <Download size={13} />}安装
+                  </button>
                 )}
               </div>
             </article>

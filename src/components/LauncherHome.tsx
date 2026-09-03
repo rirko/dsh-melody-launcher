@@ -66,7 +66,7 @@ export function LauncherHome({
             </button>
           )}
         </div>
-        <button type="button" className="launcher-utility-button home-version-button" onClick={onVersionSelect} title="选择要使用的整合包"><Package size={16} /><span>整合包选择</span></button>
+        <button type="button" className="launcher-utility-button home-version-button" onClick={onVersionSelect} title="切换到其它整合包"><Package size={16} /><span>切换整合包</span></button>
       </section>
     </div>
   )

@@ -168,7 +168,8 @@ body {
   min-width: 0;
   overflow: hidden;
   border: 0;
-  border-radius: 12px;
+  /* 顶角由 app-root 统一裁切；这里只圆底部两角，避免与顶栏之间露出暗色缺口 */
+  border-radius: 0 0 12px 12px;
   background: var(--chrome);
   /* The native thick frame is disabled to prevent Windows' black focus
      outline. The transparent window lets this rounded surface be the actual
@@ -446,7 +447,7 @@ input:focus-visible {
   width: 100%;
   height: 100%;
   min-width: 0;
-  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  grid-template-columns: minmax(300px, 36%) minmax(0, 1fr);
   overflow: hidden;
   color: var(--ink);
   background: linear-gradient(180deg, var(--app-bg) 0%, var(--workspace-bg) 100%);
@@ -466,7 +467,7 @@ input:focus-visible {
 
 .home-brand-head {
   display: flex;
-  margin-top: 24%;
+  margin-top: 33%;
   align-items: center;
   flex-direction: column;
   gap: 12px;
@@ -491,9 +492,10 @@ input:focus-visible {
 .home-brand-meta {
   display: flex;
   margin-top: auto;
-  align-items: center;
+  align-items: flex-start;
   flex-direction: column;
   gap: 4px;
+  text-align: left;
 }
 
 .home-brand-version {
@@ -514,7 +516,7 @@ input:focus-visible {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
   justify-content: flex-end;
   gap: 12px;
   padding: 0 28px 26px;
