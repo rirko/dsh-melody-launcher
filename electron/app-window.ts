@@ -11,11 +11,10 @@ interface WindowSize {
   minHeight: number
 }
 
+// 一级导航改造后：启动页与管理界面共用同一个固定尺寸窗口（PCL2 式单窗换页）。
 export const WINDOW_MODES: Record<WindowMode, WindowSize> = {
-  launcher: { width: 900, height: 560, minWidth: 760, minHeight: 480 },
-  manager: { width: 1380, height: 860, minWidth: 1024, minHeight: 680 },
-  // C 端设置页与完整管理界面共用同一套大窗口尺寸。
-  settings: { width: 1380, height: 860, minWidth: 1024, minHeight: 680 },
+  launcher: { width: 1080, height: 700, minWidth: 960, minHeight: 620 },
+  manager: { width: 1080, height: 700, minWidth: 960, minHeight: 620 },
 }
 
 const WINDOW_MODE_ANIMATION_DURATION = 100
@@ -66,7 +65,7 @@ function cancelWindowModeAnimation(window: BrowserWindow): void {
 }
 
 export function isWindowMode(value: unknown): value is WindowMode {
-  return value === 'launcher' || value === 'manager' || value === 'settings'
+  return value === 'launcher' || value === 'manager'
 }
 
 export interface CreateWindowOptions {
@@ -99,7 +98,7 @@ export function createMainWindow(options: CreateWindowOptions): BrowserWindow {
     roundedCorners: true,
     hasShadow: true,
     icon: options.iconPath,
-    title: 'DSH Launcher',
+    title: 'DSH-Melody-Launcher',
     show: false,
     webPreferences: {
       preload: options.preloadPath,

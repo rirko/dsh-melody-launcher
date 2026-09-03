@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLauncherApi } from '../api/client'
 import { errorText } from '../lib/format'
-import type { ViewName, WindowMode } from '../types'
+import type { HomeTab, ViewName, WindowMode } from '../types'
 
 export type SurfaceTransitionPhase = 'idle' | 'exiting' | 'entering'
 
@@ -17,6 +17,8 @@ export function useNavigation(onError: (message: string) => void) {
   const [surface, setSurface] = useState<WindowMode>('launcher')
   const [transitionPhase, setTransitionPhase] = useState<SurfaceTransitionPhase>('idle')
   const [view, setView] = useState<ViewName>('plugins')
+  // 一级导航：启动 surface 内的当前 tab（顶栏切换，不换窗口）。
+  const [homeTab, setHomeTab] = useState<HomeTab>('start')
   const surfaceRef = useRef<WindowMode>('launcher')
   const transitionPhaseRef = useRef<SurfaceTransitionPhase>('idle')
   const transitionTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -75,13 +77,19 @@ export function useNavigation(onError: (message: string) => void) {
     transitionTimersRef.current = [exitTimer]
   }, [api, clearTransitionTimers, onError])
 
+  const goHome = useCallback((tab: HomeTab) => {
+    setHomeTab(tab)
+    changeSurface('launcher')
+  }, [changeSurface])
+
   return {
     surface,
     transitionPhase,
     view,
     setView,
+    homeTab,
+    goHome,
     showManager: useCallback(() => changeSurface('manager'), [changeSurface]),
-    showSettings: useCallback(() => changeSurface('settings'), [changeSurface]),
     showLauncher: useCallback(() => changeSurface('launcher'), [changeSurface]),
   }
 }

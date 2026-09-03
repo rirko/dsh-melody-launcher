@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { LauncherApiProvider, resolveLauncherApi, useLauncherApi } from './api/client'
 import { AppHeader } from './components/AppHeader'
 import { LauncherHome } from './components/LauncherHome'
+import { TopBar } from './components/TopBar'
 import { SideNavigation } from './components/SideNavigation'
 import { DSHCopilotPanel } from './components/DSHCopilotPanel'
 import { RuntimeDrawer } from './components/RuntimeDrawer'
@@ -32,7 +33,7 @@ import { PluginsView } from './views/PluginsView'
 import { GitHubView } from './views/GitHubView'
 import { DshMarketView } from './views/DshMarketView'
 import { RuntimeEnvironmentView } from './views/RuntimeEnvironmentView'
-import { SettingsView } from './views/SettingsView'
+import { SettingsPanels } from './views/SettingsView'
 
 /**
  * 应用根。
@@ -106,7 +107,6 @@ function LauncherShell() {
   const recommendedChoiceRef = useRef<((accept: boolean) => void) | null>(null)
   const managerVisited = useRef(false)
   const discoverVisited = useRef(false)
-  const settingsVisited = useRef(false)
   const previousManagerViewRef = useRef(navigation.view)
   // 仓库结构检测结果由各视图发起，App 统一持有，避免切页后丢失。
   const [repositoryAnalyses, setRepositoryAnalyses] = useState<Record<string, CatalogRepositoryAnalysis>>({})
@@ -241,7 +241,6 @@ function LauncherShell() {
 
   const closeWindow = () => void api.closeWindow()
   const minimizeWindow = () => void api.minimizeWindow()
-  const toggleMaximizeWindow = () => void api.toggleMaximizeWindow()
 
   const openApiConfig = () => {
     setCredentialOpen(true)
@@ -302,30 +301,72 @@ function LauncherShell() {
   const { settings, profile } = store
   if (navigation.surface === 'manager') managerVisited.current = true
   if (navigation.surface === 'manager' && navigation.view === 'discover') discoverVisited.current = true
-  if (navigation.surface === 'settings') settingsVisited.current = true
 
   return (
-    <>
+    <div className="app-root">
+      <TopBar
+        activeTab={navigation.surface === 'launcher' ? navigation.homeTab : null}
+        developerActive={navigation.surface === 'manager'}
+        onSelectTab={navigation.goHome}
+        onOpenDeveloper={navigation.showManager}
+        onMinimize={minimizeWindow}
+        onClose={closeWindow}
+      />
+      <div className="app-content">
       <div
         className={`surface-stage surface-${navigation.surface}${navigation.transitionPhase === 'idle' ? '' : ` is-${navigation.transitionPhase}`}`}
         aria-busy={navigation.transitionPhase !== 'idle'}
       >
         <div className={`surface-host launcher-surface-host ${navigation.surface === 'launcher' ? '' : 'view-hidden'}`}>
-          <LauncherHome
-            profile={profile}
-            runtime={store.runtime}
-            dshInstallation={store.dshInstallation}
-            installProgress={store.installProgress?.repository === DSH_REPOSITORY ? store.installProgress : null}
-            busy={runtimeBusy}
-            installingDsh={installingDsh}
-            activeRuntimeReplacement={store.activeRuntimeReplacement}
-            onManage={navigation.showManager}
-            onOpenSettings={navigation.showSettings}
-            onToggleRuntime={toggleRuntime}
-            onOpenHarness={openHarness}
-            onMinimize={minimizeWindow}
-            onClose={closeWindow}
-          />
+          {navigation.homeTab === 'start' ? (
+            <LauncherHome
+              runtime={store.runtime}
+              dshInstallation={store.dshInstallation}
+              installProgress={store.installProgress?.repository === DSH_REPOSITORY ? store.installProgress : null}
+              busy={runtimeBusy}
+              installingDsh={installingDsh}
+              activeRuntimeReplacement={store.activeRuntimeReplacement}
+              onToggleRuntime={toggleRuntime}
+              onOpenHarness={openHarness}
+              onVersionSelect={() => navigation.goHome('packs')}
+            />
+          ) : (
+            <SettingsPanels
+              tab={navigation.homeTab}
+              settings={settings}
+              profile={profile}
+              dshInstallation={store.dshInstallation}
+              runtimeEnvironment={store.runtimeEnvironment}
+              installedSkills={store.installedSkills}
+              installedPresets={store.installedPresets}
+              packs={store.packs}
+              busy={store.busy}
+              profileMutationLocked={profileMutationLocked}
+              installProgress={store.installProgress}
+              onRefresh={() => {
+                void store.refreshProfile()
+                void store.refreshSecondaryResources()
+                void store.refreshPacks()
+                void store.refreshRuntimeEnvironment(true)
+              }}
+              onImportPack={() => void handlePackImport()}
+              onInstallDshVersion={store.installDshVersion}
+              onSelectDshVersion={store.selectDshVersion}
+              onRemoveDshVersion={store.removeDshVersion}
+              onTogglePlugin={store.togglePlugin}
+              onToggleSkill={store.toggleSkill}
+              onTogglePreset={store.togglePreset}
+              onSkillInstalled={store.applyCatalogSkillInstall}
+              onProfileChanged={() => { void store.refreshProfile() }}
+              onActivatePack={store.activatePack}
+              onDeactivatePack={store.deactivatePack}
+              onRemovePack={store.removePack}
+              onExportPack={store.exportPack}
+              onOpenDshFolder={() => void api.openDshFolder()}
+              onOpenPluginFolder={packageName => { void api.openProfilePluginFolder(packageName) }}
+              onOpenPath={targetPath => { void api.openPath(targetPath) }}
+            />
+          )}
         </div>
         {managerVisited.current && (
           <div className={`surface-host manager-surface-host ${navigation.surface === 'manager' ? '' : 'view-hidden'}`}>
@@ -360,9 +401,6 @@ function LauncherShell() {
             }}
             onProfileChange={profileName => { void store.switchProfile(profileName) }}
             onOpenProfileDirectory={() => { void api.openPath(profile.profileDir) }}
-            onMinimize={minimizeWindow}
-            onToggleMaximize={toggleMaximizeWindow}
-            onClose={closeWindow}
           />
           <div className={`app-body ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${copilotOpen ? 'copilot-open' : ''} ${copilotResizing ? 'copilot-resizing' : ''}`} style={{ '--copilot-width': `${copilotWidth}px` } as CSSProperties}>
             <SideNavigation
@@ -587,57 +625,9 @@ function LauncherShell() {
             </div>
           </div>
           </div>
-          <button className="icon-button manager-back" type="button" title="返回启动页" aria-label="返回启动页" onClick={navigation.showLauncher}>
-            <svg className="manager-corner-mark" viewBox="0 0 36 36" aria-hidden="true" focusable="false">
-              <path d="M36 0V29.5A6.5 6.5 0 0 1 29.5 36H0Z" />
-            </svg>
-          </button>
           </div>
         )}
-        {settingsVisited.current && (
-          <div className={`surface-host settings-surface-host ${navigation.surface === 'settings' ? '' : 'view-hidden'}`}>
-            <SettingsView
-              settings={settings}
-              profile={profile}
-              dshInstallation={store.dshInstallation}
-              runtimeEnvironment={store.runtimeEnvironment}
-              installedSkills={store.installedSkills}
-              installedPresets={store.installedPresets}
-              packs={store.packs}
-              busy={store.busy}
-              profileMutationLocked={profileMutationLocked}
-              installProgress={store.installProgress}
-              onBack={navigation.showLauncher}
-              onOpenDeveloperSettings={() => setSettingsOpen(true)}
-              onOpenManager={navigation.showManager}
-              onRefresh={() => {
-                void store.refreshProfile()
-                void store.refreshSecondaryResources()
-                void store.refreshPacks()
-                void store.refreshRuntimeEnvironment(true)
-              }}
-              onImportPack={() => void handlePackImport()}
-              onMinimize={minimizeWindow}
-              onToggleMaximize={toggleMaximizeWindow}
-              onClose={closeWindow}
-              onInstallDshVersion={store.installDshVersion}
-              onSelectDshVersion={store.selectDshVersion}
-              onRemoveDshVersion={store.removeDshVersion}
-              onTogglePlugin={store.togglePlugin}
-              onToggleSkill={store.toggleSkill}
-              onTogglePreset={store.togglePreset}
-              onSkillInstalled={store.applyCatalogSkillInstall}
-              onProfileChanged={() => { void store.refreshProfile() }}
-              onActivatePack={store.activatePack}
-              onDeactivatePack={store.deactivatePack}
-              onRemovePack={store.removePack}
-              onExportPack={store.exportPack}
-              onOpenDshFolder={() => void api.openDshFolder()}
-              onOpenPluginFolder={packageName => { void api.openProfilePluginFolder(packageName) }}
-              onOpenPath={targetPath => { void api.openPath(targetPath) }}
-            />
-          </div>
-        )}
+      </div>
       </div>
 
       {settingsOpen && (
@@ -751,6 +741,6 @@ function LauncherShell() {
         />
       )}
       {store.toast && <Toast toast={store.toast} onClose={store.dismissToast} />}
-    </>
+    </div>
   )
 }

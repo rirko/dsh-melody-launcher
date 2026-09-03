@@ -311,262 +311,219 @@ input:focus-visible {
   outline-offset: 2px;
 }
 
-.launcher-home {
+/* ===== 全局顶栏（PCL2 式一级导航） ===== */
+.topbar {
   position: relative;
-  isolation: isolate;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--ink);
-  background: var(--workspace-bg);
-}
-
-/* 透明标题栏：左 logo + 标题，右窗口键，整栏可拖拽 */
-.launcher-topbar {
-  position: absolute;
-  z-index: 6;
-  top: 0;
-  right: 0;
-  left: 0;
+  z-index: 7;
   display: flex;
+  flex: none;
   height: 46px;
   align-items: center;
   padding-left: 14px;
-  gap: 9px;
-  color: var(--ink);
-  background: transparent;
+  gap: 12px;
+  color: #ffffff;
+  background: var(--accent);
   -webkit-app-region: drag;
 }
 
-.launcher-topbar-logo {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  border-radius: 5px;
-  image-rendering: pixelated;
+.topbar-mark {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.topbar-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   -webkit-app-region: no-drag;
 }
 
-.launcher-topbar-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12.5px;
-  font-weight: 750;
+.topbar-tab {
+  padding: 5px 13px;
+  border: 0;
+  border-radius: 7px;
+  color: rgba(255, 255, 255, 0.86);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
 }
 
-.launcher-topbar-actions {
+.topbar-tab.active {
+  color: var(--accent);
+  background: #ffffff;
+}
+
+.topbar-right {
   display: flex;
   height: 100%;
   margin-left: auto;
+  align-items: center;
+  gap: 2px;
   -webkit-app-region: no-drag;
 }
 
-.manager-window-button,
-.manager-window-close {
-  display: grid;
-  width: 42px;
-  height: 36px;
-  padding: 0;
-  place-items: center;
-  border: 0;
-  border-radius: 0;
+.topbar-developer {
+  display: inline-flex;
+  margin-right: 8px;
+  padding: 5px 11px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 7px;
+  color: rgba(255, 255, 255, 0.9);
   background: transparent;
+  font-size: 11.5px;
+  font-weight: 650;
   cursor: pointer;
-  -webkit-app-region: no-drag;
+  transition: background 150ms ease, color 150ms ease;
 }
 
-.launcher-window-button,
-.launcher-window-close {
+.topbar-developer.active {
+  color: var(--accent);
+  border-color: #ffffff;
+  background: #ffffff;
+}
+
+.topbar-window-button,
+.topbar-window-close {
   display: grid;
   width: 46px;
   height: 100%;
   padding: 0;
   place-items: center;
   border: 0;
-  border-radius: 0;
-  color: var(--quiet);
+  color: rgba(255, 255, 255, 0.88);
   background: transparent;
   cursor: pointer;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .launcher-window-button:hover {
-    color: var(--ink);
-    background: rgba(127, 137, 130, 0.14);
+  .topbar-tab:hover:not(.active),
+  .topbar-developer:hover:not(.active) {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.14);
   }
 
-  .launcher-window-close:hover {
+  .topbar-window-button:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .topbar-window-close:hover {
     color: #fff;
     background: #c93636;
   }
-
-  .manager-window-close:hover {
-    color: #fff;
-    background: #c93636;
-  }
-
-  .manager-window-button:hover {
-    color: var(--ink);
-    background: rgba(127, 137, 130, 0.16);
-  }
 }
 
-/* 左右分栏：左品牌栏 + 右操作区 */
-.launcher-stage {
-  position: absolute;
-  inset: 46px 0 0;
+/* ===== 应用根布局：顶栏常驻 + 内容区换页 ===== */
+.app-root {
   display: flex;
-  min-width: 0;
-}
-
-/* 左侧品牌栏：主题色深底，像素头像 + 全名 + 状态胶囊 */
-.launcher-brand {
-  position: relative;
-  display: flex;
-  width: 44%;
-  min-width: 250px;
+  width: 100%;
+  height: 100%;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 24px 20px 48px;
   overflow: hidden;
-  color: #ffffff;
-  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-hover) 100%);
+  color: var(--ink);
 }
 
-/* 左上像素点阵：呼应像素风 logo */
-.launcher-brand-dots {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  display: grid;
-  grid-template-columns: repeat(4, 5px);
-  gap: 4px;
-  pointer-events: none;
-}
-
-.launcher-brand-dots span {
-  width: 5px;
-  height: 5px;
-  border-radius: 1px;
-  background: rgba(255, 255, 255, 0.55);
-}
-
-.launcher-brand-dots span:nth-child(3n) { background: rgba(255, 255, 255, 0.3); }
-.launcher-brand-dots span:nth-child(4n) { background: rgba(255, 255, 255, 0.18); }
-.launcher-brand-dots span:nth-child(5n) { background: rgba(255, 255, 255, 0.42); }
-
-/* 右下角水印人头：低透明度放大裁切 */
-.launcher-brand-watermark {
-  position: absolute;
-  right: -38px;
-  bottom: -38px;
-  width: 160px;
-  opacity: 0.13;
-  image-rendering: pixelated;
-  pointer-events: none;
-  user-select: none;
-}
-
-.launcher-brand-avatar {
+.app-content {
   position: relative;
-  width: 88px;
-  height: 88px;
-  image-rendering: pixelated;
-  user-select: none;
-}
-
-.launcher-brand-name {
-  position: relative;
-  margin: 14px 0 0;
-  font-size: 16px;
-  font-weight: 750;
-  letter-spacing: 0.02em;
-}
-
-/* 状态胶囊条：半透明玻璃质感，纯展示 */
-.launcher-status-pill {
-  position: relative;
-  display: inline-flex;
-  max-width: 100%;
-  align-items: center;
-  gap: 7px;
-  margin-top: 11px;
-  padding: 5px 13px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 10.5px;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-}
-
-.launcher-status-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.launcher-state-dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.55);
-}
-
-.launcher-state-dot.running {
-  background: #5dd39e;
-  box-shadow: 0 0 0 3px rgba(93, 211, 158, 0.25);
-  animation: status-pulse 1.8s ease-in-out infinite;
-}
-
-.launcher-brand-footer {
-  position: relative;
-  margin: 2px 0 0;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 9.5px;
-  font-weight: 650;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.launcher-brand-footer:first-of-type {
-  margin-top: auto;
-  padding-top: 14px;
-}
-
-/* 右侧操作区：控件收窄固定宽度，居中留白 */
-.launcher-actions {
-  display: flex;
   flex: 1;
+  min-height: 0;
+}
+
+/* ===== 「启动」tab：左品牌列 + 右动作区（上方留白） ===== */
+.launcher-home {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  width: 100%;
+  height: 100%;
   min-width: 0;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 24px;
+  grid-template-columns: minmax(250px, 330px) minmax(0, 1fr);
+  gap: 28px;
+  padding: 30px 36px 26px;
+  overflow: hidden;
+  color: var(--ink);
   background: linear-gradient(180deg, var(--app-bg) 0%, var(--workspace-bg) 100%);
 }
 
-/* 实心主按钮：主题蓝底白字，主行大字、副行浅色小字 */
+.home-brand {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  animation: launcher-rise 320ms cubic-bezier(.22,.61,.36,1) both;
+}
+
+.home-brand-logo {
+  width: 96px;
+  height: 96px;
+  margin-bottom: 10px;
+  filter: drop-shadow(0 10px 22px rgba(38, 52, 104, 0.2));
+}
+
+.home-brand h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 27px;
+  letter-spacing: -0.01em;
+}
+
+.home-brand-version {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-brand-qq {
+  color: var(--quiet);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-actions {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 12px;
+  animation: launcher-rise 320ms cubic-bezier(.22,.61,.36,1) 90ms both;
+}
+
+.home-start-row {
+  display: flex;
+  gap: 12px;
+}
+
+@keyframes launcher-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* PCL2 的「下载游戏」式描边按钮：白底 + 蓝描边 + 蓝字，主行大字、副行灰字 */
 .launcher-start-button {
   display: flex;
-  width: 210px;
-  min-height: 54px;
+  flex: 1;
+  min-width: 0;
+  min-height: 72px;
   align-items: center;
   justify-content: center;
-  padding: 0 16px;
-  gap: 10px;
-  border: 0;
-  border-radius: 10px;
-  color: #ffffff;
-  background: var(--accent);
+  padding: 0 18px;
+  gap: 12px;
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+  color: var(--accent);
+  background: var(--surface);
   cursor: pointer;
-  transition: transform 160ms cubic-bezier(.23,1,.32,1), background 150ms ease;
+  transition: transform 160ms cubic-bezier(.23,1,.32,1), background 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
 .launcher-start-button:active:not(:disabled) {
@@ -575,18 +532,24 @@ input:focus-visible {
 
 @media (hover: hover) and (pointer: fine) {
   .launcher-start-button:hover:not(:disabled) {
-    background: var(--accent-hover);
+    background: var(--accent-soft);
+  }
+}
+
+.launcher-start-button.stop {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .launcher-start-button.stop:hover:not(:disabled) {
+    background: var(--danger-soft);
   }
 }
 
 .launcher-start-button:disabled {
   cursor: default;
   opacity: 0.72;
-}
-
-.launcher-utility-button:disabled {
-  cursor: default;
-  opacity: 0.55;
 }
 
 .launcher-start-button > span {
@@ -597,87 +560,44 @@ input:focus-visible {
 }
 
 .launcher-start-button small {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
   font-size: 9px;
   font-weight: 600;
 }
 
 .launcher-start-button strong {
-  font-size: 16px;
-  line-height: 20px;
+  font-size: 19px;
+  line-height: 24px;
 }
 
-/* 运行中：按钮一分为二——左段停止，右段打开网页 */
-.launcher-start-split {
-  display: flex;
-  width: 210px;
-  min-height: 54px;
-  overflow: hidden;
-  border-radius: 10px;
-}
-
-.launcher-split-stop,
-.launcher-split-open {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: center;
-  padding: 0 10px;
-  gap: 6px;
-  border: 0;
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: 700;
+/* 启动按钮右侧的「打开网页」小方块（仅运行时出现） */
+.home-open-square {
+  display: grid;
+  width: 72px;
+  flex: none;
+  place-items: center;
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+  color: var(--accent);
+  background: var(--surface);
   cursor: pointer;
   transition: transform 160ms cubic-bezier(.23,1,.32,1), background 150ms ease;
 }
 
-.launcher-split-stop {
-  flex: 1.25;
-  border-right: 1px solid rgba(255, 255, 255, 0.35);
-  background: var(--accent);
-}
-
-.launcher-split-open {
-  flex: 1;
-  background: color-mix(in srgb, var(--accent) 62%, #000000);
-}
-
-.launcher-split-stop > span:last-child,
-.launcher-split-open > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.launcher-split-stop:active,
-.launcher-split-open:active {
+.home-open-square:active {
   transform: scale(.97);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .launcher-split-stop:hover {
-    background: var(--accent-hover);
+  .home-open-square:hover {
+    background: var(--accent-soft);
   }
-
-  .launcher-split-open:hover {
-    background: color-mix(in srgb, var(--accent) 74%, #000000);
-  }
-}
-
-/* 功能键纵排 */
-.launcher-utility-column {
-  display: flex;
-  width: 210px;
-  flex-direction: column;
-  gap: 9px;
-  margin-top: 2px;
 }
 
 .launcher-utility-button {
   display: inline-flex;
   min-width: 0;
-  min-height: 38px;
+  min-height: 44px;
   align-items: center;
   justify-content: center;
   padding: 0 10px;
@@ -709,6 +629,22 @@ input:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 一级 tab 面板容器：刷新钮悬浮在页头右上 */
+.home-tab-page {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--workspace-bg);
+}
+
+.home-tab-refresh {
+  position: absolute;
+  z-index: 3;
+  top: 16px;
+  right: 20px;
 }
 
 .app-shell {
@@ -754,9 +690,6 @@ input:focus-visible {
   gap: 10px;
 }
 
-.manager-back {
-  flex: 0 0 34px;
-}
 
 .brand-mark {
   display: grid;
@@ -1388,8 +1321,12 @@ input:focus-visible {
   --copilot-font-small: clamp(10px, 0.3vw + 6.5px, 12px);
 }
 
+/* 收起态必须归零宽度：窄窗媒体查询里 .copilot-panel 会切成 absolute 悬浮，
+   若保留面板宽度，translateX(100%) 会把隐藏的面板推到视口外造成横向溢出。 */
 .copilot-panel.closed {
   visibility: hidden;
+  width: 0;
+  min-width: 0;
   opacity: 0;
   pointer-events: none;
   transform: translateX(100%);
@@ -1692,37 +1629,9 @@ input:focus-visible {
   background: transparent;
 }
 
-.manager-corner-mark {
-  display: block;
-  width: 18px;
-  height: 18px;
-  color: var(--accent);
-  pointer-events: none;
-}
 
-.manager-corner-mark path { fill: currentColor; }
 
 /* 独立于侧栏容器，始终以舞台右下角为锚点，窗口调整大小时不会漂移。 */
-.manager-back {
-  position: absolute;
-  z-index: 46;
-  right: 0;
-  bottom: 0;
-  display: grid;
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  padding: 0;
-  place-items: end;
-  color: var(--accent);
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  overflow: hidden;
-  transform: none;
-  transition: none;
-}
 
 /* Copilot 打开后，侧栏按钮贴着工作区/侧栏分界线；返回按钮仍固定在窗口最右下角。 */
 .app-body.copilot-open .manager-edge-actions {
@@ -6235,83 +6144,60 @@ input:focus-visible {
   to { transform: rotate(360deg); }
 }
 
-@media (max-width: 820px), (max-height: 540px) {
-  .launcher-topbar {
+@media (max-width: 1000px), (max-height: 620px) {
+  .topbar {
     height: 42px;
+    padding-left: 12px;
   }
 
-  .launcher-topbar-logo {
-    width: 20px;
-    height: 20px;
+  .topbar-tab {
+    padding: 4px 10px;
+    font-size: 11.5px;
   }
 
-  .launcher-window-button,
-  .launcher-window-close {
+  .topbar-window-button,
+  .topbar-window-close {
     width: 42px;
   }
 
-  .launcher-stage {
-    inset: 42px 0 0;
+  .launcher-home {
+    grid-template-columns: minmax(210px, 260px) minmax(0, 1fr);
+    gap: 20px;
+    padding: 22px 26px 20px;
   }
 
-  .launcher-brand {
-    min-width: 208px;
-    padding: 18px 14px 40px;
+  .home-brand-logo {
+    width: 72px;
+    height: 72px;
+    margin-bottom: 8px;
   }
 
-  .launcher-brand-avatar {
-    width: 68px;
-    height: 68px;
+  .home-brand h1 {
+    font-size: 18px;
+    line-height: 23px;
   }
 
-  .launcher-brand-name {
-    font-size: 14px;
-  }
-
-  .launcher-brand-watermark {
-    width: 124px;
-    right: -28px;
-    bottom: -28px;
-  }
-
-  .launcher-actions {
-    padding: 16px;
-    gap: 10px;
-  }
-
-  .launcher-start-button,
-  .launcher-start-split,
-  .launcher-utility-column {
-    width: 190px;
-  }
-
-  .launcher-start-button,
-  .launcher-start-split {
-    min-height: 48px;
+  .launcher-start-button {
+    min-height: 60px;
   }
 
   .launcher-start-button strong {
-    font-size: 14px;
-    line-height: 18px;
+    font-size: 16px;
+    line-height: 20px;
+  }
+
+  .home-open-square {
+    width: 60px;
   }
 
   .launcher-utility-button {
-    min-height: 34px;
+    min-height: 38px;
   }
 }
 
-@media (max-height: 500px) {
+@media (max-height: 560px) {
   .launcher-start-button small {
     display: none;
-  }
-
-  .launcher-brand-dots {
-    display: none;
-  }
-
-  .launcher-brand-avatar {
-    width: 60px;
-    height: 60px;
   }
 }
 
@@ -7447,213 +7333,12 @@ input:focus-visible {
 .recommended-dialog-footer .primary-command { min-width: 132px; }
 .recommended-action-row { display: grid; gap: 6px; padding: 2px 0 10px; }
 .recommended-action-row small { color: var(--muted); font-size: 10px; line-height: 1.6; }
-/* ===================== C 端设置页（轮椅模式） ===================== */
-.settings-surface-host {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-}
-
-.settings-page {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-.settings-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-shrink: 0;
-  padding: 13px 18px 12px;
-  border-bottom: 1px solid var(--line);
-}
-
-/* 无边框窗口：顶栏空白处可拖动，按钮本身除外。 */
-.settings-topbar {
-  -webkit-app-region: drag;
-}
-
-.settings-topbar button {
-  -webkit-app-region: no-drag;
-}
-
-.settings-topbar-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  min-width: 0;
-}
-
-.settings-back-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 13px;
-  border-radius: 8px;
-  border: 1px solid var(--line-strong);
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.settings-back-button:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--surface-strong);
-}
-
-.settings-topbar-title {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.settings-topbar-title .management-eyebrow {
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  color: var(--quiet);
-  text-transform: uppercase;
-}
-
-.settings-topbar-title h1 {
-  margin: 1px 0 0;
-  font-size: 19px;
-  line-height: 1.2;
-  color: var(--ink);
-}
-
-.settings-topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.settings-window-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.settings-window-button:hover {
-  background: var(--surface-strong);
-  color: var(--ink);
-}
-
-.settings-window-button.close:hover {
-  background: var(--danger);
-  color: #ffffff;
-}
-
-.settings-layout {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
-  min-height: 0;
-}
-
-.settings-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-height: 0;
-  padding: 14px 10px;
-  border-right: 1px solid var(--line);
-  background: var(--chrome);
-}
-
-.settings-nav > button {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 11px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.settings-nav > button:hover {
-  color: var(--ink);
-  background: var(--surface-soft);
-}
-
-.settings-nav > button.active {
-  background: var(--surface);
-  color: var(--accent);
-  box-shadow: 0 1px 4px rgba(25, 35, 29, 0.08);
-}
-
-.settings-nav-footer {
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--line-strong);
-}
-
-.settings-nav-action {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 11px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12.5px;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-}
-
-.settings-nav-action:hover {
-  color: var(--ink);
-  background: var(--surface-soft);
-}
-
-.settings-nav-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 11px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--quiet);
-  font-size: 11.5px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.settings-nav-link:hover {
-  color: var(--accent);
-}
-
+/* ===================== C 端一级 tab 面板（轮椅模式） ===================== */
 .settings-content {
+  height: 100%;
   min-width: 0;
   overflow-y: auto;
-  padding: 18px 22px 26px;
+  padding: 20px 26px 28px;
 }
 
 .settings-segmented {
@@ -8281,12 +7966,12 @@ input:focus-visible {
 
   .launcher-start-button:active,
   .launcher-utility-button:active,
-  .launcher-split-stop:active,
-  .launcher-split-open:active {
+  .home-open-square:active {
     transform: none;
   }
 
-  .launcher-state-dot.running {
+  .home-brand,
+  .home-actions {
     animation: none;
   }
 }

@@ -40,6 +40,7 @@ import {
 import type {
   AppSettings,
   BuiltinAgentPreset,
+  HomeTab,
   DshInstallationStatus,
   InstalledPreset,
   InstalledSkill,
@@ -61,8 +62,10 @@ import type {
  * 视觉沿用现有主题体系。
  */
 
-interface SettingsViewProps {
+interface SettingsPanelsProps {
   settings: AppSettings
+  /** 一级导航当前 tab（start 由 LauncherHome 承担，不进这里）。 */
+  tab: Exclude<HomeTab, 'start'>
   profile: ProfileState
   dshInstallation: DshInstallationStatus
   runtimeEnvironment: RuntimeEnvironmentState | null
@@ -72,14 +75,8 @@ interface SettingsViewProps {
   busy: string | null
   profileMutationLocked: boolean
   installProgress: InstallProgress | null
-  onBack: () => void
-  onOpenDeveloperSettings: () => void
-  onOpenManager: () => void
   onRefresh: () => void
   onImportPack: () => void
-  onMinimize: () => void
-  onToggleMaximize: () => void
-  onClose: () => void
   onInstallDshVersion: (version: string) => Promise<boolean>
   onSelectDshVersion: (version: string) => Promise<boolean>
   onRemoveDshVersion: (version: string) => Promise<boolean>
@@ -97,18 +94,9 @@ interface SettingsViewProps {
   onOpenPath: (targetPath: string) => void
 }
 
-type SettingsTab = 'versions' | 'plugins' | 'skills' | 'presets' | 'packs'
-
-const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Cpu }> = [
-  { id: 'versions', label: 'DSH 版本', icon: Cpu },
-  { id: 'plugins', label: '插件', icon: Layers3 },
-  { id: 'skills', label: '技能', icon: BookOpen },
-  { id: 'presets', label: '预设', icon: Wand2 },
-  { id: 'packs', label: '整合包', icon: Package },
-]
-
-export function SettingsView({
+export function SettingsPanels({
   settings,
+  tab,
   profile,
   dshInstallation,
   runtimeEnvironment,
@@ -118,14 +106,8 @@ export function SettingsView({
   busy,
   profileMutationLocked,
   installProgress,
-  onBack,
-  onOpenDeveloperSettings,
-  onOpenManager,
   onRefresh,
   onImportPack,
-  onMinimize,
-  onToggleMaximize,
-  onClose,
   onInstallDshVersion,
   onSelectDshVersion,
   onRemoveDshVersion,
@@ -141,9 +123,7 @@ export function SettingsView({
   onOpenDshFolder,
   onOpenPluginFolder,
   onOpenPath,
-}: SettingsViewProps) {
-  const [tab, setTab] = useState<SettingsTab>('versions')
-
+}: SettingsPanelsProps) {
   const activePack = useMemo(() => {
     const direct = packs.find(pack => pack.id === settings.profileName)
     if (direct) return direct
@@ -153,41 +133,9 @@ export function SettingsView({
   const locked = busy !== null || profileMutationLocked
 
   return (
-    <div className="settings-page">
-      <header className="settings-topbar">
-        <div className="settings-topbar-left">
-          <button type="button" className="settings-back-button" onClick={onBack} title="返回启动页" aria-label="返回启动页"><ArrowLeft size={16} /><span>返回启动页</span></button>
-          <div className="settings-topbar-title">
-            <span className="management-eyebrow">DSH LAUNCHER · 简易模式</span>
-            <h1>设置</h1>
-          </div>
-        </div>
-        <div className="settings-topbar-actions">
-          <button type="button" className="settings-window-button" title="最小化" aria-label="最小化" onClick={onMinimize}><Minus size={16} /></button>
-          <button type="button" className="settings-window-button" title="最大化或还原" aria-label="最大化或还原" onClick={onToggleMaximize}><Maximize2 size={14} /></button>
-          <button type="button" className="settings-window-button close" title="关闭" aria-label="关闭" onClick={onClose}><X size={17} /></button>
-        </div>
-      </header>
-
-      <div className="settings-layout">
-        <nav className="settings-nav" aria-label="设置分类">
-          {TABS.map(entry => {
-            const Icon = entry.icon
-            return (
-              <button key={entry.id} type="button" className={tab === entry.id ? 'active' : ''} onClick={() => setTab(entry.id)}>
-                <Icon size={17} />
-                <span>{entry.label}</span>
-              </button>
-            )
-          })}
-          <div className="settings-nav-footer">
-            <button type="button" className="settings-nav-action" onClick={onRefresh} disabled={locked}><RefreshCw size={15} /><span>刷新</span></button>
-            <button type="button" className="settings-nav-link" onClick={onOpenDeveloperSettings} title="完整开发者设置"><Settings size={13} />开发者模式 →</button>
-            <button type="button" className="settings-nav-link" onClick={onOpenManager}>完整管理界面</button>
-          </div>
-        </nav>
-
-        <main className="settings-content">
+    <div className="home-tab-page">
+      <button type="button" className="icon-button home-tab-refresh" title="刷新" aria-label="刷新" onClick={onRefresh} disabled={locked}><RefreshCw size={15} /></button>
+      <main className="settings-content">
           {tab === 'versions' && (
             <SettingsVersions
               environment={runtimeEnvironment}
@@ -243,8 +191,7 @@ export function SettingsView({
               }}
             />
           )}
-        </main>
-      </div>
+      </main>
     </div>
   )
 }

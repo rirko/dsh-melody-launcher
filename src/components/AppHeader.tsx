@@ -1,4 +1,4 @@
-import { AppWindow, ChevronRight, CircleStop, Download, Folder, KeyRound, Layers3, LoaderCircle, Maximize2, Minus, Package, Play, X } from 'lucide-react'
+import { AppWindow, ChevronRight, CircleStop, Download, Folder, KeyRound, Layers3, LoaderCircle, Package, Play } from 'lucide-react'
 import type { CredentialStatus, GitHubAuthStatus, InstalledApplicationAddon, LauncherUpdateStatus, PackStatus, ProfileSummary, RuntimeState } from '../types'
 
 /** 管理界面顶栏：品牌、当前配置与运行状态、全局动作。 */
@@ -30,9 +30,6 @@ interface AppHeaderProps {
   onPackChange: (packId: string) => void
   onProfileChange?: (profileName: string) => void
   onOpenProfileDirectory: () => void
-  onMinimize: () => void
-  onToggleMaximize: () => void
-  onClose: () => void
 }
 
 export function AppHeader({
@@ -62,9 +59,6 @@ export function AppHeader({
   onPackChange,
   onProfileChange,
   onOpenProfileDirectory,
-  onMinimize,
-  onToggleMaximize,
-  onClose,
 }: AppHeaderProps) {
   return (
     <header className="app-header">
@@ -162,15 +156,6 @@ export function AppHeader({
         <button className={`primary-command ${runtime.running ? 'stop' : ''}`} type="button" onClick={onToggleRuntime} disabled={busy}>
           {busy ? <LoaderCircle className="spin" size={18} /> : runtime.running ? <CircleStop size={18} /> : activeRuntimeReplacement ? <AppWindow size={18} /> : dshInstalled ? <Play size={18} fill="currentColor" /> : <Download size={18} />}
           <span>{runtime.running ? `停止 ${runtime.applicationAddonName ?? 'DSH'}` : installingDsh ? '安装中' : activeRuntimeReplacement ? `启动 ${activeRuntimeReplacement.name}` : dshInstalled ? '启动 DSH' : '安装 DSH'}</span>
-        </button>
-        <button className="manager-window-button" type="button" title="最小化" aria-label="最小化" onClick={onMinimize}>
-          <Minus size={17} />
-        </button>
-        <button className="manager-window-button" type="button" title="最大化或还原" aria-label="最大化或还原" onClick={onToggleMaximize}>
-          <Maximize2 size={15} />
-        </button>
-        <button className="manager-window-close" type="button" title="关闭" aria-label="关闭" onClick={onClose}>
-          <X size={18} />
         </button>
       </div>
     </header>

@@ -88,3 +88,10 @@
 - **启动页**：左 logo 大图（入场动画）+ 右浮起控制卡（状态芯片 / 启动大按钮 / 单行 4 工具按钮 / 启动配置行），窄窗降级。
 - **技能市场扩容**：通用技能改为 **skills.sh 目录索引**——主进程 `electron/skills-sh.ts` 用公开 `/api/search?q=` 做多查询聚合（字母/数字/常用词 → 去重 → 按安装量排序，上限 2500），磁盘缓存 `skills-sh-index.json`（24h、stale-while-revalidate）；卡片显示安装量徽章；安装走 `skillMarketInstallByName`（main/master 分支逐个归档分析 + `matchSkillsShTarget` 定位）。DSH 社区两仓库保留归档式直装。skills.sh API 标注 legacy，失败时该栏空态+重试，社区栏不受影响。
 - **DSH Market 卡片统一**：与技能市场同几何（minmax(250px,1fr)/radius 10/同投影），星数改药丸徽章（金色星标），meta 增加版本号药丸；工具条搜索框与下拉改主题变量。
+
+### 改版增补（2026-09-03 · 一级导航拍平 + DSH-Melody-Launcher）
+
+- **信息架构**：二级全屏设置页退役，C 端五块能力（DSH版本/插件/技能/预设/整合包）升为**顶栏一级 tab**；「启动」tab 即首页。同一固定窗口（1080×700，无最大化键）内换页，管理界面（开发人员选项）为顶栏末位的二级入口、顶栏常驻。
+- **首页**：左品牌列（96px logo + DSH-Melody-Launcher + 版本 + QQ群）；右列上方留白，底部=描边启动大按钮（状态写进文案）+ 运行时「打开网页」小方块 + 「版本选择（整合包）」跳转。启动配置/Profile 行从启动页删除（切换入口在管理界面顶栏）。
+- **视觉**：PCL2 式天蓝顶栏（DML 缩写 + 白胶囊 active tab）；「晴空蓝」主题色板（accent #2B7CD8）；鲸鱼水印按用户要求移除；动效沿用 emilkowalski 规范（描边按钮、scale(.97) 按压、hover gating）。
+- **工程**：`WindowMode` 收敛为 launcher|manager；`use-navigation` 增 `homeTab/goHome`；`SettingsView` 拆壳为 `SettingsPanels`（tab 受控 + 悬浮刷新钮）；AppHeader/manager-back 自带窗口键移除，窗口键统一在 TopBar。
