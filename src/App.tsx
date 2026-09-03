@@ -313,23 +313,14 @@ function LauncherShell() {
         <div className={`surface-host launcher-surface-host ${navigation.surface === 'launcher' ? '' : 'view-hidden'}`}>
           <LauncherHome
             profile={profile}
-            profileName={settings.profileName}
             runtime={store.runtime}
             dshInstallation={store.dshInstallation}
             installProgress={store.installProgress?.repository === DSH_REPOSITORY ? store.installProgress : null}
             busy={runtimeBusy}
-            packs={store.packs}
-            profiles={store.profiles}
-            activePackId={settings.activePackId}
-            profileSwitcherDisabled={profileSwitcherLocked}
             installingDsh={installingDsh}
             activeRuntimeReplacement={store.activeRuntimeReplacement}
             onManage={navigation.showManager}
             onOpenSettings={navigation.showSettings}
-            onPackChange={packId => {
-              void (packId ? store.activatePack(packId) : store.deactivatePack())
-            }}
-            onProfileChange={profileName => { void store.switchProfile(profileName) }}
             onToggleRuntime={toggleRuntime}
             onOpenHarness={openHarness}
             onMinimize={minimizeWindow}
