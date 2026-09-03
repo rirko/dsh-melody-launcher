@@ -8,6 +8,12 @@ import type { DshMarketCatalog, DshMarketPlugin, DshMarketProgress } from '../ty
 
 type Sort = 'stars' | 'updated' | 'name'
 
+/**
+ * 目录结果的模块级缓存：切走 tab 组件被卸载后，重进时先用旧目录直接渲染、
+ * 后台静默刷新（主进程另有磁盘缓存 + 30 分钟 SWR），不再每次闪一遍骨架屏。
+ */
+let cachedCatalog: DshMarketCatalog | null = null
+
 interface DshMarketViewProps {
   /** Market mutations write the active Profile; let the shared store refresh it. */
   onProfileChanged?: () => Promise<void> | void
@@ -17,7 +23,7 @@ interface DshMarketViewProps {
 
 export function DshMarketView({ onProfileChanged, embedded = false }: DshMarketViewProps) {
   const api = useLauncherApi()
-  const [catalog, setCatalog] = useState<DshMarketCatalog | null>(null)
+  const [catalog, setCatalog] = useState<DshMarketCatalog | null>(cachedCatalog)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
   const [sort, setSort] = useState<Sort>('stars')
@@ -30,7 +36,11 @@ export function DshMarketView({ onProfileChanged, embedded = false }: DshMarketV
   const load = async () => {
     setLoading(true)
     setError(null)
-    try { setCatalog(await api.loadDshMarket()) } catch (cause) { setError(cause instanceof Error ? cause.message : '无法读取 DSH Market') }
+    try {
+      const next = await api.loadDshMarket()
+      cachedCatalog = next
+      setCatalog(next)
+    } catch (cause) { setError(cause instanceof Error ? cause.message : '无法读取 DSH Market') }
     finally { setLoading(false) }
   }
 

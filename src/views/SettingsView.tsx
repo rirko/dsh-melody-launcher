@@ -134,7 +134,6 @@ export function SettingsPanels({
 
   return (
     <div className="home-tab-page">
-      <button type="button" className="icon-button home-tab-refresh" title="刷新" aria-label="刷新" onClick={onRefresh} disabled={locked}><RefreshCw size={15} /></button>
       <main className="settings-content">
           {tab === 'versions' && (
             <SettingsVersions
@@ -146,6 +145,8 @@ export function SettingsPanels({
               onSelect={onSelectDshVersion}
               onRemove={onRemoveDshVersion}
               onOpenFolder={onOpenDshFolder}
+              onRefresh={onRefresh}
+              refreshLocked={locked}
             />
           )}
           {tab === 'plugins' && (
@@ -155,6 +156,8 @@ export function SettingsPanels({
               onTogglePlugin={onTogglePlugin}
               onOpenPluginFolder={onOpenPluginFolder}
               onProfileChanged={onProfileChanged}
+              onRefresh={onRefresh}
+              refreshLocked={locked}
             />
           )}
           {tab === 'skills' && (
@@ -165,6 +168,7 @@ export function SettingsPanels({
               onToggleSkill={onToggleSkill}
               onSkillInstalled={onSkillInstalled}
               onRefresh={onRefresh}
+              refreshLocked={locked}
               onOpenPath={onOpenPath}
             />
           )}
@@ -175,6 +179,8 @@ export function SettingsPanels({
               dshHome={settings.dshHome}
               onTogglePreset={onTogglePreset}
               onOpenPath={onOpenPath}
+              onRefresh={onRefresh}
+              refreshLocked={locked}
             />
           )}
           {tab === 'packs' && (
@@ -182,6 +188,7 @@ export function SettingsPanels({
               packs={packs}
               activePack={activePack}
               busy={locked}
+              onRefresh={onRefresh}
               onImport={onImportPack}
               onActivate={id => { void onActivatePack(id) }}
               onDeactivate={() => { void onDeactivatePack() }}
@@ -196,6 +203,15 @@ export function SettingsPanels({
   )
 }
 
+/** 面板标题行右侧的轻量刷新钮（取代悬浮在页面角上的孤立按钮）。 */
+function PanelRefresh({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
+  return (
+    <button type="button" className="settings-panel-refresh" onClick={onClick} disabled={disabled}>
+      <RefreshCw size={13} className={disabled ? 'spin' : undefined} /><span>刷新</span>
+    </button>
+  )
+}
+
 function SettingsVersions({
   environment,
   installed,
@@ -205,6 +221,8 @@ function SettingsVersions({
   onSelect,
   onRemove,
   onOpenFolder,
+  onRefresh,
+  refreshLocked,
 }: {
   environment: RuntimeEnvironmentState | null
   installed: boolean
@@ -214,6 +232,8 @@ function SettingsVersions({
   onSelect: (version: string) => Promise<boolean>
   onRemove: (version: string) => Promise<boolean>
   onOpenFolder: () => void
+  onRefresh: () => void
+  refreshLocked: boolean
 }) {
   const [expandedGroup, setExpandedGroup] = useState<'stable' | 'prerelease' | null>(null)
   const dshProgress = installProgress && installProgress.kind === 'dsh'
@@ -232,7 +252,10 @@ function SettingsVersions({
       <section className="settings-panel">
         <div className="settings-panel-heading">
           <div className="settings-panel-title"><Cpu size={17} /><span>已安装版本</span></div>
-          <button type="button" className="icon-button" onClick={onOpenFolder} title="打开 DSH 版本文件夹" aria-label="打开 DSH 版本文件夹"><FolderOpen size={16} /></button>
+          <div className="settings-market-heading-actions">
+            <PanelRefresh onClick={onRefresh} disabled={refreshLocked} />
+            <button type="button" className="icon-button" onClick={onOpenFolder} title="打开 DSH 版本文件夹" aria-label="打开 DSH 版本文件夹"><FolderOpen size={16} /></button>
+          </div>
         </div>
         <div className="settings-current">
           <span>当前使用</span>
@@ -345,12 +368,16 @@ function SettingsPluginsTab({
   onTogglePlugin,
   onOpenPluginFolder,
   onProfileChanged,
+  onRefresh,
+  refreshLocked,
 }: {
   profile: ProfileState
   busy: boolean
   onTogglePlugin: (plugin: ManagedPlugin, enabled: boolean) => Promise<boolean>
   onOpenPluginFolder: (packageName: string) => void
   onProfileChanged: () => void
+  onRefresh: () => void
+  refreshLocked: boolean
 }) {
   const [subView, setSubView] = useState<'installed' | 'market'>('installed')
   return (
@@ -363,6 +390,7 @@ function SettingsPluginsTab({
         <section className="settings-panel">
           <div className="settings-panel-heading">
             <div className="settings-panel-title"><Layers3 size={17} /><span>已安装插件</span>{profile.plugins.length > 0 && <span className="settings-count">{profile.plugins.length}</span>}</div>
+            <PanelRefresh onClick={onRefresh} disabled={refreshLocked} />
           </div>
           <div className="settings-hint">开关决定插件在下次启动时是否加载；停用不会删除本体。</div>
           <div className="settings-list">
@@ -397,6 +425,7 @@ function SettingsSkillsTab({
   onToggleSkill,
   onSkillInstalled,
   onRefresh,
+  refreshLocked,
   onOpenPath,
 }: {
   installedSkills: InstalledSkill[]
@@ -405,6 +434,7 @@ function SettingsSkillsTab({
   onToggleSkill: (skill: InstalledSkill, enabled: boolean) => void
   onSkillInstalled: (result: SkillInstallResult) => void
   onRefresh: () => void
+  refreshLocked: boolean
   onOpenPath: (targetPath: string) => void
 }) {
   const [subView, setSubView] = useState<'installed' | 'market'>('installed')
@@ -420,6 +450,7 @@ function SettingsSkillsTab({
           empty={installedSkills.length === 0}
           emptyText="还没有安装技能——切到「技能市场」点一下就能装。"
           onOpenFolder={() => onOpenPath(dshHome)}
+          actions={<PanelRefresh onClick={onRefresh} disabled={refreshLocked} />}
         >
           {installedSkills.map(skill => (
             <ResourceRow
@@ -439,6 +470,7 @@ function SettingsSkillsTab({
           busy={busy}
           onInstalled={onSkillInstalled}
           onRefresh={onRefresh}
+          refreshLocked={refreshLocked}
         />
       )}
     </div>
@@ -451,12 +483,16 @@ function SettingsPresetsTab({
   dshHome,
   onTogglePreset,
   onOpenPath,
+  onRefresh,
+  refreshLocked,
 }: {
   installedPresets: InstalledPreset[]
   busy: boolean
   dshHome: string
   onTogglePreset: (preset: InstalledPreset, enabled: boolean) => void
   onOpenPath: (targetPath: string) => void
+  onRefresh: () => void
+  refreshLocked: boolean
 }) {
   const api = useLauncherApi()
   const [builtin, setBuiltin] = useState<BuiltinAgentPreset[] | null>(null)
@@ -472,6 +508,7 @@ function SettingsPresetsTab({
       <section className="settings-panel">
         <div className="settings-panel-heading">
           <div className="settings-panel-title"><Wand2 size={17} /><span>内置预设</span>{builtin !== null && builtin.length > 0 && <span className="settings-count">{builtin.length}</span>}</div>
+          <PanelRefresh onClick={onRefresh} disabled={refreshLocked} />
         </div>
         <div className="settings-hint">随 DSH 一起发布，在 DSH 界面里切换工作模式；启动器只读展示。</div>
         {builtin === null && <div className="settings-empty"><LoaderCircle size={18} className="spin" />正在读取内置预设…</div>}
@@ -523,11 +560,13 @@ function SkillMarketPanel({
   busy,
   onInstalled,
   onRefresh,
+  refreshLocked,
 }: {
   installedSkills: InstalledSkill[]
   busy: boolean
   onInstalled: (result: SkillInstallResult) => void
   onRefresh: () => void
+  refreshLocked: boolean
 }) {
   const api = useLauncherApi()
   const [catalog, setCatalog] = useState<{ status: 'loading' | 'ready' | 'failed'; skills: SkillsShSkill[]; error: string | null }>({ status: 'loading', skills: [], error: null })
@@ -604,6 +643,7 @@ function SkillMarketPanel({
       <div className="settings-panel-heading">
         <div className="settings-panel-title"><Store size={17} /><span>技能市场</span>{entries.length > 0 && <span className="settings-count">{entries.length}</span>}</div>
         <div className="settings-market-heading-actions">
+          <PanelRefresh onClick={onRefresh} disabled={refreshLocked} />
           <button type="button" className="settings-nav-link" onClick={() => void api.openExternal('https://skills.sh')} title="skills.sh 开放目录（浏览）"><ExternalLink size={13} />在 skills.sh 浏览更多</button>
         </div>
       </div>
@@ -698,19 +738,24 @@ function SettingsSection({
   empty,
   emptyText,
   onOpenFolder,
+  actions,
   children,
 }: {
   title: string
   empty: boolean
   emptyText: string
   onOpenFolder: () => void
+  actions?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
     <section className="settings-panel">
       <div className="settings-panel-heading">
         <div className="settings-panel-title"><BookOpen size={17} /><span>{title}</span></div>
-        <button type="button" className="icon-button" onClick={onOpenFolder} title={`打开${title}文件夹`} aria-label={`打开${title}文件夹`}><FolderOpen size={16} /></button>
+        <div className="settings-market-heading-actions">
+          {actions}
+          <button type="button" className="icon-button" onClick={onOpenFolder} title={`打开${title}文件夹`} aria-label={`打开${title}文件夹`}><FolderOpen size={16} /></button>
+        </div>
       </div>
       {empty ? <div className="settings-empty">{emptyText}</div> : <div className="settings-list">{children}</div>}
     </section>
@@ -721,6 +766,7 @@ function SettingsPacks({
   packs,
   activePack,
   busy,
+  onRefresh,
   onImport,
   onActivate,
   onDeactivate,
@@ -730,6 +776,7 @@ function SettingsPacks({
   packs: PackStatus[]
   activePack: PackStatus | null
   busy: boolean
+  onRefresh: () => void
   onImport: () => void
   onActivate: (packId: string) => void
   onDeactivate: () => void
@@ -740,7 +787,10 @@ function SettingsPacks({
     <div className="settings-panel">
       <div className="settings-panel-heading">
         <div className="settings-panel-title"><Package size={17} /><span>整合包</span>{packs.length > 0 && <span className="settings-count">{packs.length}</span>}</div>
-        <button type="button" className="primary-command" onClick={onImport} disabled={busy}><Download size={15} />导入整合包</button>
+        <div className="settings-market-heading-actions">
+          <PanelRefresh onClick={onRefresh} disabled={busy} />
+          <button type="button" className="primary-command" onClick={onImport} disabled={busy}><Download size={15} />导入整合包</button>
+        </div>
       </div>
       <div className="settings-hint">整合包是一整套「DSH 版本 + 插件 + 技能 + 预设 + 配置」；导入时若机器上没有配套的 DSH 版本会自动下载，并与其它环境隔离。</div>
       {packs.length === 0 && <div className="settings-empty">还没有任何整合包；可导入他人分享的 .zip，或到「完整管理界面」里创建一个。</div>}

@@ -384,6 +384,7 @@ function createServices(): Services {
     preparePnpmRuntime: node => preparePnpmRuntime('plugin', node),
     fetchImpl: githubAuth.fetch,
     packageStoreRoot: path.join(userData, 'plugin-store'),
+    cachePath: path.join(userData, 'dsh-market-cache.json'),
     emitProgress: progress => events.dshMarketProgress(progress),
     emitOutput: (level, text) => events.output('plugin', level, text),
   })

@@ -668,11 +668,51 @@ input:focus-visible {
   background: var(--workspace-bg);
 }
 
-.home-tab-refresh {
-  position: absolute;
-  z-index: 3;
-  top: 16px;
-  right: 20px;
+/* 面板标题行右侧的轻量刷新钮（无边框文字链，与标题行其它动作同排）。 */
+.settings-panel-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease;
+}
+
+.settings-panel-refresh:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.settings-panel-refresh:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* 轻量文字链（设置页各处「重试 / 浏览更多」等）。 */
+.settings-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--accent);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease;
+}
+
+.settings-nav-link:hover {
+  color: var(--accent-hover);
+  background: var(--accent-soft);
 }
 
 .app-shell {
