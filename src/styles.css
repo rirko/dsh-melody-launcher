@@ -661,7 +661,13 @@ input:focus-visible {
   white-space: nowrap;
 }
 
-/* 一级 tab 面板容器：刷新钮悬浮在页头右上 */
+/* keep-mounted 的 tab 面板包装层 */
+.home-tab-pane {
+  width: 100%;
+  height: 100%;
+}
+
+/* 一级 tab 面板容器 */
 .home-tab-page {
   position: relative;
   width: 100%;

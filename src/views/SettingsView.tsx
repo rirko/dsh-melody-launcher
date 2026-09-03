@@ -386,7 +386,8 @@ function SettingsPluginsTab({
         <button type="button" role="tab" aria-selected={subView === 'installed'} className={subView === 'installed' ? 'active' : ''} onClick={() => setSubView('installed')}>已安装</button>
         <button type="button" role="tab" aria-selected={subView === 'market'} className={subView === 'market' ? 'active' : ''} onClick={() => setSubView('market')}>DSH Market</button>
       </div>
-      {subView === 'installed' ? (
+      {/* 两个子视图都保持挂载，切换只切可见性：DSH Market 不再每次重建+重拉目录 */}
+      <div className={subView === 'installed' ? undefined : 'view-hidden'}>
         <section className="settings-panel">
           <div className="settings-panel-heading">
             <div className="settings-panel-title"><Layers3 size={17} /><span>已安装插件</span>{profile.plugins.length > 0 && <span className="settings-count">{profile.plugins.length}</span>}</div>
@@ -409,11 +410,12 @@ function SettingsPluginsTab({
             {profile.plugins.length === 0 && <div className="settings-empty">当前环境还没有插件；切到「DSH Market」点安装。</div>}
           </div>
         </section>
-      ) : (
+      </div>
+      <div className={subView === 'market' ? undefined : 'view-hidden'}>
         <section className="settings-panel">
           <DshMarketView embedded onProfileChanged={onProfileChanged} />
         </section>
-      )}
+      </div>
     </div>
   )
 }
@@ -444,7 +446,7 @@ function SettingsSkillsTab({
         <button type="button" role="tab" aria-selected={subView === 'installed'} className={subView === 'installed' ? 'active' : ''} onClick={() => setSubView('installed')}>已安装</button>
         <button type="button" role="tab" aria-selected={subView === 'market'} className={subView === 'market' ? 'active' : ''} onClick={() => setSubView('market')}>技能市场</button>
       </div>
-      {subView === 'installed' ? (
+      <div className={subView === 'installed' ? undefined : 'view-hidden'}>
         <SettingsSection
           title="已安装技能"
           empty={installedSkills.length === 0}
@@ -464,7 +466,8 @@ function SettingsSkillsTab({
             />
           ))}
         </SettingsSection>
-      ) : (
+      </div>
+      <div className={subView === 'market' ? undefined : 'view-hidden'}>
         <SkillMarketPanel
           installedSkills={installedSkills}
           busy={busy}
@@ -472,7 +475,7 @@ function SettingsSkillsTab({
           onRefresh={onRefresh}
           refreshLocked={refreshLocked}
         />
-      )}
+      </div>
     </div>
   )
 }

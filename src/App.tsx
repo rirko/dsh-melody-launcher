@@ -26,7 +26,7 @@ import { useNavigation } from './hooks/use-navigation'
 import { usePackInstall } from './hooks/use-pack-install'
 import { isInstallProgressActive } from './lib/install-progress'
 import { clampRuntimeDrawerHeight, RUNTIME_DRAWER_AUTO_CLOSE_MS } from './lib/runtime-drawer'
-import type { CatalogRepositoryAnalysis, ManagedPlugin, PackPluginEntry, ProfileRepositoryImportMode, ProfileRepositoryImportPreview, RuntimeDrawerMode } from './types'
+import type { CatalogRepositoryAnalysis, HomeTab, ManagedPlugin, PackPluginEntry, ProfileRepositoryImportMode, ProfileRepositoryImportPreview, RuntimeDrawerMode, ViewName } from './types'
 import { DiscoverView } from './views/DiscoverView'
 import { PacksView } from './views/PacksView'
 import { PluginsView } from './views/PluginsView'
@@ -34,6 +34,9 @@ import { GitHubView } from './views/GitHubView'
 import { DshMarketView } from './views/DshMarketView'
 import { RuntimeEnvironmentView } from './views/RuntimeEnvironmentView'
 import { SettingsPanels } from './views/SettingsView'
+
+/** 一级导航顺序（keep-mounted 渲染顺序）。 */
+const HOME_TAB_ORDER: HomeTab[] = ['start', 'versions', 'plugins', 'skills', 'presets', 'packs']
 
 /**
  * 应用根。
@@ -107,6 +110,9 @@ function LauncherShell() {
   const recommendedChoiceRef = useRef<((accept: boolean) => void) | null>(null)
   const managerVisited = useRef(false)
   const discoverVisited = useRef(false)
+  // keep-mounted 集合：访问过的一级 tab / 管理视图保持挂载，切换只切可见性。
+  const visitedTabs = useRef(new Set<HomeTab>(['start']))
+  const visitedViews = useRef(new Set<ViewName>(['plugins']))
   const previousManagerViewRef = useRef(navigation.view)
   // 仓库结构检测结果由各视图发起，App 统一持有，避免切页后丢失。
   const [repositoryAnalyses, setRepositoryAnalyses] = useState<Record<string, CatalogRepositoryAnalysis>>({})
@@ -300,7 +306,10 @@ function LauncherShell() {
 
   const { settings, profile } = store
   if (navigation.surface === 'manager') managerVisited.current = true
+  if (navigation.surface === 'manager') visitedViews.current.add(navigation.view)
   if (navigation.surface === 'manager' && navigation.view === 'discover') discoverVisited.current = true
+  // 一级 tab keep-mounted：访问过的面板保持挂载、只切隐藏，来回切换不重建、不重新拉数据。
+  visitedTabs.current.add(navigation.homeTab)
 
   return (
     <div className="app-root">
@@ -318,55 +327,59 @@ function LauncherShell() {
         aria-busy={navigation.transitionPhase !== 'idle'}
       >
         <div className={`surface-host launcher-surface-host ${navigation.surface === 'launcher' ? '' : 'view-hidden'}`}>
-          {navigation.homeTab === 'start' ? (
-            <LauncherHome
-              runtime={store.runtime}
-              dshInstallation={store.dshInstallation}
-              installProgress={store.installProgress?.repository === DSH_REPOSITORY ? store.installProgress : null}
-              busy={runtimeBusy}
-              installingDsh={installingDsh}
-              activeRuntimeReplacement={store.activeRuntimeReplacement}
-              onToggleRuntime={toggleRuntime}
-              onOpenHarness={openHarness}
-              onVersionSelect={() => navigation.goHome('packs')}
-            />
-          ) : (
-            <SettingsPanels
-              tab={navigation.homeTab}
-              settings={settings}
-              profile={profile}
-              dshInstallation={store.dshInstallation}
-              runtimeEnvironment={store.runtimeEnvironment}
-              installedSkills={store.installedSkills}
-              installedPresets={store.installedPresets}
-              packs={store.packs}
-              busy={store.busy}
-              profileMutationLocked={profileMutationLocked}
-              installProgress={store.installProgress}
-              onRefresh={() => {
-                void store.refreshProfile()
-                void store.refreshSecondaryResources()
-                void store.refreshPacks()
-                void store.refreshRuntimeEnvironment(true)
-              }}
-              onImportPack={() => void handlePackImport()}
-              onInstallDshVersion={store.installDshVersion}
-              onSelectDshVersion={store.selectDshVersion}
-              onRemoveDshVersion={store.removeDshVersion}
-              onTogglePlugin={store.togglePlugin}
-              onToggleSkill={store.toggleSkill}
-              onTogglePreset={store.togglePreset}
-              onSkillInstalled={store.applyCatalogSkillInstall}
-              onProfileChanged={() => { void store.refreshProfile() }}
-              onActivatePack={store.activatePack}
-              onDeactivatePack={store.deactivatePack}
-              onRemovePack={store.removePack}
-              onExportPack={store.exportPack}
-              onOpenDshFolder={() => void api.openDshFolder()}
-              onOpenPluginFolder={packageName => { void api.openProfilePluginFolder(packageName) }}
-              onOpenPath={targetPath => { void api.openPath(targetPath) }}
-            />
-          )}
+          {HOME_TAB_ORDER.filter(tab => visitedTabs.current.has(tab)).map(tab => (
+            <div key={tab} className={`home-tab-pane ${navigation.homeTab === tab ? '' : 'view-hidden'}`}>
+              {tab === 'start' ? (
+                <LauncherHome
+                  runtime={store.runtime}
+                  dshInstallation={store.dshInstallation}
+                  installProgress={store.installProgress?.repository === DSH_REPOSITORY ? store.installProgress : null}
+                  busy={runtimeBusy}
+                  installingDsh={installingDsh}
+                  activeRuntimeReplacement={store.activeRuntimeReplacement}
+                  onToggleRuntime={toggleRuntime}
+                  onOpenHarness={openHarness}
+                  onVersionSelect={() => navigation.goHome('packs')}
+                />
+              ) : (
+                <SettingsPanels
+                  tab={tab}
+                  settings={settings}
+                  profile={profile}
+                  dshInstallation={store.dshInstallation}
+                  runtimeEnvironment={store.runtimeEnvironment}
+                  installedSkills={store.installedSkills}
+                  installedPresets={store.installedPresets}
+                  packs={store.packs}
+                  busy={store.busy}
+                  profileMutationLocked={profileMutationLocked}
+                  installProgress={store.installProgress}
+                  onRefresh={() => {
+                    void store.refreshProfile()
+                    void store.refreshSecondaryResources()
+                    void store.refreshPacks()
+                    void store.refreshRuntimeEnvironment(true)
+                  }}
+                  onImportPack={() => void handlePackImport()}
+                  onInstallDshVersion={store.installDshVersion}
+                  onSelectDshVersion={store.selectDshVersion}
+                  onRemoveDshVersion={store.removeDshVersion}
+                  onTogglePlugin={store.togglePlugin}
+                  onToggleSkill={store.toggleSkill}
+                  onTogglePreset={store.togglePreset}
+                  onSkillInstalled={store.applyCatalogSkillInstall}
+                  onProfileChanged={() => { void store.refreshProfile() }}
+                  onActivatePack={store.activatePack}
+                  onDeactivatePack={store.deactivatePack}
+                  onRemovePack={store.removePack}
+                  onExportPack={store.exportPack}
+                  onOpenDshFolder={() => void api.openDshFolder()}
+                  onOpenPluginFolder={packageName => { void api.openProfilePluginFolder(packageName) }}
+                  onOpenPath={targetPath => { void api.openPath(targetPath) }}
+                />
+              )}
+            </div>
+          ))}
         </div>
         {managerVisited.current && (
           <div className={`surface-host manager-surface-host ${navigation.surface === 'manager' ? '' : 'view-hidden'}`}>
@@ -433,7 +446,8 @@ function LauncherShell() {
             />
             <main className="workspace">
               <div className="workspace-content">
-              {navigation.view === 'plugins' && (
+              {visitedViews.current.has('plugins') && (
+                <div className={navigation.view === 'plugins' ? undefined : 'view-hidden'}>
                 <PluginsView
                   profile={profile}
                   profileName={settings.profileName}
@@ -470,6 +484,7 @@ function LauncherShell() {
                   aiActive={ai.active}
                   aiSubject={ai.status.subject}
                 />
+                </div>
               )}
               {discoverVisited.current && <div className={navigation.view === 'discover' ? undefined : 'view-hidden'}>
                 <DiscoverView
@@ -521,8 +536,13 @@ function LauncherShell() {
                   aiActive={ai.active}
                 />
               </div>}
-              {navigation.view === 'dsh-market' && <DshMarketView onProfileChanged={store.refreshProfile} />}
-              {navigation.view === 'environment' && (
+              {visitedViews.current.has('dsh-market') && (
+                <div className={navigation.view === 'dsh-market' ? undefined : 'view-hidden'}>
+                  <DshMarketView onProfileChanged={store.refreshProfile} />
+                </div>
+              )}
+              {visitedViews.current.has('environment') && (
+                <div className={navigation.view === 'environment' ? undefined : 'view-hidden'}>
                 <RuntimeEnvironmentView
                   state={store.runtimeEnvironment}
                   busy={profileMutationLocked || Boolean(store.busy)}
@@ -536,8 +556,10 @@ function LauncherShell() {
                   onOpenDshFolder={() => { void api.openDshFolder() }}
                   onOpenNodeFolder={() => { void api.openNodeFolder() }}
                 />
+                </div>
               )}
-              {navigation.view === 'packs' && (
+              {visitedViews.current.has('packs') && (
+                <div className={navigation.view === 'packs' ? undefined : 'view-hidden'}>
                 <PacksView
                   packs={store.packs}
                   profiles={store.profiles}
@@ -571,14 +593,17 @@ function LauncherShell() {
                   installedSkills={store.installedSkills}
                   installedApplications={store.installedApplications}
                 />
+                </div>
               )}
-              {navigation.view === 'github' && (
+              {visitedViews.current.has('github') && (
+                <div className={navigation.view === 'github' ? undefined : 'view-hidden'}>
                 <GitHubView
                   authStatus={store.githubAuthStatus}
                   onLogin={() => setGitHubAccountOpen(true)}
                   onOpen={url => void api.openExternal(url)}
                   onError={showError}
                 />
+                </div>
               )}
               </div>
               <RuntimeDrawer
