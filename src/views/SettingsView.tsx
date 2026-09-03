@@ -20,7 +20,7 @@ import {
   Wand2,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useLauncherApi } from '../api/client'
 import { SkeletonStrip } from '../components/Skeleton'
 import { DshMarketView } from './DshMarketView'
@@ -558,6 +558,62 @@ interface SkillSourceState {
   error: string | null
 }
 
+/** 技能市场首屏最多渲染的卡片数：目录有数千条，全量渲染会让每次切页重排几千个 DOM（卡顿主因）。 */
+const SKILL_MARKET_PAGE = 120
+
+/** 单卡 memo：目录/筛选不变时，App 其它状态更新不重渲染这几千张卡。 */
+const SkillMarketCard = memo(function SkillMarketCard({
+  entry,
+  busy,
+  isBusy,
+  onInstall,
+  onToggle,
+  onOpenRepo,
+}: {
+  entry: SkillMarketEntry
+  busy: boolean
+  isBusy: boolean
+  onInstall: (entry: SkillMarketEntry) => void
+  onToggle: (name: string, enabled: boolean) => void
+  onOpenRepo: (url: string) => void
+}) {
+  const repositoryUrl = entry.target?.sourceRepository ?? entry.source.repository
+  return (
+    <article className="skill-market-card">
+      <div className="skill-market-card-head">
+        <div>
+          <h2>{entry.name}</h2>
+          {entry.displayName !== entry.name && <span>{entry.displayName}</span>}
+        </div>
+        {entry.installed
+          ? <span className="settings-row-badge"><Check size={12} />已装</span>
+          : entry.installs != null && <span className="skill-market-installs"><TrendingUp size={11} />{formatInstalls(entry.installs)}</span>}
+      </div>
+      <div className="skill-market-meta">
+        <span>{entry.category}</span>
+        {entry.origin === 'repo' && <span>{entry.format === 'bundle' ? '技能包' : '单文件'}</span>}
+        <span>{entry.origin === 'index' ? entry.source.repository : entry.source.label}</span>
+      </div>
+      <p>{entry.displayDescription || '暂无描述'}</p>
+      {/* 卡脚与 DSH Market 对齐：仓库链接在左，安装/开关在右 */}
+      <div className="skill-market-card-foot">
+        <button type="button" className="dsh-market-link" onClick={() => onOpenRepo(`https://github.com/${repositoryUrl}`)}><ExternalLink size={12} />仓库</button>
+        <span className="dsh-market-grow" />
+        {entry.installed ? (
+          <label className="switch" title={entry.enabled ? '停用技能' : '启用技能'}>
+            <input type="checkbox" checked={entry.enabled} disabled={busy} onChange={event => onToggle(entry.name, event.target.checked)} />
+            <span />
+          </label>
+        ) : (
+          <button type="button" className="primary-command" disabled={busy || isBusy} onClick={() => onInstall(entry)}>
+            {isBusy ? <LoaderCircle size={13} className="spin" /> : <Download size={13} />}安装
+          </button>
+        )}
+      </div>
+    </article>
+  )
+})
+
 function SkillMarketPanel({
   installedSkills,
   busy,
@@ -579,6 +635,7 @@ function SkillMarketPanel({
   const [category, setCategory] = useState<'all' | SkillCategory>('all')
   const [busyName, setBusyName] = useState<string | null>(null)
   const [installError, setInstallError] = useState<string | null>(null)
+  const [shown, setShown] = useState(SKILL_MARKET_PAGE)
 
   // 通用技能 = skills.sh 目录索引（主进程聚合+缓存）；DSH 社区 = 精选仓库归档分析。
   const loadCatalog = useCallback((refresh?: boolean) => {
@@ -619,10 +676,14 @@ function SkillMarketPanel({
     ...collectSkillMarketEntries(analyses, installedSkills),
   ], [catalog.skills, analyses, installedSkills])
   const visible = useMemo(() => filterSkillMarketEntries(entries, query, sourceKind, category), [entries, query, sourceKind, category])
+  // 筛选条件变化时回到首屏页数，避免"加载更多"状态跨筛选残留。
+  useEffect(() => {
+    setShown(SKILL_MARKET_PAGE)
+  }, [query, sourceKind, category])
   const loading = catalog.status === 'loading' || SKILL_MARKET_SOURCES.some(source => (sources[source.repository]?.status ?? 'loading') === 'loading')
   const allFailed = catalog.status === 'failed' && SKILL_MARKET_SOURCES.every(source => sources[source.repository]?.status === 'failed')
 
-  const install = async (entry: SkillMarketEntry) => {
+  const install = useCallback(async (entry: SkillMarketEntry) => {
     setBusyName(entry.name)
     setInstallError(null)
     try {
@@ -639,7 +700,13 @@ function SkillMarketPanel({
     } finally {
       setBusyName(null)
     }
-  }
+  }, [api, onInstalled])
+  // 传给 memo 卡片的回调必须稳定，否则每次渲染都会击穿 memo。
+  const handleInstall = useCallback((entry: SkillMarketEntry) => { void install(entry) }, [install])
+  const handleToggle = useCallback((name: string, enabled: boolean) => {
+    void api.toggleSkill(name, enabled).then(onRefresh)
+  }, [api, onRefresh])
+  const handleOpenRepo = useCallback((url: string) => { void api.openExternal(url) }, [api])
 
   return (
     <section className="settings-panel">
@@ -689,45 +756,25 @@ function SkillMarketPanel({
       {installError && <div className="error-banner"><span>{installError}</span><button type="button" onClick={() => setInstallError(null)}>忽略</button></div>}
       {!loading && !allFailed && visible.length === 0 && <div className="settings-empty"><Search size={20} />没有匹配的技能。</div>}
       <div className="skill-market-grid">
-        {visible.map(entry => {
-          const isBusy = busyName === entry.name
-          const repositoryUrl = entry.target?.sourceRepository ?? entry.source.repository
-          return (
-            <article key={entry.key} className="skill-market-card">
-              <div className="skill-market-card-head">
-                <div>
-                  <h2>{entry.name}</h2>
-                  {entry.displayName !== entry.name && <span>{entry.displayName}</span>}
-                </div>
-                {entry.installed
-                  ? <span className="settings-row-badge"><Check size={12} />已装</span>
-                  : entry.installs != null && <span className="skill-market-installs"><TrendingUp size={11} />{formatInstalls(entry.installs)}</span>}
-              </div>
-              <div className="skill-market-meta">
-                <span>{entry.category}</span>
-                {entry.origin === 'repo' && <span>{entry.format === 'bundle' ? '技能包' : '单文件'}</span>}
-                <span>{entry.origin === 'index' ? entry.source.repository : entry.source.label}</span>
-              </div>
-              <p>{entry.displayDescription || '暂无描述'}</p>
-              {/* 卡脚与 DSH Market 对齐：仓库链接在左，安装/开关在右 */}
-              <div className="skill-market-card-foot">
-                <button type="button" className="dsh-market-link" onClick={() => void api.openExternal(`https://github.com/${repositoryUrl}`)}><ExternalLink size={12} />仓库</button>
-                <span className="dsh-market-grow" />
-                {entry.installed ? (
-                  <label className="switch" title={entry.enabled ? '停用技能' : '启用技能'}>
-                    <input type="checkbox" checked={entry.enabled} disabled={busy} onChange={event => { void api.toggleSkill(entry.name, event.target.checked).then(onRefresh) }} />
-                    <span />
-                  </label>
-                ) : (
-                  <button type="button" className="primary-command" disabled={busy || isBusy} onClick={() => { void install(entry) }}>
-                    {isBusy ? <LoaderCircle size={13} className="spin" /> : <Download size={13} />}安装
-                  </button>
-                )}
-              </div>
-            </article>
-          )
-        })}
+        {visible.slice(0, shown).map(entry => (
+          <SkillMarketCard
+            key={entry.key}
+            entry={entry}
+            busy={busy}
+            isBusy={busyName === entry.name}
+            onInstall={handleInstall}
+            onToggle={handleToggle}
+            onOpenRepo={handleOpenRepo}
+          />
+        ))}
       </div>
+      {visible.length > shown && (
+        <div className="skill-market-more">
+          <button type="button" className="secondary-button" onClick={() => setShown(current => current + SKILL_MARKET_PAGE)}>
+            加载更多（还有 {visible.length - shown} 个）
+          </button>
+        </div>
+      )}
     </section>
   )
 }

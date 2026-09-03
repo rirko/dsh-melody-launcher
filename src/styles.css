@@ -491,6 +491,7 @@ input:focus-visible {
 
 .home-brand-meta {
   display: flex;
+  align-self: flex-start;
   margin-top: auto;
   align-items: flex-start;
   flex-direction: column;
@@ -8013,6 +8014,12 @@ input:focus-visible {
 }
 
 /* skills.sh 索引条目的安装量徽章（卡片右上角，与「已装」徽章同位） */
+.skill-market-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
 .skill-market-installs {
   display: inline-flex;
   flex: none;

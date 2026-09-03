@@ -142,6 +142,14 @@ export function applyWindowMode(window: BrowserWindow | null, mode: WindowMode):
   const targetBounds = centeredTargetBounds(startBounds, size)
   const targetMinWidth = Math.min(size.minWidth, targetBounds.width)
   const targetMinHeight = Math.min(size.minHeight, targetBounds.height)
+
+  // 一级导航拍平后各模式尺寸一致：直接对齐限制并返回，
+  // 省掉 100ms 的原生缩放动画（它只会让顶栏切换显得迟钝）。
+  if (startBounds.width === targetBounds.width && startBounds.height === targetBounds.height) {
+    window.setMinimumSize(targetMinWidth, targetMinHeight)
+    return
+  }
+
   const [currentMinWidth, currentMinHeight] = window.getMinimumSize()
 
   // Keep one absolute screen-space anchor for the whole resize. Interpolating
