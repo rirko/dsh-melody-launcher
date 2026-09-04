@@ -1,0 +1,48 @@
+/* 轮椅模式翻页转场：封面从一侧翻入盖住屏幕（中点完成模式切换），再向同方向翻出。
+   颜色取 PR 顶栏深蓝，避免黑边观感；仅 transform/opacity，reduced-motion 降级。 */
+
+.mode-flip-cover {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: linear-gradient(180deg, #2a7290 0%, #1c5a74 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.mode-flip-cover .mode-flip-logo {
+  color: #eaf3f6;
+  font-size: 24px;
+  letter-spacing: 3px;
+  font-weight: 700;
+  opacity: 0.9;
+}
+
+.mode-flip-cover.enter {
+  animation: modeFlipDown 0.68s ease-in-out forwards;
+}
+
+.mode-flip-cover.exit {
+  animation: modeFlipUp 0.68s ease-in-out forwards;
+}
+
+@keyframes modeFlipDown {
+  0% { transform-origin: 50% 0%; transform: perspective(1400px) rotateX(88deg); }
+  49.9% { transform-origin: 50% 0%; transform: perspective(1400px) rotateX(0deg); }
+  50% { transform-origin: 50% 100%; transform: perspective(1400px) rotateX(0deg); }
+  100% { transform-origin: 50% 100%; transform: perspective(1400px) rotateX(-88deg); }
+}
+
+@keyframes modeFlipUp {
+  0% { transform-origin: 50% 100%; transform: perspective(1400px) rotateX(-88deg); }
+  49.9% { transform-origin: 50% 100%; transform: perspective(1400px) rotateX(0deg); }
+  50% { transform-origin: 50% 0%; transform: perspective(1400px) rotateX(0deg); }
+  100% { transform-origin: 50% 0%; transform: perspective(1400px) rotateX(88deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mode-flip-cover { animation-duration: 0.01s !important; }
+}

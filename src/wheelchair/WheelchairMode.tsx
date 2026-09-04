@@ -23,6 +23,8 @@ import wheelchairCss from './wheelchair.css?inline'
 
 export interface WheelchairModeProps {
   store: ReturnType<typeof useLauncherStore>
+  /** 翻页转场进行中：暂停滚轮退出，避免连翻。 */
+  flipping: boolean
   /** 原版整合包导入流程（App 作用域的 handlePackImport）。 */
   onImportPack: () => void
   onOpenLauncherUpdate: () => void
@@ -35,7 +37,7 @@ const STYLE_ELEMENT_ID = 'wheelchair-mode-styles'
 /** PR 首页视觉期望的主题变量（PR 主题体系未并入原版，进入模式时临时覆写，退出还原）。 */
 const WHEELCHAIR_THEME = 'deepseek'
 
-export function WheelchairMode({ store, onImportPack, onOpenLauncherUpdate, onOpenHarness, onOpenDeveloper, onExit }: WheelchairModeProps) {
+export function WheelchairMode({ store, flipping, onImportPack, onOpenLauncherUpdate, onOpenHarness, onOpenDeveloper, onExit }: WheelchairModeProps) {
   const api = useLauncherApi()
   const settings = store.settings as AppSettings
   const profile = store.profile as NonNullable<ReturnType<typeof useLauncherStore>['profile']>
@@ -50,6 +52,15 @@ export function WheelchairMode({ store, onImportPack, onOpenLauncherUpdate, onOp
     return () => { style.remove() }
   }, [])
 
+  // 主菜单下滚轮向上 = 从下到上翻转回原版主菜单（翻页转场由 App 统一驱动）。
+  useEffect(() => {
+    if (activeTab !== 'start' || flipping) return
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY < -40) onExit()
+    }
+    window.addEventListener('wheel', onWheel, { passive: true })
+    return () => window.removeEventListener('wheel', onWheel)
+  }, [activeTab, flipping, onExit])
   const installProgressForHome = store.installProgress?.repository === DSH_REPOSITORY ? store.installProgress : null
   const runtimeBusy = store.busy === BUSY.runtime || isInstallProgressActive(store.installProgress)
   const installingDsh = store.busy === BUSY.dshInstall
@@ -132,9 +143,6 @@ export function WheelchairMode({ store, onImportPack, onOpenLauncherUpdate, onOp
           />
         )}
       </div>
-      <button type="button" className="wheelchair-exit-button" title="退出轮椅模式，返回原版界面" onClick={onExit}>
-        退出轮椅模式
-      </button>
       {settingsOpen && settings && (
         <SettingsDialog
           settings={settings}

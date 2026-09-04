@@ -7,6 +7,7 @@ import { SideNavigation } from './components/SideNavigation'
 import { DSHCopilotPanel } from './components/DSHCopilotPanel'
 import { RuntimeDrawer } from './components/RuntimeDrawer'
 import { WheelchairMode } from './wheelchair/WheelchairMode'
+import './wheelchair/flip.css'
 import { Toast } from './components/Toast'
 import { ConfirmDialog } from './components/dialogs/ConfirmDialog'
 import { CredentialDialog } from './components/dialogs/CredentialDialog'
@@ -65,13 +66,34 @@ function LauncherShell() {
 
   // 对话框开关是纯展示状态，不进 store。
   const [settingsOpen, setSettingsOpen] = useState(false)
-  // 轮椅模式（PR #94 新首页）：覆盖层挂载在原版界面之上，原版实现零改动。
+  // 轮椅模式：滚轮翻页切换。启动界面滚轮向下 = 从上到下翻转进入；
+  // 轮椅模式主菜单滚轮向上 = 从下到上翻转回原版。窗口属性两边完全一致。
   const [wheelchairMode, setWheelchairMode] = useState(() => {
     try { return localStorage.getItem('dsh-launcher:ui-mode') === 'wheelchair' } catch { return false }
   })
+  const [modeFlip, setModeFlip] = useState<'enter' | 'exit' | null>(null)
+  const modeFlipRef = useRef<'enter' | 'exit' | null>(null)
   useEffect(() => {
     try { localStorage.setItem('dsh-launcher:ui-mode', wheelchairMode ? 'wheelchair' : 'classic') } catch { /* 私有模式忽略 */ }
   }, [wheelchairMode])
+  const runModeFlip = useCallback((direction: 'enter' | 'exit') => {
+    if (modeFlipRef.current) return
+    modeFlipRef.current = direction
+    setModeFlip(direction)
+    window.setTimeout(() => { setWheelchairMode(direction === 'enter') }, 330)
+    window.setTimeout(() => { setModeFlip(null); modeFlipRef.current = null }, 720)
+  }, [])
+  const enterWheelchair = useCallback(() => runModeFlip('enter'), [runModeFlip])
+  const exitWheelchair = useCallback(() => runModeFlip('exit'), [runModeFlip])
+  useEffect(() => {
+    const onWheel = (event: WheelEvent) => {
+      if (modeFlipRef.current) return
+      // 仅启动界面响应「向下翻入轮椅模式」；退出由轮椅模式主菜单的向上滚轮触发。
+      if (!wheelchairMode && navigation.surface === 'launcher' && event.deltaY > 40) enterWheelchair()
+    }
+    window.addEventListener('wheel', onWheel, { passive: true })
+    return () => window.removeEventListener('wheel', onWheel)
+  }, [enterWheelchair, navigation.surface, wheelchairMode])
   const [credentialOpen, setCredentialOpen] = useState(false)
   const [githubAccountOpen, setGitHubAccountOpen] = useState(false)
   const [createPackOpen, setCreatePackOpen] = useState(false)
@@ -780,23 +802,20 @@ function LauncherShell() {
           onClose={() => setUpdateOpen(false)}
         />
       )}
-      {!wheelchairMode && (
-        <button
-          type="button"
-          onClick={() => setWheelchairMode(true)}
-          title="进入轮椅模式（PR #94 新首页）"
-          style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 40, padding: '6px 12px', borderRadius: 999, border: '1px solid rgba(120,140,125,0.35)', background: 'rgba(23,28,25,0.82)', color: '#d7e2d9', fontSize: 12, cursor: 'pointer' }}
-        >🦼 轮椅模式</button>
+
+      {modeFlip && (
+        <div className={`mode-flip-cover mode-flip-${modeFlip}`} aria-hidden="true"><span className="mode-flip-logo">DSH · Melody Launcher</span></div>
       )}
       {wheelchairMode && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: '#0f1411', overflow: 'auto' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: '#dfe7ec', overflow: 'auto' }}>
           <WheelchairMode
             store={store}
+            flipping={modeFlip !== null}
             onImportPack={() => { void handlePackImport() }}
             onOpenLauncherUpdate={() => setUpdateOpen(true)}
             onOpenHarness={openHarness}
             onOpenDeveloper={() => { setCopilotOpen(true) }}
-            onExit={() => setWheelchairMode(false)}
+            onExit={exitWheelchair}
           />
         </div>
       )}
