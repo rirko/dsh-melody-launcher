@@ -1,58 +1,32 @@
-/* 轮椅模式翻页转场：封面从一侧翻入盖住屏幕（中点完成模式切换），再向同方向翻出。
-   颜色取 PR 顶栏深蓝，避免黑边观感；仅 transform/opacity，reduced-motion 降级。 */
+/* 模式切换卡牌翻转：当前界面绕 X 轴朝用户方向压下淡出，新界面从反向翻入落平。
+   作用在原版壳 .surface-stage 与轮椅模式根节点上——圆角、阴影随卡片一起翻转。 */
 
-.mode-flip-cover {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  background: linear-gradient(180deg, #2a7290 0%, #1c5a74 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  will-change: transform;
-  backface-visibility: hidden;
+.app-flip-anim {
+  animation-duration: 0.55s;
+  animation-timing-function: ease-in-out;
+  animation-fill-mode: both;
+  transform-origin: 50% 62%;
+  will-change: transform, opacity;
 }
 
-/* 翻转进行中给封面加投影，增强「一页翻过」的立体感。 */
-.mode-flip-cover::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  box-shadow: 0 0 60px rgba(10, 30, 40, 0.45);
+.app-flip-anim.app-flip-out {
+  animation-name: appCardFlipOut;
 }
 
-.mode-flip-cover .mode-flip-logo {
-  color: #eaf3f6;
-  font-size: 24px;
-  letter-spacing: 3px;
-  font-weight: 700;
-  opacity: 0.9;
+.app-flip-anim.app-flip-in {
+  animation-name: appCardFlipIn;
 }
 
-/* JSX 生成的类名是 mode-flip-enter / mode-flip-exit。 */
-.mode-flip-cover.mode-flip-enter {
-  animation: modeFlipDown 0.68s ease-in-out forwards;
+@keyframes appCardFlipOut {
+  from { transform: perspective(1500px) rotateX(0deg) translateY(0); opacity: 1; }
+  to { transform: perspective(1500px) rotateX(32deg) translateY(5%); opacity: 0; }
 }
 
-.mode-flip-cover.mode-flip-exit {
-  animation: modeFlipUp 0.68s ease-in-out forwards;
-}
-
-@keyframes modeFlipDown {
-  0% { transform-origin: 50% 0%; transform: perspective(1400px) rotateX(88deg); }
-  49.9% { transform-origin: 50% 0%; transform: perspective(1400px) rotateX(0deg); }
-  50% { transform-origin: 50% 100%; transform: perspective(1400px) rotateX(0deg); }
-  100% { transform-origin: 50% 100%; transform: perspective(1400px) rotateX(-88deg); }
-}
-
-@keyframes modeFlipUp {
-  0% { transform-origin: 50% 100%; transform: perspective(1400px) rotateX(-88deg); }
-  49.9% { transform-origin: 50% 100%; transform: perspective(1400px) rotateX(0deg); }
-  50% { transform-origin: 50% 0%; transform: perspective(1400px) rotateX(0deg); }
-  100% { transform-origin: 50% 0%; transform: perspective(1400px) rotateX(88deg); }
+@keyframes appCardFlipIn {
+  from { transform: perspective(1500px) rotateX(-32deg) translateY(-4%); opacity: 0; }
+  to { transform: perspective(1500px) rotateX(0deg) translateY(0); opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mode-flip-cover { animation-duration: 0.01s !important; }
+  .app-flip-anim { animation-duration: 0.01s !important; }
 }

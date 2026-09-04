@@ -23,8 +23,8 @@ import wheelchairCss from './wheelchair.css?inline'
 
 export interface WheelchairModeProps {
   store: ReturnType<typeof useLauncherStore>
-  /** 翻页转场进行中：暂停滚轮退出，避免连翻。 */
-  flipping: boolean
+  /** 翻页转场方向（进行中才有值）：根节点据此播放卡牌翻转。 */
+  flip: 'enter' | 'exit' | null
   /** 原版整合包导入流程（App 作用域的 handlePackImport）。 */
   onImportPack: () => void
   onOpenLauncherUpdate: () => void
@@ -37,7 +37,7 @@ const STYLE_ELEMENT_ID = 'wheelchair-mode-styles'
 /** PR 首页视觉期望的主题变量（PR 主题体系未并入原版，进入模式时临时覆写，退出还原）。 */
 const WHEELCHAIR_THEME = 'deepseek'
 
-export function WheelchairMode({ store, flipping, onImportPack, onOpenLauncherUpdate, onOpenHarness, onOpenDeveloper, onExit }: WheelchairModeProps) {
+export function WheelchairMode({ store, flip, onImportPack, onOpenLauncherUpdate, onOpenHarness, onOpenDeveloper, onExit }: WheelchairModeProps) {
   const api = useLauncherApi()
   const settings = store.settings as AppSettings
   const profile = store.profile as NonNullable<ReturnType<typeof useLauncherStore>['profile']>
@@ -69,13 +69,13 @@ html, body { background: transparent !important; overflow: hidden !important; }
 
   // 主菜单下滚轮向上 = 从下到上翻转回原版主菜单（翻页转场由 App 统一驱动）。
   useEffect(() => {
-    if (activeTab !== 'start' || flipping) return
+    if (activeTab !== 'start' || flip !== null) return
     const onWheel = (event: WheelEvent) => {
       if (event.deltaY < -40) onExit()
     }
     window.addEventListener('wheel', onWheel, { passive: true })
     return () => window.removeEventListener('wheel', onWheel)
-  }, [activeTab, flipping, onExit])
+  }, [activeTab, flip, onExit])
   const installProgressForHome = store.installProgress?.repository === DSH_REPOSITORY ? store.installProgress : null
   const runtimeBusy = store.busy === BUSY.runtime || isInstallProgressActive(store.installProgress)
   const installingDsh = store.busy === BUSY.dshInstall
@@ -87,7 +87,7 @@ html, body { background: transparent !important; overflow: hidden !important; }
   }, [])
 
   return (
-    <div className="wheelchair-mode-overlay" role="dialog" aria-label="轮椅模式">
+    <div className={`wheelchair-mode-overlay${flip === 'enter' ? ' app-flip-anim app-flip-in' : flip === 'exit' ? ' app-flip-anim app-flip-out' : ''}`} role="dialog" aria-label="轮椅模式">
       <TopBar
         activeTab={activeTab}
         developerActive={false}

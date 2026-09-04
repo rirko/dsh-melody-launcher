@@ -80,8 +80,12 @@ function LauncherShell() {
     if (modeFlipRef.current) return
     modeFlipRef.current = direction
     setModeFlip(direction)
-    window.setTimeout(() => { setWheelchairMode(direction === 'enter') }, 330)
-    window.setTimeout(() => { setModeFlip(null); modeFlipRef.current = null }, 720)
+    setWheelchairMode(direction === 'enter')
+    window.setTimeout(() => {
+      if (direction === 'exit') setWheelchairMode(false)
+      setModeFlip(null)
+      modeFlipRef.current = null
+    }, 600)
   }, [])
   const enterWheelchair = useCallback(() => runModeFlip('enter'), [runModeFlip])
   const exitWheelchair = useCallback(() => runModeFlip('exit'), [runModeFlip])
@@ -374,7 +378,7 @@ function LauncherShell() {
   return (
     <>
       <div
-        className={`surface-stage surface-${navigation.surface}${navigation.transitionPhase === 'idle' ? '' : ` is-${navigation.transitionPhase}`}`}
+        className={`surface-stage surface-${navigation.surface}${navigation.transitionPhase === 'idle' ? '' : ` is-${navigation.transitionPhase}`}${modeFlip === 'enter' ? ' app-flip-anim app-flip-out' : modeFlip === 'exit' ? ' app-flip-anim app-flip-in' : ''}`}
         aria-busy={navigation.transitionPhase !== 'idle'}
       >
         <div className={`surface-host launcher-surface-host ${navigation.surface === 'launcher' ? '' : 'view-hidden'}`}>
@@ -803,14 +807,11 @@ function LauncherShell() {
         />
       )}
 
-      {modeFlip && (
-        <div className={`mode-flip-cover mode-flip-${modeFlip}`} aria-hidden="true"><span className="mode-flip-logo">DSH · Melody Launcher</span></div>
-      )}
       {wheelchairMode && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: '#dfe7ec', overflow: 'hidden' }}>
           <WheelchairMode
             store={store}
-            flipping={modeFlip !== null}
+            flip={modeFlip}
             onImportPack={() => { void handlePackImport() }}
             onOpenLauncherUpdate={() => setUpdateOpen(true)}
             onOpenHarness={openHarness}
