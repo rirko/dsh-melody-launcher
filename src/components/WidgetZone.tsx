@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Cpu, Newspaper, RefreshCw, Wallet } from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useLauncherApi } from '../api/client'
+import { DEEPSEEK_PRICING, periodPrice, pricingPeriod, type PricingPeriod } from '../lib/deepseek-pricing'
 import type { DeepSeekBalanceResult, DshUpdateStatus, LauncherUpdateStatus, NewsFeedResult } from '../types'
 
 /**
@@ -22,12 +23,13 @@ interface WidgetZoneProps {
   onOpenLauncherUpdate: () => void
 }
 
-function WidgetCard({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+function WidgetCard({ icon, title, actions, children }: { icon: ReactNode; title: string; actions?: ReactNode; children: ReactNode }) {
   return (
     <div className="widget-card">
       <header className="widget-card-head">
         {icon}
         <span>{title}</span>
+        {actions && <span className="widget-card-actions">{actions}</span>}
       </header>
       <div className="widget-card-body">{children}</div>
     </div>
@@ -92,29 +94,79 @@ function EnvironmentCard({ dshVersion, bundleCount, pluginCount, skillCount, pre
   )
 }
 
-/** 内置价目快照（元 / 百万 tokens，高峰价；空闲时段减半）。价格页改版时手动更新。 */
-const DEEPSEEK_PRICING = [
-  { model: 'deepseek-v4-flash', hit: '0.10', miss: '3.0', output: '9.0' },
-  { model: 'deepseek-v4-pro', hit: '0.30', miss: '9.0', output: '27.0' },
-]
+/** 余额卡内联密钥表单：与开发人员选项走同一凭据 IPC，密钥只写本机 .credentials.yaml。 */
+function KeyEntryForm({ onSaved, onCancel }: { onSaved: () => void; onCancel?: () => void }) {
+  const api = useLauncherApi()
+  const [value, setValue] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const save = async () => {
+    const key = value.trim()
+    if (!key) { setError('请先粘贴 API Key'); return }
+    setSaving(true)
+    setError('')
+    try {
+      await api.setDeepSeekApiKey(key)
+      onSaved()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <div className="widget-key-form">
+      <p className="widget-key-hint">填入 DeepSeek 官方 API Key，实时查询账户余额。</p>
+      <div className="widget-key-row">
+        <input
+          type="password"
+          value={value}
+          placeholder="sk-…"
+          spellCheck={false}
+          autoComplete="off"
+          disabled={saving}
+          onChange={event => setValue(event.target.value)}
+          onKeyDown={event => { if (event.key === 'Enter') void save() }}
+        />
+        <button type="button" className="primary-command" disabled={saving} onClick={() => void save()}>{saving ? '保存中…' : '保存并查询'}</button>
+      </div>
+      {error && <span className="widget-bad">{error}</span>}
+      <div className="widget-key-foot">
+        <small>密钥仅写入本机 .credentials.yaml，不会上传第三方。</small>
+        {onCancel && <button type="button" className="settings-nav-link" onClick={onCancel}>取消</button>}
+      </div>
+    </div>
+  )
+}
 
 function BalanceCard() {
   const api = useLauncherApi()
   const [result, setResult] = useState<DeepSeekBalanceResult | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [period, setPeriod] = useState<PricingPeriod>(() => pricingPeriod(new Date()))
   const load = useCallback((force?: boolean) => {
     void api.deepseekBalance(force).then(setResult).catch((cause: unknown) => setResult({ status: 'error', message: cause instanceof Error ? cause.message : '查询失败' }))
   }, [api])
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const timer = setInterval(() => setPeriod(pricingPeriod(new Date())), 60_000)
+    return () => clearInterval(timer)
+  }, [])
+  const afterKeySaved = () => { setEditing(false); setResult(null); load(true) }
 
   const body = (() => {
+    if (editing) return <KeyEntryForm onSaved={afterKeySaved} onCancel={result && result.status !== 'no-key' ? () => setEditing(false) : undefined} />
     if (!result) return <span className="widget-muted">正在查询余额…</span>
-    if (result.status === 'no-key') return <span className="widget-muted">尚未配置 DeepSeek API 密钥，可在开发人员选项中配置后查看余额。</span>
+    if (result.status === 'no-key') return <KeyEntryForm onSaved={afterKeySaved} />
     if (result.status === 'error') {
       return (
-        <>
+        <div className="widget-inline-row">
           <span className="widget-bad">{result.message}</span>
-          <button type="button" className="settings-nav-link" onClick={() => load(true)}>重试</button>
-        </>
+          <div className="widget-inline-actions">
+            <button type="button" className="settings-nav-link" onClick={() => load(true)}>重试</button>
+            <button type="button" className="settings-nav-link" onClick={() => setEditing(true)}>重新填密钥</button>
+          </div>
+        </div>
       )
     }
     const info = result.balance.infos[0]
@@ -137,13 +189,20 @@ function BalanceCard() {
   })()
 
   return (
-    <WidgetCard icon={<Wallet size={15} />} title="DeepSeek 余额">
+    <WidgetCard
+      icon={<Wallet size={15} />}
+      title="DeepSeek 余额"
+      actions={result?.status === 'ok' && !editing
+        ? <button type="button" className="settings-nav-link" onClick={() => setEditing(true)}>更换密钥</button>
+        : undefined}
+    >
       {body}
       <div className="widget-pricing">
+        <span className={`widget-period-badge ${period}`}>{period === 'peak' ? '峰段' : '谷段 · 半价'}</span>
         {DEEPSEEK_PRICING.map(row => (
-          <span key={row.model}>{row.model.replace('deepseek-', '')} 命中{row.hit} / 未命中{row.miss} / 输出{row.output}</span>
+          <span key={row.model}>{row.model.replace('deepseek-', '')} 命中{periodPrice(row.hit, period)} / 未命中{periodPrice(row.miss, period)} / 输出{periodPrice(row.output, period)}</span>
         ))}
-        <span className="widget-muted">元/百万 tokens · 高峰价，空闲时段半价</span>
+        <span className="widget-muted">元/百万 tokens · 峰段为工作日 9–12、14–18（北京时间）</span>
       </div>
     </WidgetCard>
   )

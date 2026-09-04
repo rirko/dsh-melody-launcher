@@ -630,6 +630,37 @@ input:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+.widget-card-actions { margin-left: auto; }
+
+.widget-period-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 750;
+}
+
+.widget-period-badge.peak { color: #fff; background: var(--accent); }
+.widget-period-badge.off { color: var(--accent); background: var(--accent-soft); }
+
+.widget-key-form { display: flex; flex-direction: column; gap: 8px; }
+.widget-key-hint { margin: 0; color: var(--muted); font-size: 11.5px; }
+.widget-key-row { display: flex; gap: 8px; }
+.widget-key-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface);
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+.widget-key-row .primary-command { flex: none; }
+.widget-key-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.widget-key-foot small { color: var(--quiet); font-size: 9.5px; }
+.widget-inline-actions { display: flex; gap: 14px; }
+
 .widget-news {
   display: flex;
   margin: 0;
