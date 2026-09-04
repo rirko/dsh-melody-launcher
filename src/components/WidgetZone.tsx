@@ -28,7 +28,7 @@ function WidgetCard({ icon, title, actions, children }: { icon: ReactNode; title
   return (
     <div className="widget-card">
       <header className="widget-card-head">
-        {icon}
+        <span className="widget-card-icon">{icon}</span>
         <span>{title}</span>
         {actions && <span className="widget-card-actions">{actions}</span>}
       </header>
