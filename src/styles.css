@@ -874,7 +874,7 @@ input:focus-visible {
 .widget-news button {
   display: flex;
   width: 100%;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
   padding: 5px 6px;
   border: 0;
