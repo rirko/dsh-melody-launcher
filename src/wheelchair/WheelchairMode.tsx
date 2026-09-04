@@ -47,7 +47,21 @@ export function WheelchairMode({ store, flipping, onImportPack, onOpenLauncherUp
   useEffect(() => {
     const style = document.createElement('style')
     style.id = STYLE_ELEMENT_ID
-    style.textContent = wheelchairCss
+    // PR 样式之后追加壳覆盖规则：复刻原版 .surface-stage 的圆角/阴影/裁剪，
+    // 并强制 html/body 透明不滚——轮椅模式的可见边缘与原版窗口完全一致。
+    style.textContent = wheelchairCss + `
+html, body { background: transparent !important; overflow: hidden !important; }
+.wheelchair-mode-overlay {
+  border-radius: 12px;
+  box-shadow: 0 0 18px rgba(30, 45, 36, 0.2), inset 0 0 22px rgba(30, 45, 36, 0.08);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #dfe7ec;
+}
+.wheelchair-mode-body { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.wheelchair-mode-body > * { flex: 1; min-height: 0; }
+`
     document.head.appendChild(style)
     return () => { style.remove() }
   }, [])
