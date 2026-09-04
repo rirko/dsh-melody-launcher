@@ -807,7 +807,7 @@ function LauncherShell() {
         <div className={`mode-flip-cover mode-flip-${modeFlip}`} aria-hidden="true"><span className="mode-flip-logo">DSH · Melody Launcher</span></div>
       )}
       {wheelchairMode && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: '#dfe7ec', overflow: 'auto' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: '#dfe7ec', overflow: 'hidden' }}>
           <WheelchairMode
             store={store}
             flipping={modeFlip !== null}

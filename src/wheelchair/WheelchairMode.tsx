@@ -52,6 +52,7 @@ export function WheelchairMode({ store, flipping, onImportPack, onOpenLauncherUp
     style.textContent = wheelchairCss + `
 html, body { background: transparent !important; overflow: hidden !important; }
 .wheelchair-mode-overlay {
+  height: 100%;
   border-radius: 12px;
   box-shadow: 0 0 18px rgba(30, 45, 36, 0.2), inset 0 0 22px rgba(30, 45, 36, 0.08);
   overflow: hidden;
