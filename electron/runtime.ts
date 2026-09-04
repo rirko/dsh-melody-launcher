@@ -5,7 +5,7 @@ import { DSH_PACKAGE_NAME } from '../src/constants'
 import type { AppSettings, RuntimeFailure, RuntimeOutput, RuntimeState } from '../src/types'
 import type { ApplicationLaunchPlan, ApplicationLaunchSpec } from './application-addons'
 import { requiresNodeRuntime, resolveNodeExecutable, type NodeRuntime } from './node-runtime'
-import { pathExists } from './profile'
+import { isSafeProfileName, pathExists } from './profile'
 import { formatCommandLine, spawnCommand, withExecutableDirectoryOnPath } from './process'
 import { buildNetworkEnvironment } from './proxy'
 import {
@@ -51,8 +51,42 @@ export const PORT_FALLBACK_ATTEMPTS = 10
 export function isDshWebLaunch(executable: string, args: string[]): boolean {
   const executableName = path.basename(executable).toLowerCase()
   const invokesDsh = executableName === 'dsh' || executableName === 'dsh.cmd' || args.includes(DSH_PACKAGE_NAME)
-  const launchesWeb = args.includes('web') || args.some((value, index) => value === '--profile' && args[index + 1] === 'web')
+  const launchesPluginCommand = args.includes('plugin')
+  const launchesWeb = !launchesPluginCommand && (args.includes('web') || args.some((value, index) => value === '--profile' && typeof args[index + 1] === 'string'))
   return invokesDsh && launchesWeb
+}
+
+/**
+ * Bind a DSH Web invocation to the selected launcher Profile. DSH defaults to
+ * the `web` directory when no profile is supplied, which would make switching
+ * to another Profile appear ineffective even though its bundle list is
+ * correct. Replace an existing flag so stale custom settings cannot override
+ * the current environment.
+ */
+export function withDshProfile(executable: string, args: string[], profileName: string): string[] {
+  if (!isDshWebLaunch(executable, args) || !isSafeProfileName(profileName)) return [...args]
+  const next: string[] = []
+  let insertionIndex: number | null = null
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index]
+    if (value === 'web') {
+      insertionIndex ??= next.length
+      continue
+    }
+    if (value === '--profile') {
+      insertionIndex ??= next.length
+      index += 1
+      continue
+    }
+    if (value.startsWith('--profile=')) {
+      insertionIndex ??= next.length
+      continue
+    }
+    next.push(value)
+  }
+  const at = insertionIndex ?? next.length
+  next.splice(at, 0, '--profile', profileName)
+  return next
 }
 
 /** 用设置中的首选端口替换可能存在的旧 --port 参数。 */
@@ -263,6 +297,7 @@ export function createRuntimeController(options: RuntimeControllerOptions): Runt
       port = null
       options.emitOutput('info', `启动模式：${replacement.name} 替代普通 DSH Web`)
     } else if (isDshWebLaunch(executable, launchArgs)) {
+      launchArgs = withDshProfile(executable, launchArgs, settings.profileName)
       const selectedPort = await findAvailableWebPort(settings.webPort)
       if (selectedPort === null) {
         const message = `从端口 ${settings.webPort} 开始连续检测 ${PORT_FALLBACK_ATTEMPTS} 个端口，均不可用。`

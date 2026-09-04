@@ -343,6 +343,7 @@ function demoSession(input: AiSessionCreateInput = {}): AiSession {
     messageCount: 0,
     pendingApproval: null,
     hasSnapshot: false,
+    backend: input.backend === 'codex' ? 'codex' : 'dsh',
     messages: [],
   }
   demoAiSessions = [session, ...demoAiSessions]
@@ -783,6 +784,12 @@ export const demoApi: LauncherApi = {
     demoCustomApiProviders = demoCustomApiProviders.filter(provider => provider.route !== route)
     return demoCustomApiProviders
   },
+  probeApiConnectivity: async target => {
+    if (!demoCredential.configured && target.target === 'deepseek-official') {
+      return { ok: false, status: null, latencyMs: 0, usedFallback: false, message: '尚未配置 DeepSeek API Key，请先在「API 配置」中保存。' }
+    }
+    return { ok: true, status: 200, latencyMs: 128, usedFallback: false, message: '演示模式：连接正常（128ms）。' }
+  },
   getGitHubAuthStatus: async () => demoGitHubAuth,
   loginGitHubWithToken: async token => {
     if (token.trim().length < 20) throw new Error('GitHub 访问令牌格式无效。')
@@ -857,6 +864,8 @@ export const demoApi: LauncherApi = {
     : kind === 'dshHome'
       ? 'C:\\Users\\demo\\.dsh'
       : 'C:\\Users\\demo\\Projects',
+  chooseLauncherBackground: async () => 'background-1756800000000.png',
+  clearLauncherBackground: async () => undefined,
   readProfile: async () => profile(),
   listProfiles: async () => [{
     id: demoSettings.profileName,
@@ -937,6 +946,26 @@ export const demoApi: LauncherApi = {
     }
   },
   importProfileRepository: async (_url, options) => demoApi.createProfile({ name: options.name ?? 'imported-profile' }),
+  analyzeNonstandardPackRepository: async url => {
+    const parsed = parseGitHubImportUrl(url)
+    return {
+      repository: parsed.fullName,
+      branch: parsed.defaultBranch ?? 'main',
+      commit: 'demo000000000000000000000000000000000000',
+      kind: 'distribution' as const,
+      name: 'demo-pack',
+      description: '演示非标准 DSH 发行版。',
+      profileName: 'pack-demo-pack',
+      dshVersion: demoSettings.dshVersion ?? '0.1.0-rc.7',
+      dshSourceVersion: '0.1.0-rc.6',
+      warnings: ['演示：运行时版本与源码基线不同。'],
+      plugins: [{ componentId: 'demo-plugin', packageName: 'dsh-demo-plugin', displayName: 'Demo Plugin', category: 'core' as const, enabled: true, order: 0, repository: 'demo/demo-plugin', defaultBranch: 'main', subdirectory: null, version: '0.1.0', commit: null, declaredSource: 'npm' as const, source: 'market' as const, sourceLabel: 'DSH Market', targetId: 'dsh-demo-plugin' }],
+      skipped: [{ id: 'demo-preset', name: 'demo-preset', category: 'preset' as const, reason: '演示预设，导入时跳过。' }],
+      blockers: [],
+    }
+  },
+  importNonstandardPackRepository: async (_url, options) => demoApi.createProfile({ name: options?.name ?? 'pack-demo-pack' }),
+  resolvePackPluginSources: async preview => preview.plugins,
   matchProfilePlugin: async packageName => ({ packageName, source: 'npm', enabled: true }),
   togglePlugin: async (packageName, enabled) => {
     const selected = demoPlugins.find(plugin => plugin.packageName === packageName)
@@ -1101,7 +1130,7 @@ export const demoApi: LauncherApi = {
       packageName: analysis?.targets[0].packageName,
     }
   },
-  uninstallPlugin: async packageName => {
+  uninstallPlugin: async (packageName, _options) => {
     demoPlugins = renumber(demoPlugins.filter(plugin => plugin.packageName !== packageName))
     return profile()
   },
@@ -1252,6 +1281,11 @@ export const demoApi: LauncherApi = {
     stateListeners.forEach(listener => listener(demoRuntime))
     return demoRuntime
   },
+  listInstallQueue: async () => ({ paused: false, entries: [] }),
+  pauseInstallQueue: async () => undefined,
+  resumeInstallQueue: async () => undefined,
+  cancelInstallQueueJob: async () => undefined,
+  clearFinishedInstallQueue: async () => undefined,
   openExternal: async () => undefined,
   openPath: async () => undefined,
   openProfilePluginFolder: async () => undefined,
@@ -1273,6 +1307,7 @@ export const demoApi: LauncherApi = {
     installProgressListeners.add(listener)
     return () => installProgressListeners.delete(listener)
   },
+  onInstallQueue: () => () => undefined,
   onPluginTrialEvent: listener => {
     pluginTrialListeners.add(listener)
     return () => pluginTrialListeners.delete(listener)

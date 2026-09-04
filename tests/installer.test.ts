@@ -11,7 +11,7 @@ import {
   validateLocalPluginDirectory,
 } from '../electron/installer'
 import { analyzeRepository } from '../electron/plugin-catalog'
-import { readProfile } from '../electron/profile'
+import { readProfile, removePluginFromProfile } from '../electron/profile'
 import { recordPluginInstall, removePluginReceipt } from '../electron/plugin-receipts'
 import { analyzeMetaRepository } from '../electron/meta-repo-catalog'
 import { analyzeSkillRepository } from '../electron/skill-catalog'
@@ -21,7 +21,7 @@ import type { AppSettings, CatalogRepositoryAnalysis, PluginInstallTarget, Profi
 
 vi.mock('../electron/profile', async importOriginal => {
   const actual = await importOriginal<typeof import('../electron/profile')>()
-  return { ...actual, readProfile: vi.fn() }
+  return { ...actual, readProfile: vi.fn(), removePluginFromProfile: vi.fn().mockResolvedValue(true), removeUnusedSharedPluginBodies: vi.fn().mockResolvedValue(false) }
 })
 
 vi.mock('../electron/plugin-catalog', async importOriginal => {
@@ -119,10 +119,14 @@ describe('buildPluginCommandArgs', () => {
 let temporaryDirectory = ''
 let settings: AppSettings
 let calls: Array<{ executable: string; args: string[]; options: CommandOptions }>
+let purgeStoreCalls: string[]
+let syncProfilePoolCalls: string[]
 
 beforeEach(async () => {
   temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'dsh-installer-test-'))
   calls = []
+  purgeStoreCalls = []
+  syncProfilePoolCalls = []
   settings = {
     dshInstallPath: path.join(temporaryDirectory, 'runtime'),
     dshHome: path.join(temporaryDirectory, 'dsh-home'),
@@ -134,6 +138,7 @@ beforeEach(async () => {
     openAfterLaunch: true,
   }
   vi.resetAllMocks()
+  vi.mocked(removePluginFromProfile).mockResolvedValue(true)
   vi.mocked(analyzeApplicationRepository).mockResolvedValue({
     repository: 'demo/repository',
     defaultBranch: 'main',
@@ -151,6 +156,8 @@ afterEach(async () => {
 function createTestInstaller(
   githubFetch?: typeof fetch,
   runCommandOverride?: (executable: string, args: string[], options: CommandOptions) => Promise<{ exitCode: number; output: string }>,
+  syncProfilePoolOverride?: (dshHome: string) => Promise<void>,
+  resolveGitExecutable?: (environment: NodeJS.ProcessEnv) => string | null,
 ) {
   const nodeRuntime: NodeRuntime = {
     root: path.join(temporaryDirectory, 'node'),
@@ -173,6 +180,9 @@ function createTestInstaller(
     preparePnpmRuntime: async () => ({ root: path.join(temporaryDirectory, 'pnpm-runtime'), executable: pnpmExecutable }),
     pluginSourceRoot: path.join(temporaryDirectory, 'plugin-source'),
     pluginReceiptsPath: path.join(temporaryDirectory, 'receipts.json'),
+    packageStoreRoot: path.join(temporaryDirectory, 'plugin-store'),
+    purgePnpmStore: async storeRoot => { purgeStoreCalls.push(storeRoot) },
+    syncProfilePool: syncProfilePoolOverride,
     presetReceiptsPath: path.join(temporaryDirectory, 'preset-receipts.json'),
     skillReceiptsPath: path.join(temporaryDirectory, 'skill-receipts.json'),
     skillSourceRoot: path.join(temporaryDirectory, 'skill-source'),
@@ -185,6 +195,7 @@ function createTestInstaller(
       return { exitCode: 0, output: '' }
     },
     githubFetch,
+    resolveGitExecutable,
   })
   return { installer, calls, settings, pnpmExecutable }
 }
@@ -261,7 +272,9 @@ describe('validateLocalPluginDirectory', () => {
 describe('installNpmPackage', () => {
   it('installs a manifest-only npm entry into the shared Profile without GitHub analysis', async () => {
     vi.mocked(readProfile).mockImplementation(async (_dshHome, profileName) => profileState(profileName, 'demo-plugin'))
-    const { installer, calls } = createTestInstaller()
+    const { installer, calls } = createTestInstaller(undefined, undefined, async dshHome => {
+      syncProfilePoolCalls.push(dshHome)
+    })
     const result = await installer.installNpmPackage({ packageName: 'demo-plugin', version: '1.2.3' }, 'web')
     expect(calls.find(call => call.args.includes('add'))?.args).toEqual([
       '--yes', '@deepseek-ai/dsh', 'plugin', '--profile', 'web', 'add', 'demo-plugin@1.2.3',
@@ -271,6 +284,45 @@ describe('installNpmPackage', () => {
       repository: 'npm:demo-plugin', packageName: 'demo-plugin', profileName: 'web', source: 'npm', version: '1.2.3',
     }))
     expect(result.installedProfileName).toBe('web')
+    expect(syncProfilePoolCalls).toEqual([settings.dshHome])
+  })
+
+  it('does not fail an otherwise successful install when shared Profile synchronization fails', async () => {
+    vi.mocked(readProfile).mockImplementation(async (_dshHome, profileName) => profileState(profileName, 'demo-plugin'))
+    const { installer } = createTestInstaller(undefined, undefined, async () => {
+      throw new Error('同步测试失败')
+    })
+
+    await expect(installer.installNpmPackage({ packageName: 'demo-plugin', version: '1.2.3' }, 'web')).resolves.toMatchObject({
+      installedProfileName: 'web',
+      packageName: 'demo-plugin',
+    })
+  })
+
+  it('falls back to npm latest when the requested exact version is unavailable', async () => {
+    vi.mocked(readProfile).mockImplementation(async (_dshHome, profileName) => profileState(profileName, 'demo-plugin'))
+    let addAttempts = 0
+    const { installer, calls } = createTestInstaller(undefined, async (_executable, args) => {
+      if (args.includes('add')) {
+        addAttempts += 1
+        if (addAttempts === 1) {
+          return {
+            exitCode: 1,
+            output: '[ERR_PNPM_NO_MATCHING_VERSION] No matching version found for demo-plugin@9.9.9',
+          }
+        }
+      }
+      return { exitCode: 0, output: '' }
+    })
+
+    await installer.installNpmPackage({ packageName: 'demo-plugin', version: '9.9.9' }, 'web')
+
+    const addCalls = calls.filter(call => call.args.includes('add'))
+    expect(addCalls).toHaveLength(2)
+    expect(addCalls[0]?.args).toContain('demo-plugin@9.9.9')
+    expect(addCalls[1]?.args).toContain('demo-plugin')
+    expect(addCalls[1]?.args).not.toContain('demo-plugin@9.9.9')
+    expect(recordPluginInstall).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ version: '1.0.0' }))
   })
 
   it('rejects unsafe package names and versions before invoking DSH', async () => {
@@ -278,6 +330,32 @@ describe('installNpmPackage', () => {
     await expect(installer.installNpmPackage({ packageName: 'bad package' })).rejects.toThrow(/包名/)
     await expect(installer.installNpmPackage({ packageName: 'demo-plugin', version: '1.0.0 latest' })).rejects.toThrow(/版本/)
     expect(calls).toHaveLength(0)
+  })
+})
+
+describe('shared plugin pool synchronization', () => {
+  it('runs after the legacy GitHub install path succeeds', async () => {
+    vi.mocked(readProfile).mockResolvedValue(profileState('web', 'demo-plugin'))
+    const { installer } = createTestInstaller(undefined, undefined, async dshHome => {
+      syncProfilePoolCalls.push(dshHome)
+    })
+
+    await installer.install('demo/ordinary-plugin')
+
+    expect(syncProfilePoolCalls).toEqual([settings.dshHome])
+  })
+
+  it('runs after a validated local plugin install succeeds', async () => {
+    const localDirectory = await mkdtemp(path.join(temporaryDirectory, 'direct-local-plugin-'))
+    await writeFile(path.join(localDirectory, 'package.json'), JSON.stringify({ name: 'demo-plugin', version: '1.0.0' }))
+    vi.mocked(readProfile).mockResolvedValue(profileState('web', 'demo-plugin'))
+    const { installer } = createTestInstaller(undefined, undefined, async dshHome => {
+      syncProfilePoolCalls.push(dshHome)
+    })
+
+    await installer.installLocalPlugin({ packageName: 'demo-plugin', directory: localDirectory }, 'web')
+
+    expect(syncProfilePoolCalls).toEqual([settings.dshHome])
   })
 })
 
@@ -295,7 +373,9 @@ describe('installPluginTarget with local-directory source', () => {
     })
     vi.mocked(readProfile).mockResolvedValue(profileState('tui', 'demo-plugin'))
 
-    const { installer, calls, pnpmExecutable } = createTestInstaller()
+    const { installer, calls, pnpmExecutable } = createTestInstaller(undefined, undefined, async dshHome => {
+      syncProfilePoolCalls.push(dshHome)
+    })
     const result = await installer.installPluginTarget(
       { repository: 'demo/plugin', defaultBranch: 'main', targetId: 'demo-plugin:.' },
       'tui',
@@ -317,6 +397,7 @@ describe('installPluginTarget with local-directory source', () => {
       expect.objectContaining({ packageName: 'demo-plugin', profileName: 'tui', source: 'local-directory' }),
     )
     expect(result.installedProfileName).toBe('tui')
+    expect(syncProfilePoolCalls).toEqual([settings.dshHome])
   })
 
   it('rejects a local-directory target without a valid local directory', async () => {
@@ -334,6 +415,66 @@ describe('installPluginTarget with local-directory source', () => {
       'tui',
     )).rejects.toThrow(/不存在/)
     expect(calls.filter(call => call.args.includes('add'))).toHaveLength(0)
+  })
+
+  it('builds a local Bundle when its declared patch output is missing', async () => {
+    const localDirectory = await mkdtemp(path.join(temporaryDirectory, 'source-plugin-'))
+    await writeFile(path.join(localDirectory, 'package.json'), JSON.stringify({
+      name: 'demo-plugin',
+      version: '1.0.0',
+      dsh: { bundle: { patch: './dist/cordis.patch.yml' } },
+      scripts: { build: 'node scripts/build.mjs' },
+    }))
+
+    vi.mocked(analyzeRepository).mockResolvedValue({
+      repository: 'demo/plugin',
+      defaultBranch: 'main',
+      installability: 'ready',
+      summary: 'ok',
+      targets: [localDirectoryTarget(localDirectory)],
+    })
+    vi.mocked(readProfile).mockResolvedValue(profileState('web', 'demo-plugin'))
+
+    const { installer, calls } = createTestInstaller(undefined, async (_executable, args) => {
+      if (args[0] === 'run' && args[1] === 'build') {
+        await mkdir(path.join(localDirectory, 'dist'), { recursive: true })
+        await writeFile(path.join(localDirectory, 'dist', 'cordis.patch.yml'), '[]\n')
+      }
+      return { exitCode: 0, output: '' }
+    })
+
+    await installer.installPluginTarget(
+      { repository: 'demo/plugin', defaultBranch: 'main', targetId: 'demo-plugin:.' },
+      'web',
+    )
+
+    expect(calls.some(call => call.args[0] === 'install' && call.args.includes('--dir'))).toBe(true)
+    expect(calls.some(call => call.args[0] === 'run' && call.args[1] === 'build')).toBe(true)
+    expect(calls.some(call => call.args.includes('add') && call.args.includes(`file:${localDirectory}`))).toBe(true)
+  })
+
+  it('stops before installing a local Bundle when build does not produce its patch', async () => {
+    const localDirectory = await mkdtemp(path.join(temporaryDirectory, 'broken-source-plugin-'))
+    await writeFile(path.join(localDirectory, 'package.json'), JSON.stringify({
+      name: 'broken-plugin',
+      dsh: { bundle: { patch: './dist/cordis.patch.yml' } },
+      scripts: { build: 'node scripts/build.mjs' },
+    }))
+    vi.mocked(analyzeRepository).mockResolvedValue({
+      repository: 'demo/plugin',
+      defaultBranch: 'main',
+      installability: 'ready',
+      summary: 'ok',
+      targets: [{ ...localDirectoryTarget(localDirectory), packageName: 'broken-plugin', id: 'broken-plugin:.' }],
+    })
+    vi.mocked(readProfile).mockResolvedValue(profileState('web', 'broken-plugin'))
+
+    const { installer, calls } = createTestInstaller()
+    await expect(installer.installPluginTarget(
+      { repository: 'demo/plugin', defaultBranch: 'main', targetId: 'broken-plugin:.' },
+      'web',
+    )).rejects.toThrow(/仍未生成/)
+    expect(calls.some(call => call.args.includes('add'))).toBe(false)
   })
 })
 
@@ -394,23 +535,125 @@ describe('installPluginTarget with github source and pinned commit', () => {
     const addCall = calls.find(call => call.args.includes('add'))
     expect(addCall!.args).toContain('github:demo/plugin#c0ffee11')
   })
+
+  it('没有 Git 时使用固定 commit 的 GitHub archive 安装根目录 Bundle', async () => {
+    const commit = 'd'.repeat(40)
+    const zip = new AdmZip()
+    zip.addFile('repository-main/package.json', Buffer.from(JSON.stringify({
+      name: 'demo-plugin',
+      version: '1.0.0',
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+    })))
+    zip.addFile('repository-main/cordis.patch.yml', Buffer.from('[]\n'))
+    const archive = zip.toBuffer()
+    vi.mocked(analyzeRepository).mockResolvedValue({
+      repository: 'demo/plugin',
+      defaultBranch: 'main',
+      installability: 'ready',
+      summary: 'ok',
+      targets: [githubTarget(commit)],
+    })
+    vi.mocked(readProfile).mockResolvedValue(profileState('web', 'demo-plugin'))
+    const githubFetch = (async () => new Response(new Uint8Array(archive))) as typeof fetch
+    const { installer, calls } = createTestInstaller(githubFetch, undefined, undefined, () => null)
+
+    await installer.installPluginTarget(
+      { repository: 'demo/plugin', defaultBranch: 'main', targetId: 'demo-plugin:.' },
+      'web',
+    )
+
+    const addCall = calls.find(call => call.args.includes('add'))
+    expect(addCall?.args.some(arg => arg.startsWith('file:'))).toBe(true)
+    expect(recordPluginInstall).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      source: 'archive-subdirectory',
+      actualSource: 'github',
+      commit,
+    }))
+  })
+
+  it('Git 检测误判但 pnpm 报 Git 缺失时自动重试固定 archive', async () => {
+    const commit = 'f'.repeat(40)
+    const zip = new AdmZip()
+    zip.addFile('repository-main/package.json', Buffer.from(JSON.stringify({
+      name: 'demo-plugin',
+      version: '1.0.0',
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+    })))
+    zip.addFile('repository-main/cordis.patch.yml', Buffer.from('[]\n'))
+    const archive = zip.toBuffer()
+    vi.mocked(analyzeRepository).mockResolvedValue({
+      repository: 'demo/plugin',
+      defaultBranch: 'main',
+      installability: 'ready',
+      summary: 'ok',
+      targets: [githubTarget(commit)],
+    })
+    vi.mocked(readProfile).mockResolvedValue(profileState('web', 'demo-plugin'))
+    let attempts = 0
+    const githubFetch = (async () => new Response(new Uint8Array(archive))) as typeof fetch
+    const { installer, calls } = createTestInstaller(
+      githubFetch,
+      async (_executable, args) => {
+        attempts += 1
+        return args.some(arg => arg.startsWith('github:')) && attempts === 1
+          ? { exitCode: 1, output: 'git command not found' }
+          : { exitCode: 0, output: '' }
+      },
+      undefined,
+      () => 'C:\\stale\\git.exe',
+    )
+
+    await installer.installPluginTarget(
+      { repository: 'demo/plugin', defaultBranch: 'main', targetId: 'demo-plugin:.' },
+      'web',
+    )
+
+    const addCalls = calls.filter(call => call.args.includes('add'))
+    expect(addCalls).toHaveLength(2)
+    expect(addCalls.at(-1)?.args.some(arg => arg.startsWith('file:'))).toBe(true)
+    expect(recordPluginInstall).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      source: 'archive-subdirectory',
+      actualSource: 'github',
+      commit,
+    }))
+  })
+
+  it('没有 Git 且没有 GitHub archive 客户端时立即给出明确错误', async () => {
+    vi.mocked(analyzeRepository).mockResolvedValue({
+      repository: 'demo/plugin', defaultBranch: 'main', installability: 'ready', summary: 'ok',
+      targets: [githubTarget('e'.repeat(40))],
+    })
+    const { installer, calls } = createTestInstaller(undefined, undefined, undefined, () => null)
+
+    await expect(installer.installPluginTarget(
+      { repository: 'demo/plugin', defaultBranch: 'main', targetId: 'demo-plugin:.' },
+      'web',
+    )).rejects.toThrow(/未找到 Git/)
+    expect(calls).toHaveLength(0)
+  })
 })
 
 describe('remove with profileName', () => {
-  it('passes --profile to the CLI and removes the matching receipt', async () => {
+  it('removes the matching Profile locally without invoking the DSH CLI', async () => {
     vi.mocked(readProfile).mockResolvedValue(profileState('tui', 'some-plugin'))
     const { installer, calls } = createTestInstaller()
 
     await installer.remove('some-plugin', 'tui')
 
     const removeCall = calls.find(call => call.args.includes('remove'))
-    expect(removeCall).toBeDefined()
-    expect(removeCall!.args).toEqual([
-      '--yes', '@deepseek-ai/dsh',
-      'plugin', '--profile', 'tui',
-      'remove', 'some-plugin',
-    ])
+    expect(removeCall).toBeUndefined()
     expect(removePluginReceipt).toHaveBeenCalledWith(expect.any(String), 'tui', 'some-plugin')
+  })
+
+  it('only prunes the controlled pnpm store when explicitly requested', async () => {
+    vi.mocked(readProfile).mockResolvedValue(profileState('tui', 'some-plugin'))
+    const { installer } = createTestInstaller()
+
+    await installer.remove('some-plugin', 'tui')
+    expect(purgeStoreCalls).toHaveLength(0)
+
+    await installer.remove('some-plugin', 'tui', { purgeStore: true })
+    expect(purgeStoreCalls).toEqual([path.join(temporaryDirectory, 'plugin-store')])
   })
 
   it('defaults to the settings profile when no profileName is given', async () => {
@@ -420,12 +663,7 @@ describe('remove with profileName', () => {
     await installer.remove('some-plugin')
 
     const removeCall = calls.find(call => call.args.includes('remove'))
-    expect(removeCall).toBeDefined()
-    expect(removeCall!.args).toEqual([
-      '--yes', '@deepseek-ai/dsh',
-      'plugin', '--profile', 'web',
-      'remove', 'some-plugin',
-    ])
+    expect(removeCall).toBeUndefined()
     expect(removePluginReceipt).toHaveBeenCalledWith(expect.any(String), 'web', 'some-plugin')
   })
 
@@ -437,11 +675,36 @@ describe('remove with profileName', () => {
 
     await installer.remove('some-plugin')
 
-    const removeCalls = calls.filter(call => call.args.includes('remove'))
-    expect(removeCalls).toHaveLength(2)
-    expect(removeCalls.map(call => call.args[call.args.indexOf('--profile') + 1])).toEqual(expect.arrayContaining(['web', 'tui']))
+    expect(calls.filter(call => call.args.includes('remove'))).toHaveLength(0)
     expect(removePluginReceipt).toHaveBeenCalledWith(expect.any(String), 'web', 'some-plugin')
     expect(removePluginReceipt).toHaveBeenCalledWith(expect.any(String), 'tui', 'some-plugin')
+  })
+
+  it('彻底清除即使指定来源 Profile 也会同步清理所有 Profile', async () => {
+    await mkdir(path.join(settings.dshHome, 'profiles', 'web'), { recursive: true })
+    await mkdir(path.join(settings.dshHome, 'profiles', 'tui'), { recursive: true })
+    vi.mocked(readProfile).mockImplementation(async (_dshHome, profileName) => profileState(profileName, 'some-plugin'))
+    const { installer, calls } = createTestInstaller()
+
+    await installer.remove('some-plugin', 'tui', { purgeStore: true })
+
+    expect(calls.filter(call => call.args.includes('remove'))).toHaveLength(0)
+    expect(removePluginFromProfile).toHaveBeenCalledWith(settings.dshHome, 'web', 'some-plugin')
+    expect(removePluginFromProfile).toHaveBeenCalledWith(settings.dshHome, 'tui', 'some-plugin')
+    expect(removePluginReceipt).toHaveBeenCalledWith(expect.any(String), 'web', 'some-plugin')
+    expect(removePluginReceipt).toHaveBeenCalledWith(expect.any(String), 'tui', 'some-plugin')
+    expect(purgeStoreCalls).toEqual([path.join(temporaryDirectory, 'plugin-store')])
+  })
+
+  it('遇到损坏的 Profile 清单时不会回收共享缓存', async () => {
+    await mkdir(path.join(settings.dshHome, 'profiles', 'web'), { recursive: true })
+    await mkdir(path.join(settings.dshHome, 'profiles', 'tui'), { recursive: true })
+    await writeFile(path.join(settings.dshHome, 'profiles', 'tui', 'package.json'), '{ not-json\n')
+    vi.mocked(readProfile).mockImplementation(async (_dshHome, profileName) => profileState(profileName, 'some-plugin'))
+    const { installer } = createTestInstaller()
+
+    await expect(installer.remove('some-plugin', 'web', { purgeStore: true })).rejects.toThrow(/tui.*无法读取 Profile 配置/)
+    expect(purgeStoreCalls).toHaveLength(0)
   })
 })
 
@@ -638,6 +901,43 @@ describe('installPluginTarget release 源（meta-repo tgz 直链）', () => {
     const addCall = calls.find(call => call.args.includes('add'))
     expect(addCall).toBeDefined()
     expect(addCall!.args).toContain(`github:yjh051108/dsh-super-injector#${'c'.repeat(40)}`)
+  })
+
+  it('清单声明 GitHub 时不会被同名 npm 候选改写', async () => {
+    vi.mocked(analyzeRepository).mockResolvedValue({
+      repository: 'omdsh-dev/dsh-at-file',
+      defaultBranch: 'main',
+      installability: 'ready',
+      summary: 'ok',
+      targets: [{
+        id: 'dsh-at-file:.',
+        packageName: 'dsh-at-file',
+        version: '0.6.3',
+        source: 'npm',
+        profileName: 'web',
+        platform: 'web',
+        subdirectory: null,
+        commit: 'r'.repeat(40),
+        requiresBuild: false,
+        buildScripts: [],
+        nodeRange: null,
+      }],
+    })
+    vi.mocked(readProfile).mockResolvedValue(profileState('web', 'dsh-at-file'))
+    const { installer, calls } = createTestInstaller(undefined, undefined, undefined, () => 'C:\\git.exe')
+
+    await installer.installPluginTarget({
+      repository: 'omdsh-dev/dsh-at-file',
+      defaultBranch: 'main',
+      targetId: 'dsh-at-file:.',
+      source: 'github',
+      commit: 'p'.repeat(40),
+      version: '0.6.0',
+    })
+
+    const addCall = calls.find(call => call.args.includes('add'))
+    expect(addCall?.args).toContain(`github:omdsh-dev/dsh-at-file#${'p'.repeat(40)}`)
+    expect(addCall?.args.some(arg => arg.includes('@0.6.0'))).toBe(false)
   })
 })
 

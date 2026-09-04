@@ -242,6 +242,11 @@ export function createApplicationAddonManager(options: ApplicationAddonManagerOp
             ...(options.packageStoreRoot ? { pnpm_config_store_dir: options.packageStoreRoot, PNPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
             FORCE_COLOR: '0',
             NPM_CONFIG_UPDATE_NOTIFIER: 'false',
+            CI: 'true',
+            npm_config_yes: 'true',
+            NPM_CONFIG_YES: 'true',
+            PNPM_CONFIG_YES: 'true',
+            COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
           }),
         )
         const result = await executeCommand(pnpmRuntime.executable, [
@@ -250,6 +255,7 @@ export function createApplicationAddonManager(options: ApplicationAddonManagerOp
         ], {
           cwd: runtimePath,
           env: environment,
+          inactivityTimeoutMs: 5 * 60 * 1000,
           onOutput: (text, level) => options.emitOutput(level, text),
         })
         if (result.exitCode !== 0) throw new Error(`应用加载项安装失败（代码 ${result.exitCode}）。`)

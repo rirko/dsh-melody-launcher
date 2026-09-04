@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { createReadStream, existsSync } from 'node:fs'
 import { mkdir, open, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
+import { collectCommandOutput } from './command'
 import { formatCommandLine, spawnCommand, trackSpawnedProcess, withExecutableDirectoryOnPath } from './process'
 import type { RuntimeVersionCandidate } from '../src/types'
 
@@ -35,6 +36,7 @@ type OutputListener = (level: 'info' | 'error', text: string) => void
 /** 同一版本只允许一个下载任务；不同版本可以并行准备。 */
 const installationPromises = new Map<string, Promise<NodeRuntime>>()
 let pnpmInstallationPromise: Promise<PnpmRuntime> | null = null
+const RUNTIME_COMMAND_IDLE_TIMEOUT_MS = 5 * 60 * 1000
 
 /**
  * 可执行文件相对于 root 的两种摆放方式。
@@ -373,20 +375,23 @@ async function installManagedPnpmRuntime(
   onOutput?.('info', `命令：${formatCommandLine(nodeRuntime.npm, args)}\n工作目录：${runtimeRoot}`)
   const child = spawnCommand(nodeRuntime.npm, args, {
     cwd: runtimeRoot,
+    stdin: 'ignore',
     env: withExecutableDirectoryOnPath(nodeRuntime.node, {
       ...process.env,
       FORCE_COLOR: '0',
       NPM_CONFIG_UPDATE_NOTIFIER: 'false',
+      CI: 'true',
+      npm_config_yes: 'true',
+      NPM_CONFIG_YES: 'true',
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
     }),
   })
-  let diagnostics = ''
-  child.stdout.on('data', chunk => onOutput?.('info', chunk.toString('utf8')))
-  child.stderr.on('data', chunk => {
-    const text = chunk.toString('utf8')
-    diagnostics = `${diagnostics}${text}`.slice(-8_000)
-    onOutput?.('error', text)
+  const result = await collectCommandOutput(child, {
+    inactivityTimeoutMs: RUNTIME_COMMAND_IDLE_TIMEOUT_MS,
+    onOutput: (text, level) => onOutput?.(level, text),
   })
-  const exitCode = await waitForExit(child)
+  const exitCode = result.exitCode
+  const diagnostics = result.output.slice(-8_000)
   onOutput?.(exitCode === 0 ? 'info' : 'error', `命令退出：${exitCode}`)
   if (exitCode !== 0 || !await hasRequiredPnpmVersion(runtime)) {
     throw new Error(`pnpm 插件运行环境准备失败${diagnostics ? `：${diagnostics.trim()}` : `（代码 ${exitCode}）`}`)

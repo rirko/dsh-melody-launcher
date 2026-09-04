@@ -301,6 +301,9 @@ describe('从 GitHub 链接导入并安装 —— 端到端', () => {
       'demo/dsh-skill',
       expect.objectContaining({ name: 'my-skill', format: 'bundle' }),
       expect.any(Function),
+      // 此用例未注入 githubFetch，占位 undefined；最后是由 settings.skillMaxArchiveMb 推导的安装限制。
+      undefined,
+      expect.objectContaining({ archiveMb: 64 }),
     )
   })
 

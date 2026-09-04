@@ -8,6 +8,10 @@ function replaceSession(current: AiSession[], next: AiSession): AiSession[] {
   return current.map(item => item.id === next.id ? next : item)
 }
 
+function orderedMessages(messages: AiSession['messages']): AiSession['messages'] {
+  return [...messages].sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+}
+
 export function useCopilotSessions() {
   const api = useLauncherApi()
   const [sessions, setSessions] = useState<AiSession[]>([])
@@ -19,7 +23,7 @@ export function useCopilotSessions() {
     let mounted = true
     void api.listAiSessions().then(items => {
       if (!mounted) return
-      setSessions(items)
+      setSessions(items.map(session => ({ ...session, messages: orderedMessages(session.messages) })))
       setSelectedId(current => current ?? items[0]?.id ?? null)
     }).finally(() => { if (mounted) setLoading(false) })
     const unsubscribe = api.onAiSessionEvent((event: AiSessionEvent) => {
@@ -32,10 +36,18 @@ export function useCopilotSessions() {
         setSessions(current => current.map(session => {
           if (session.id !== event.sessionId) return session
           const index = session.messages.findIndex(message => message.id === event.message.id)
+          // Codex starts streaming its assistant message before command-output
+          // tool messages finish.  Newly arrived tool records therefore belong
+          // before that in-flight answer even though IPC delivered them later.
+          const firstAssistant = session.messages.findIndex(message => message.role === 'assistant')
+          const insertAt = event.message.role === 'assistant' || event.message.role === 'user' || firstAssistant < 0
+            ? session.messages.length
+            : firstAssistant
           const messages = index < 0
-            ? [...session.messages, event.message]
+            ? [...session.messages.slice(0, insertAt), event.message, ...session.messages.slice(insertAt)]
             : session.messages.map(message => message.id === event.message.id ? event.message : message)
-          return { ...session, messages, messageCount: messages.length, updatedAt: event.message.createdAt }
+          const nextMessages = orderedMessages(messages)
+          return { ...session, messages: nextMessages, messageCount: nextMessages.length, updatedAt: event.message.createdAt }
         }))
       } else if (event.kind === 'approval') {
         setSessions(current => current.map(session => session.id === event.sessionId ? { ...session, pendingApproval: event.request } : session))

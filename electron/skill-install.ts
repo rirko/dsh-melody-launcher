@@ -8,10 +8,36 @@ import { downloadGitHubArchive, githubArchiveUrl } from './github-archive'
 import { isSafeRepositoryName } from './profile'
 import { isSkillName, parseSkillDocument, type ParsedSkill } from './skill-format'
 
-const MAX_FILES = 5000
-const MAX_UNPACKED_BYTES = 100 * 1024 * 1024
-const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
-const MAX_ARCHIVE_FILES = 12_000
+/** 基础安全防线（上限 64MB 时的默认值）；用户调大压缩包上限时按比例同步放宽。 */
+const BASE_MAX_FILES = 5000
+const BASE_MAX_UNPACKED_BYTES = 100 * 1024 * 1024
+const BASE_MAX_ARCHIVE_FILES = 12_000
+export const DEFAULT_SKILL_MAX_ARCHIVE_MB = 64
+
+export interface SkillInstallLimits {
+  /** 配置的压缩包上限（MB），已收敛到 16–2048。 */
+  archiveMb: number
+  archiveBytes: number
+  unpackedBytes: number
+  archiveFiles: number
+  files: number
+}
+
+/** 由设置的 skillMaxArchiveMb 推导全部安装限制；解压体积与文件数随上限等比放宽，保留解压炸弹防线。 */
+export function skillInstallLimits(maxArchiveMb: number | null | undefined): SkillInstallLimits {
+  const archiveMb = Number.isFinite(maxArchiveMb)
+    ? Math.min(2048, Math.max(16, Math.round(maxArchiveMb as number)))
+    : DEFAULT_SKILL_MAX_ARCHIVE_MB
+  const archiveBytes = archiveMb * 1024 * 1024
+  const scaledCount = Math.ceil(archiveBytes / (16 * 1024))
+  return {
+    archiveMb,
+    archiveBytes,
+    unpackedBytes: Math.max(BASE_MAX_UNPACKED_BYTES, archiveBytes * 4),
+    archiveFiles: Math.max(BASE_MAX_ARCHIVE_FILES, scaledCount),
+    files: Math.max(BASE_MAX_FILES, scaledCount),
+  }
+}
 
 export interface SkillInstallProgress {
   percent: number
@@ -55,11 +81,12 @@ async function downloadArchive(
   repository: string,
   revision: string,
   destination: string,
+  archiveBytes: number,
   onProgress: (progress: SkillInstallProgress) => void,
   fetchImpl?: typeof fetch,
 ): Promise<void> {
   if (!fetchImpl) {
-    const archive = await downloadGitHubArchive(repository, revision, MAX_ARCHIVE_BYTES, (received, total) => {
+    const archive = await downloadGitHubArchive(repository, revision, archiveBytes, (received, total) => {
       if (total) onProgress({ percent: 18 + Math.round(Math.min(1, received / total) * 42), message: `正在下载 Skill ${Math.round(received / total * 100)}%`, downloadedBytes: received, totalBytes: total })
     })
     await writeFile(destination, archive, { flag: 'wx' })
@@ -70,7 +97,7 @@ async function downloadArchive(
   })
   if (!response.ok || !response.body) throw new Error(`下载 Skill 仓库失败（HTTP ${response.status}）。`)
   const total = Number(response.headers.get('content-length'))
-  if (Number.isFinite(total) && total > MAX_ARCHIVE_BYTES) throw new Error('Skill 仓库压缩包过大，已停止安装。')
+  if (Number.isFinite(total) && total > archiveBytes) throw new Error('Skill 仓库压缩包过大，已停止安装。')
   const writer = createWriteStream(destination, { flags: 'wx' })
   const reader = response.body.getReader()
   let received = 0
@@ -79,7 +106,7 @@ async function downloadArchive(
       const chunk = await reader.read()
       if (chunk.done) break
       received += chunk.value.byteLength
-      if (received > MAX_ARCHIVE_BYTES) {
+      if (received > archiveBytes) {
         await reader.cancel().catch(() => undefined)
         throw new Error('Skill 仓库压缩包过大，已停止安装。')
       }
@@ -116,6 +143,7 @@ export async function installSkillFromRepository(
   target: SkillInstallTarget,
   onProgress: (progress: SkillInstallProgress) => void,
   fetchImpl?: typeof fetch,
+  limits: SkillInstallLimits = skillInstallLimits(undefined),
 ): Promise<InstalledSkill> {
   if (!isSafeRepositoryName(repository) || !safeRevision(target.revision) || !isSkillName(target.name)) {
     throw new Error('Skill 仓库、版本或名称无效。')
@@ -133,11 +161,11 @@ export async function installSkillFromRepository(
 
   try {
     onProgress({ percent: 12, message: '正在下载 Skill 仓库', indeterminate: true })
-    await downloadArchive(repository, target.revision, zipPath, onProgress, fetchImpl)
+    await downloadArchive(repository, target.revision, zipPath, limits.archiveBytes, onProgress, fetchImpl)
     onProgress({ percent: 64, message: '正在核对 Skill 文件' })
     const archive = new AdmZip(zipPath)
     const entries = archive.getEntries()
-    if (entries.length > MAX_ARCHIVE_FILES) throw new Error('Skill 仓库文件数量超过安全限制。')
+    if (entries.length > limits.archiveFiles) throw new Error('Skill 仓库文件数量超过安全限制。')
     const firstFile = entries.find(entry => !entry.isDirectory)
     const archiveRoot = firstFile?.entryName.split('/')[0]
     if (!archiveRoot) throw new Error('Skill 仓库压缩包结构无效。')
@@ -169,7 +197,7 @@ export async function installSkillFromRepository(
       if (!safeRelative) throw new Error('Skill 组件包含不安全路径。')
       copiedFiles += 1
       unpackedBytes += Number(entry.header.size) || 0
-      if (copiedFiles > MAX_FILES || unpackedBytes > MAX_UNPACKED_BYTES) throw new Error('Skill 组件体积或文件数量超过安全限制。')
+      if (copiedFiles > limits.files || unpackedBytes > limits.unpackedBytes) throw new Error('Skill 组件体积或文件数量超过安全限制。')
       const outputPath = target.format === 'flat' ? staged : path.join(staged, ...safeRelative.split('/'))
       assertInside(stagingRoot, outputPath)
       await mkdir(path.dirname(outputPath), { recursive: true })

@@ -2,6 +2,26 @@
 
 本文件记录 DSH 旋律启动器（dsh-melody-launcher）的版本变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本语义遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [v0.4.3] - 2026-08-29
+
+### 新增功能
+
+- **Codex ACP 后端**：Copilot 现在可选择 `Codex ACP`，通过 Codex App Server 的 JSONL 协议进行多轮对话，并调用本机 Codex 工具。命令执行、文件修改、权限审批、工具输出和思考过程会在同一会话中展示。
+- 新增 Codex App Server 客户端与传输层，支持 `initialize`、`thread/start`、`turn/start`、`turn/interrupt`、多轮线程复用和服务器请求兜底。
+
+### Bug 修复
+
+- 修复 Codex 在一轮工具调用后停止的问题：启动器持续等待 `turn/completed`，并正确响应工具执行、文件修改、权限与宿主请求。
+- 修复 Codex 进程退出、EOF、stdin/stdout 错误或 code 0 意外断开后，会话停留在 `running` 的问题；pending turn、审批和修改队列锁会同步释放。
+- 修复消息事件到达顺序导致的对话看起来被截断的问题；最终回答与工具日志按时间恢复顺序。
+- 加固 DSH ACP 传输层：异常流关闭、重复关闭、晚注册监听和子进程树清理更稳定。
+- 恢复插件页搜索栏位置，并调整 Copilot 窄宽度下的响应式布局。
+
+### 测试
+
+- 新增 Codex 协议、请求兜底、transport 生命周期、会话集成、UI 和 code 0 退出回归测试。
+- 全套 681 项测试通过，47 项依赖真实环境的测试按惯例跳过；`tsc --noEmit` 与 `vite build` 通过。
+
 ## [v0.4.2] - 2026-08-26
 
 ### Bug 修复
@@ -17,6 +37,29 @@
 
 - 新增启动器更新：`wscript` 替换、开发模式保护、镜像 fallback、脚本失败清理等 4 项测试。
 - 全套 592 项测试通过，`tsc --noEmit` 通过。
+
+## [v0.4.1] - 2026-08-26
+
+> 本版本统一 Profile 与整合包运行模型，并补充非标准 DSH 发行版导入能力。插件物理包继续复用共享池，各 Profile 保持独立依赖链接层、启用状态和加载顺序。
+
+### 新增功能
+
+- **非标准整合包导入**：识别标准 Profile、meta-repo 和独立 DSH 发行版，解析 `config/bundles.json`、workspace 清单及仓库内插件目录，创建隔离 Profile。
+- **来源匹配与安装**：优先使用 DSH Market，未命中时使用固定 GitHub commit 或整合包本地源码，并记录整合包来源、仓库 commit、实际安装来源和插件收据。
+- **共享插件池**：Profile 之间复用物理插件本体，同时保留各自的 pnpm 链接层和激活序列；补齐和卸载不会误删其他 Profile 的引用。
+- **Profile 仓库来源信息**：导入预览展示发行版类型、DSH 版本、插件分类、来源匹配结果和跳过项，支持 npm 仓库补全及 GitHub 插件恢复。
+
+### Bug 修复
+
+- 修复 GitHub 插件来源、npm 元数据和整合包根 commit 混用导致的安装目标错误。
+- 修复共享插件清单在不同 Profile 间消失、Profile 切换后误报缺失依赖以及本地来源无法复用的问题。
+- 修复窗口首次从启动页切换到管理页或从托盘恢复时右侧空白、透明窗口重绘不完整的问题。
+- 修复 Copilot 拖拽边界释放不稳定、边界阴影归属错误以及侧边操作按钮不跟随宽度变化的问题。
+- 启动页文字统一为白色叠加混合效果，改善不同背景下的可读性。
+
+### 测试
+
+- 新增并更新 Profile、插件来源、共享插件池、非标准整合包、进程和运行时测试。
 
 ## [v0.4.0] - 2026-08-25（预览版）
 

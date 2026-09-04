@@ -3,7 +3,8 @@ import { existsSync } from 'node:fs'
 import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { IPC, IPC_EVENTS } from '../src/constants'
-import type { AiSessionCreateInput, ApplicationInstallRequest, AppSettings, CustomApiProviderInput, PackCreateRequest, PluginInstallRequest, PresetInstallRequest, SkillInstallRequest, WindowMode, ProfileRepositoryImportMode, PackPluginEntry } from '../src/types'
+import type { AiSessionCreateInput, ApplicationInstallRequest, AppSettings, ApiProbeTarget, CustomApiProviderInput, PackCreateRequest, PluginInstallRequest, PresetInstallRequest, SkillInstallRequest, WindowMode, ProfileRepositoryImportMode, PackPluginEntry, NonstandardPackImportPreview, PluginUninstallOptions } from '../src/types'
+import type { ApiProbeService } from './api-probe'
 import type { ApplicationAddonManager } from './application-addons'
 import type { RecommendedWebUiService } from './recommended-web-ui'
 import { isWindowMode } from './app-window'
@@ -38,9 +39,12 @@ import type { RuntimeVersionService } from './runtime-versions'
 import type { ProfileService } from './profile-service'
 import { inspectPackZipFromPath } from './pack-zip'
 import { serializePackManifest } from './pack-manifest'
-import { writeProfileMetadata } from './profile-service'
+import { consolidatePluginPool, writeProfileMetadata } from './profile-service'
 import { readPluginReceipts } from './plugin-receipts'
 import { analyzeProfileRepository, applyReceiptMatches, applySelectedMatches, loadProfileRepositoryManifest, manifestText, readProfileRepositoryArchive, validateFullArchive } from './profile-repository-import'
+import type { NonstandardPackService } from './nonstandard-pack'
+import type { InstallQueue } from './install-queue'
+import { clearLauncherBackgrounds, importLauncherBackground } from './launcher-asset'
 
 /**
  * 渲染层能触达主进程的全部入口。
@@ -50,6 +54,8 @@ import { analyzeProfileRepository, applyReceiptMatches, applySelectedMatches, lo
 export interface IpcDependencies {
   settings: SettingsStore
   pluginReceiptsPath: string
+  /** userData 根目录：主界面插图存于其下 launcher-assets/（导入函数内部拼接）。 */
+  launcherAssetsUserData: string
   runtime: RuntimeController
   installer: Installer
   launcherUpdater: LauncherUpdater
@@ -64,15 +70,21 @@ export interface IpcDependencies {
   recommendedWebUi: RecommendedWebUiService
   runtimeVersions: RuntimeVersionService
   profiles: ProfileService
+  nonstandardPack: NonstandardPackService
+  apiProbe: ApiProbeService
+  installQueue: InstallQueue
   getWindow: () => BrowserWindow | null
   setWindowMode: (mode: WindowMode) => void
 }
 
 export function registerIpcHandlers(deps: IpcDependencies): void {
-  const { settings, pluginReceiptsPath, runtime, installer, launcherUpdater, pluginTrial, aiInstaller, copilot, packManager, githubAuth, applicationAddons, catalogSync, dshMarket, recommendedWebUi, runtimeVersions, profiles } = deps
+  const { settings, pluginReceiptsPath, launcherAssetsUserData, runtime, installer, launcherUpdater, pluginTrial, aiInstaller, copilot, packManager, githubAuth, applicationAddons, catalogSync, dshMarket, recommendedWebUi, runtimeVersions, profiles, nonstandardPack, apiProbe, installQueue } = deps
   const linkedComponents = createLinkedComponentController({
     readSettings: () => settings.read(),
-    readProfile,
+    // Include the shared-pool inventory and profile-scoped receipts when
+    // validating a toggle. Without the receipt path, a plugin visible in the
+    // UI but not yet declared in this Profile can be rejected as missing.
+    readProfile: (dshHome, profileName) => readProfile(dshHome, profileName, pluginReceiptsPath),
     togglePlugin,
     applications: applicationAddons,
     isRuntimeRunning: () => runtime.isRunning(),
@@ -80,7 +92,10 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
 
   // 安装、整合包切换、试运行和 AI 均可能改写同一个 Profile 或资源目录。
   // 渲染层只按动作禁用控件；这里作为跨页面的最终保护。
+  // 下载队列中的任务（含排队等待的）同样占用 Profile：队列接管了耗时安装，
+  // 这里继续守住快速变更路径（设置、启停、选择等）。
   const assertProfileMutationAvailable = () => {
+    if (installQueue.hasWork()) throw new Error('下载队列中有任务在等待或执行，请等待完成。')
     if (installer.isBusy()) throw new Error('DSH 或资源安装进行中，请等待完成。')
     if (packManager.isBusy()) throw new Error('整合包操作进行中，请等待完成。')
     if (pluginTrial.isBusy()) throw new Error('插件试运行进行中，请等待完成。')
@@ -113,17 +128,33 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   }
 
   ipcMain.handle(IPC.settingsGet, () => settings.read())
-  ipcMain.handle(IPC.settingsSave, (_event, next: AppSettings) => {
+  ipcMain.handle(IPC.settingsSave, async (_event, next: AppSettings) => {
     assertProfileMutationAvailable()
-    return settings.save(next)
+    const saved = await settings.save(next)
+    // 插图被换掉或恢复默认后，这里统一清理不再被引用的本地文件。
+    if (saved.launcherBackground == null) await clearLauncherBackgrounds(launcherAssetsUserData)
+    return saved
+  })
+  ipcMain.handle(IPC.settingsChooseBackground, async () => {
+    const window = deps.getWindow()
+    if (!window) return null
+    const result = await dialog.showOpenDialog(window, {
+      title: '选择主界面插图',
+      properties: ['openFile'],
+      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    })
+    if (result.canceled || !result.filePaths[0]) return null
+    return importLauncherBackground(launcherAssetsUserData, result.filePaths[0])
+  })
+  ipcMain.handle(IPC.settingsClearBackground, async () => {
+    await clearLauncherBackgrounds(launcherAssetsUserData)
   })
   ipcMain.handle(IPC.dshDetect, () => installer.detectDsh())
   ipcMain.handle(IPC.dshUpdateCheck, () => installer.checkDshUpdate())
   ipcMain.handle(IPC.runtimeEnvironmentRead, (_event, refresh?: boolean) => runtimeVersions.read(Boolean(refresh)))
   ipcMain.handle(IPC.runtimeEnvironmentInstallDsh, async (_event, version: string) => {
-    assertProfileMutationAvailable()
-    if (typeof version !== 'string') throw new Error('DSH 版本格式无效。')
-    return runtimeVersions.installDsh(version)
+    if (typeof version !== 'string' || !version.trim()) throw new Error('DSH 版本格式无效。')
+    return installQueue.enqueue('dsh', `下载 DSH ${version.trim()}`, version.trim())
   })
   ipcMain.handle(IPC.runtimeEnvironmentSelectDsh, async (_event, version: string) => {
     assertProfileMutationAvailable()
@@ -136,9 +167,8 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     return runtimeVersions.removeDsh(version)
   })
   ipcMain.handle(IPC.runtimeEnvironmentInstallNode, async (_event, version: string) => {
-    assertProfileMutationAvailable()
-    if (typeof version !== 'string') throw new Error('Node.js 版本格式无效。')
-    return runtimeVersions.installNode(version)
+    if (typeof version !== 'string' || !version.trim()) throw new Error('Node.js 版本格式无效。')
+    return installQueue.enqueue('node', `下载 Node.js ${version.trim()}`, version.trim())
   })
   ipcMain.handle(IPC.runtimeEnvironmentSelectNode, async (_event, version: string | null) => {
     assertProfileMutationAvailable()
@@ -188,6 +218,15 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     if (typeof route !== 'string') throw new Error('自定义 API 路由格式无效。')
     const current = await settings.read()
     return removeCustomApiProvider(current.dshHome, route)
+  })
+  ipcMain.handle(IPC.customApiTest, async (_event, target: ApiProbeTarget) => {
+    if (!target || typeof target !== 'object') throw new Error('API 检测目标无效。')
+    if (target.target === 'custom') {
+      if (typeof target.route !== 'string' || !target.route.trim()) throw new Error('自定义 API 路由格式无效。')
+    } else if (target.target !== 'deepseek-official') {
+      throw new Error('API 检测目标无效。')
+    }
+    return apiProbe.probe(target)
   })
 
   ipcMain.handle(IPC.githubAuthStatus, () => githubAuth.getStatus())
@@ -312,6 +351,7 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     let temporaryRoot: string | null = null
     let githubSource: { repository: string; branch?: string; commit?: string | null } | null = null
     let localPluginBodies: Record<string, string> = {}
+    let importedPluginNames: Set<string> | null = null
     try {
       if (!path.isAbsolute(importPath)) {
         // Legacy callers keep the lightweight default: a remote repository is
@@ -324,6 +364,7 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
         }
         const receipts = await readPluginReceipts(pluginReceiptsPath)
         const manifest = applyReceiptMatches(loaded.manifest, receipts)
+        importedPluginNames = new Set(manifest.plugins.map(entry => entry.packageName))
         const dshHome = (await settings.read()).dshHome
         localPluginBodies = await resolveLocalPluginBodies(dshHome, manifest.plugins.map(entry => entry.packageName), receipts)
         const unresolved = manifest.plugins.filter(entry => ((entry.source === 'npm' && !entry.version) || (entry.source !== 'npm' && (!entry.repository || !entry.commit))) && !localPluginBodies[entry.packageName])
@@ -335,11 +376,17 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
       }
       if (!path.isAbsolute(importPath)) throw new Error('Profile 文件路径无效。')
       const result = await packManager.importPack(importPath, undefined, payload.name || payload.overwrite ? { name: payload.name, overwrite: payload.overwrite === true, localPluginBodies } : { localPluginBodies })
+      const importedSettings = await settings.read()
       if (githubSource) {
-        const importedSettings = await settings.read()
         await writeProfileMetadata(importedSettings.dshHome, result.id, { source: { kind: 'github', repository: githubSource.repository, ...(githubSource.branch ? { branch: githubSource.branch } : {}), ...(githubSource.commit ? { commit: githubSource.commit } : {}) } })
       }
-      return profiles.metadata(result.id)
+      await consolidatePluginPool(importedSettings.dshHome)
+      const summary = await profiles.metadata(result.id)
+      return {
+        ...summary,
+        ...(importedPluginNames ? { importedPluginCount: result.installed.filter(name => importedPluginNames!.has(name)).length } : {}),
+        importFailures: result.failures.map(failure => `${failure.packageName}：${failure.reason}`),
+      }
     } finally {
       if (temporaryRoot) await rm(temporaryRoot, { recursive: true, force: true }).catch(() => undefined)
     }
@@ -415,10 +462,35 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
       await writeProfileMetadata(current.dshHome, result.id, {
         source: { kind: 'github', repository: loaded.repository, branch: loaded.branch, ...(loaded.commit ? { commit: loaded.commit } : {}) },
       })
-      return profiles.metadata(result.id)
+      await consolidatePluginPool(current.dshHome)
+      const summary = await profiles.metadata(result.id)
+      return {
+        ...summary,
+        importedPluginCount: result.installed.filter(name => loaded.manifest.plugins.some(plugin => plugin.packageName === name)).length,
+        importFailures: result.failures.map(failure => `${failure.packageName}：${failure.reason}`),
+      }
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true }).catch(() => undefined)
     }
+  })
+  ipcMain.handle(IPC.profilesNonstandardAnalyze, async (_event, url: string) => {
+    if (typeof url !== 'string' || !url.trim()) throw new Error('整合包仓库链接无效。')
+    const preview = await nonstandardPack.analyze(url.trim())
+    const environment = await runtimeVersions.read(false)
+    return { ...preview, dshVersionInstalled: preview.dshVersion ? environment.dshInstalled.some(item => item.version === preview.dshVersion) : true }
+  })
+  ipcMain.handle(IPC.profilesNonstandardResolve, async (_event, preview: NonstandardPackImportPreview) => {
+    if (!preview || typeof preview !== 'object' || !Array.isArray(preview.plugins)) throw new Error('整合包解析结果无效。')
+    return nonstandardPack.resolve(preview)
+  })
+  ipcMain.handle(IPC.profilesNonstandardImport, async (_event, payload: { url: string; name?: string; packageNames?: string[]; installDsh?: boolean }) => {
+    assertProfileMutationAvailable()
+    if (!payload || typeof payload.url !== 'string' || !payload.url.trim()) throw new Error('整合包仓库链接无效。')
+    if (runtime.isRunning()) throw new Error('请先停止 DSH，再导入整合包。')
+    const result = await nonstandardPack.import(payload.url.trim(), { name: payload.name, packageNames: payload.packageNames, installDsh: payload.installDsh !== false })
+    const current = await settings.read()
+    await consolidatePluginPool(current.dshHome)
+    return result
   })
   ipcMain.handle(IPC.profilesMatchPlugin, async (_event, packageName: string) => {
     if (typeof packageName !== 'string' || !isSafePackageName(packageName)) throw new Error('插件名称无效。')
@@ -531,20 +603,27 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     )
   })
   ipcMain.handle(IPC.dshMarketLoad, () => dshMarket.load())
-  ipcMain.handle(IPC.dshMarketInstall, async (_event, name: string) => {
-    assertProfileMutationAvailable()
+  ipcMain.handle(IPC.dshMarketInstall, async (_event, payload: string | { name: string; profileName?: string; exactVersion?: string }) => {
+    const name = typeof payload === 'string' ? payload : payload?.name
     if (typeof name !== 'string' || name.length === 0 || name.length > 200) throw new Error('dsh-market 插件名称无效。')
-    return dshMarket.install(name)
+    const job = typeof payload === 'string'
+      ? { action: 'install' as const, name }
+      : { action: 'install' as const, name, profileName: payload.profileName, exactVersion: payload.exactVersion }
+    return installQueue.enqueue('dsh-market', `安装 DSH Market 插件 ${name}`, job)
   })
-  ipcMain.handle(IPC.dshMarketUpdate, async (_event, name: string) => {
-    assertProfileMutationAvailable()
+  ipcMain.handle(IPC.dshMarketUpdate, async (_event, payload: string | { name: string; profileName?: string }) => {
+    const name = typeof payload === 'string' ? payload : payload?.name
     if (typeof name !== 'string' || name.length === 0 || name.length > 200) throw new Error('dsh-market 插件名称无效。')
-    return dshMarket.update(name)
+    const job = typeof payload === 'string'
+      ? { action: 'update' as const, name }
+      : { action: 'update' as const, name, profileName: payload.profileName }
+    return installQueue.enqueue('dsh-market', `更新 DSH Market 插件 ${name}`, job)
   })
-  ipcMain.handle(IPC.dshMarketUninstall, async (_event, name: string) => {
+  ipcMain.handle(IPC.dshMarketUninstall, async (_event, payload: string | { name: string; profileName?: string }) => {
+    const name = typeof payload === 'string' ? payload : payload?.name
     assertProfileMutationAvailable()
     if (typeof name !== 'string' || name.length === 0 || name.length > 200) throw new Error('dsh-market 插件名称无效。')
-    return dshMarket.uninstall(name)
+    return dshMarket.uninstall(name, typeof payload === 'string' ? undefined : payload.profileName)
   })
   ipcMain.handle(IPC.dshMarketToggle, async (_event, payload: { name: string; enabled: boolean }) => {
     assertProfileMutationAvailable()
@@ -559,25 +638,23 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   })
 
   ipcMain.handle(IPC.pluginsInstall, async (_event, request: string | PluginInstallRequest) => {
-    assertProfileMutationAvailable()
-    const fullName = typeof request === 'string' ? request : request.repository
+    const fullName = typeof request === 'string' ? request : request?.repository
     if (!isSafeRepositoryName(fullName)) throw new Error('GitHub 仓库名称无效。')
-    if (typeof request === 'string') return installer.install(fullName)
-    return installer.installPluginTarget({
-      repository: request.repository,
-      defaultBranch: request.defaultBranch,
-      targetId: request.targetId,
-      // release 源插件：meta-repo 分析得到的 tgz 直链，覆盖重分析得到的 github 源。
-      tarballUrl: typeof request.tarballUrl === 'string' ? request.tarballUrl : undefined,
-    })
+    if (typeof request !== 'string' && request.profileName !== undefined && !isSafeProfileName(request.profileName)) {
+      throw new Error('Profile 名称无效。')
+    }
+    // 耗时安装走全局下载队列：并发触发自动排队而不是报「正在安装」冲突。
+    return installQueue.enqueue('plugin', `安装插件 ${fullName}`, request)
   })
-  ipcMain.handle(IPC.pluginsUninstall, async (_event, payload: string | { packageName: string; profileName?: string }) => {
+  ipcMain.handle(IPC.pluginsUninstall, async (_event, payload: string | (PluginUninstallOptions & { packageName: string })) => {
     assertProfileMutationAvailable()
-    const packageName = typeof payload === 'string' ? payload : payload?.packageName
-    if (!isSafePackageName(packageName)) throw new Error('插件名称无效。')
-    const profileName = typeof payload === 'object' ? payload.profileName : undefined
+    const objectPayload = payload && typeof payload === 'object' ? payload : null
+    const packageName = typeof payload === 'string' ? payload : objectPayload?.packageName
+    if (typeof packageName !== 'string' || !isSafePackageName(packageName)) throw new Error('插件名称无效。')
+    const profileName = objectPayload?.profileName
     if (profileName !== undefined && !isSafeProfileName(profileName)) throw new Error('Profile 名称无效。')
-    return installer.remove(packageName, profileName)
+    const purgeStore = objectPayload?.purgeStore === true
+    return installer.remove(packageName, profileName, { purgeStore })
   })
   ipcMain.handle(IPC.pluginsTrialRead, () => pluginTrial.list())
   ipcMain.handle(IPC.pluginsTrial, async (_event, payload: { packageName: string; profileName?: string }) => {
@@ -588,9 +665,8 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   })
 
   ipcMain.handle(IPC.skillsInstall, async (_event, request: SkillInstallRequest) => {
-    assertProfileMutationAvailable()
-    if (!isSafeRepositoryName(request.repository)) throw new Error('GitHub 仓库名称无效。')
-    return installer.installSkill(request)
+    if (!request || !isSafeRepositoryName(request.repository)) throw new Error('GitHub 仓库名称无效。')
+    return installQueue.enqueue('skill', `安装 Skill ${request.repository}`, request)
   })
   ipcMain.handle(IPC.skillsReadInstalled, () => installer.readInstalledSkills())
   ipcMain.handle(IPC.skillsToggle, async (_event, payload: { name: string; enabled: boolean }) => {
@@ -603,14 +679,9 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
 
   ipcMain.handle(IPC.applicationsReadInstalled, () => applicationAddons.list())
   ipcMain.handle(IPC.applicationsInstall, async (_event, request: ApplicationInstallRequest) => {
-    assertProfileMutationAvailable()
     if (!request || !isSafeRepositoryName(request.repository)) throw new Error('GitHub 仓库名称无效。')
     if (typeof request.defaultBranch !== 'string' || typeof request.targetId !== 'string') throw new Error('应用加载项请求无效。')
-
-    const installed = await applicationAddons.install(request)
-    const current = await settings.read()
-    const profile = await readProfile(current.dshHome, current.profileName, pluginReceiptsPath)
-    return { ...installed, profile }
+    return installQueue.enqueue('application', `安装应用加载项 ${request.repository}`, request)
   })
   ipcMain.handle(IPC.applicationsToggle, async (_event, payload: { id: string; enabled: boolean }) => {
     assertProfileMutationAvailable()
@@ -624,13 +695,12 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   })
 
   ipcMain.handle(IPC.presetsInstall, async (_event, request: PresetInstallRequest) => {
-    assertProfileMutationAvailable()
     if (!request || typeof request !== 'object') throw new Error('请求格式无效。')
     if (!isSafeRepositoryName(request.repository)) throw new Error('GitHub 仓库名称无效。')
     if (typeof request.name !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(request.name)) {
       throw new Error('预设名称无效。')
     }
-    return installer.installPreset(request)
+    return installQueue.enqueue('preset', `安装预设 ${request.name}`, request)
   })
   ipcMain.handle(IPC.presetsReadInstalled, () => installer.readInstalledPresets())
   ipcMain.handle(IPC.presetsToggle, async (_event, payload: { name: string; enabled: boolean }) => {
@@ -647,6 +717,19 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     }
     return installer.uninstallPreset(payload.name)
   })
+
+  // 下载队列管理：列表 / 暂停 / 继续 / 取消排队项 / 清除已完成。
+  ipcMain.handle(IPC.installQueueList, async () => {
+    await installQueue.whenReady()
+    return installQueue.list()
+  })
+  ipcMain.handle(IPC.installQueuePause, () => installQueue.pause())
+  ipcMain.handle(IPC.installQueueResume, () => installQueue.resume())
+  ipcMain.handle(IPC.installQueueCancel, (_event, id: number) => {
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error('队列任务标识无效。')
+    installQueue.cancel(id)
+  })
+  ipcMain.handle(IPC.installQueueClearFinished, () => installQueue.clearFinished())
 
   ipcMain.handle(IPC.aiStatus, () => aiInstaller.status())
   ipcMain.handle(IPC.aiHasSnapshot, () => aiInstaller.hasSnapshot())
@@ -773,7 +856,7 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     )) {
       throw new Error('应用加载项列表无效。')
     }
-    return packManager.createPack(request)
+    return installQueue.enqueue('pack-create', `创建整合包 ${request.name}`, request)
   })
 
   ipcMain.handle(IPC.packsAnalyzeImport, async (_event, target: string) => {
@@ -792,7 +875,11 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
       assertMeaningfulPackName(name) // 空名/纯中文等退化成无意义标识的名称会抛出中文错误
       nameOverride = name.trim()
     }
-    return packManager.importPack(target, items, nameOverride === undefined ? undefined : { name: nameOverride })
+    return installQueue.enqueue(
+      'pack-import',
+      `导入整合包 ${nameOverride ?? path.basename(target)}`,
+      { path: target, items, name: nameOverride },
+    )
   })
 
   ipcMain.handle(IPC.packsExport, async (_event, packId: string) => {

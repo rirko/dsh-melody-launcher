@@ -1,7 +1,11 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { collectCommandOutput, runCommand, type CommandProcess } from '../electron/command'
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 /** 一个只实现 collectCommandOutput 所需接口的子进程替身。 */
 function fakeProcess() {
@@ -64,6 +68,25 @@ describe('collectCommandOutput', () => {
     const pending = collectCommandOutput(child)
     emitter.emit('error', new Error('ENOENT'))
     await expect(pending).rejects.toThrow('ENOENT')
+  })
+
+  it('terminates and rejects a command that produces no output for too long', async () => {
+    vi.useFakeTimers()
+    const { child, emitter } = fakeProcess()
+    const seen: number[] = []
+    const pending = collectCommandOutput(child, {
+      inactivityTimeoutMs: 1_000,
+      onTimeout: timeoutMs => seen.push(timeoutMs),
+    })
+    const rejection = expect(pending).rejects.toThrow('没有输出')
+
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    await rejection
+    expect(seen).toEqual([1_000])
+    // A late exit event from taskkill must not turn the timeout into success.
+    emitter.emit('exit', 0)
+    await expect(pending).rejects.toThrow()
   })
 })
 

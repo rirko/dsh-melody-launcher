@@ -238,11 +238,6 @@ export function PluginsView({
           <p>调整加载顺序、启停状态，并从下方查看选中资源的简介。</p>
         </div>
         <div className="management-title-actions">
-          <label className="search-field management-header-search">
-            <Search size={15} />
-            <input value={filter} onChange={event => setFilter(event.target.value)} placeholder="筛选资源" aria-label="筛选 Plugin、Skill、加载项或预设" />
-            {filter && <button type="button" onClick={() => setFilter('')} aria-label="清除筛选"><X size={14} /></button>}
-          </label>
           <button className="secondary-button" type="button" onClick={onRefresh}><RefreshCw size={17} />刷新</button>
           <button className="secondary-button accent" type="button" onClick={onBrowse}><Download size={17} />获取资源</button>
         </div>
@@ -328,6 +323,13 @@ export function PluginsView({
               {runtimeBusy ? <LoaderCircle className="spin" size={15} /> : runtime.running ? <CircleCheck size={15} /> : <Play size={15} fill="currentColor" />}
               {runtime.running ? '停止' : '启动'}
             </button>
+          </div>
+          <div className="management-search-control">
+            <label className="search-field compact">
+              <Search size={15} />
+              <input value={filter} onChange={event => setFilter(event.target.value)} placeholder="筛选 Plugin、Skill、加载项或预设" aria-label="筛选 Plugin、Skill、加载项或预设" />
+              {filter && <button type="button" onClick={() => setFilter('')} aria-label="清除筛选"><X size={14} /></button>}
+            </label>
           </div>
           <section className="skill-list-panel" aria-label="Skill、应用加载项与预设管理">
             <div className="resource-tabs" role="tablist" aria-label="资源类型">
@@ -645,6 +647,8 @@ function PluginDetails({ plugin, profileName, trial, busy, locked, aiActive, ada
         <div><dt>加载优先级</dt><dd>{plugin.order ? `#${String(plugin.order).padStart(2, '0')}` : '不加载'}</dd></div>
         <div><dt>版本</dt><dd>{plugin.version}</dd></div>
         <div><dt>来源</dt><dd>{plugin.builtin ? 'DSH 内置' : 'Profile 依赖'}</dd></div>
+        {!plugin.builtin && plugin.actualSource && <div><dt>实际安装来源</dt><dd>{plugin.actualSource === 'market' ? 'DSH Market' : plugin.actualSource === 'npm' ? 'npm' : plugin.actualSource === 'local' ? '整合包本地源码' : 'GitHub'}</dd></div>}
+        {plugin.packOrigin && <div><dt>来源整合包</dt><dd>{plugin.packOrigin.packName}</dd></div>}
         <div><dt>兼容性</dt><dd className={plugin.compatible ? 'good' : 'warning'}>{plugin.compatible ? 'Bundle 已识别' : '未检测到 Bundle'}</dd></div>
       </dl>
       <div className="detail-actions">

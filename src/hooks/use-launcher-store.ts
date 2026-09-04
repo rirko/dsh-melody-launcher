@@ -5,6 +5,8 @@ import { errorText } from '../lib/format'
 import { finalizeInstallProgress } from '../lib/install-progress'
 import { reorderProfilePlugins } from '../lib/profile-order'
 import type {
+  ApiProbeResult,
+  ApiProbeTarget,
   ApplicationInstallResult,
   AppSettings,
   CatalogAnalysisProgress,
@@ -15,6 +17,7 @@ import type {
   DshUpdateStatus,
   GitHubAuthStatus,
   InstallProgress,
+  InstallQueueSnapshot,
   LauncherApi,
   InstalledPreset,
   InstalledSkill,
@@ -64,6 +67,7 @@ export function useLauncherStore() {
   const [launcherUpdate, setLauncherUpdate] = useState<LauncherUpdateStatus | null>(null)
   const [launcherUpdateProgress, setLauncherUpdateProgress] = useState<LauncherUpdateProgress | null>(null)
   const [installProgress, setInstallProgress] = useState<InstallProgress | null>(null)
+  const [installQueue, setInstallQueue] = useState<InstallQueueSnapshot>({ paused: false, entries: [] })
   const [pluginTrials, setPluginTrials] = useState<Record<string, PluginTrialResult>>({})
   const [installedRepositories, setInstalledRepositories] = useState<Set<string>>(new Set())
   const [installedSkills, setInstalledSkills] = useState<InstalledSkill[]>([])
@@ -154,6 +158,12 @@ export function useLauncherStore() {
       .catch(error => showToast({ kind: 'error', message: errorText(error) }))
       .finally(() => setLoading(false))
 
+    // 下载队列快照独立加载：重启恢复的待执行任务由主进程落盘，这里主动拉一次，
+    // 之后的增量变化走 install-queue:snapshot 事件推送。
+    api.listInstallQueue()
+      .then(snapshot => { if (!disposed) setInstallQueue(snapshot) })
+      .catch(() => { /* 主进程不可达时保持空队列，事件订阅会在恢复后覆盖 */ })
+
     // GitHub 凭据状态独立加载；读取失败时短暂重试，避免一次 IPC/启动时序问题把已登录账号卡成未登录。
     const refreshGitHubAuth = async (attempt = 0, refreshVersion?: number): Promise<void> => {
       if (disposed) return
@@ -228,6 +238,19 @@ export function useLauncherStore() {
           }
           appendRuntimeLog(entry)
         }
+
+        // Installation can be started by the catalog, DSH Market, a Profile
+        // import, or an external command.  Those paths do not all return a
+        // RepositoryInstallResult to this renderer, so the local Profile may
+        // otherwise remain stale even though the shared pool and receipt have
+        // already been updated.  Re-read only after a successful plugin
+        // completion; errors must not make a partially written dependency look
+        // like an installed Bundle.
+        if (progress.kind === 'plugin' && progress.phase === 'complete') {
+          void api.readProfile()
+            .then(next => { if (!disposed) adoptProfile(next) })
+            .catch(() => { /* the command result still owns the visible error */ })
+        }
       }
 
       const handleCatalogAnalysisProgress = (progress: CatalogAnalysisProgress) => {
@@ -248,6 +271,7 @@ export function useLauncherStore() {
       }),
       api.onRuntimeState(setRuntime),
       api.onInstallProgress(handleInstallProgress),
+      api.onInstallQueue(setInstallQueue),
       api.onCatalogAnalysisProgress(handleCatalogAnalysisProgress),
       api.onDshMarketProgress(progress => {
         // 市场的插件级操作（安装/更新/卸载）与目录同步一样，只写日志行，
@@ -280,7 +304,7 @@ export function useLauncherStore() {
       window.removeEventListener('focus', onWindowFocus)
       unsubscribers.forEach(unsubscribe => unsubscribe())
     }
-  }, [api, showToast])
+  }, [adoptProfile, api, appendRuntimeLog, showToast])
 
   const refreshProfile = useCallback(async () => {
     try {
@@ -289,6 +313,23 @@ export function useLauncherStore() {
       showToast({ kind: 'error', message: errorText(error) })
     }
   }, [adoptProfile, api, showToast])
+
+  // —— 下载队列控制：都是轻量操作，不走 busy 槽位，结果经队列快照事件回灌。——
+  const pauseQueue = useCallback(async () => {
+    try { await api.pauseInstallQueue() } catch (error) { showToast({ kind: 'error', message: errorText(error) }) }
+  }, [api, showToast])
+
+  const resumeQueue = useCallback(async () => {
+    try { await api.resumeInstallQueue() } catch (error) { showToast({ kind: 'error', message: errorText(error) }) }
+  }, [api, showToast])
+
+  const cancelQueuedJob = useCallback(async (id: number) => {
+    try { await api.cancelInstallQueueJob(id) } catch (error) { showToast({ kind: 'error', message: errorText(error) }) }
+  }, [api, showToast])
+
+  const clearFinishedQueue = useCallback(async () => {
+    try { await api.clearFinishedInstallQueue() } catch (error) { showToast({ kind: 'error', message: errorText(error) }) }
+  }, [api, showToast])
 
   /** 插件管理页的「刷新」：Profile 之外的 Skill、加载项、预设都是全局资源，需一并重读。 */
   const refreshSecondaryResources = useCallback(async () => {
@@ -636,6 +677,14 @@ export function useLauncherStore() {
     return true
   }, [api, run])
 
+  /** 连通性检测结果按 ok 分支弹 toast；探测失败不抛错，由消息内容说明原因。 */
+  const probeApi = useCallback(async (target: ApiProbeTarget): Promise<ApiProbeResult> => {
+    const result = await run(BUSY.credential, () => api.probeApiConnectivity(target))
+    if (!result) return { ok: false, status: null, latencyMs: 0, usedFallback: false, message: '' }
+    showToast({ kind: result.ok ? 'success' : 'error', message: result.message })
+    return result
+  }, [api, run, showToast])
+
   const toggleApplication = useCallback(async (application: InstalledApplicationAddon, enabled: boolean) => {
     const linked = profile?.plugins.some(plugin =>
       plugin.repositoryFullName?.toLowerCase() === application.repository.toLowerCase(),
@@ -692,8 +741,14 @@ export function useLauncherStore() {
   }, [api, profile, run, showToast])
 
   const uninstallPlugin = useCallback(async (plugin: ManagedPlugin) => {
-    const next = await run(plugin.packageName, () => api.uninstallPlugin(plugin.packageName), {
-      success: `${plugin.displayName} 已从本机完全卸载。`,
+    const next = await run(plugin.packageName, () => api.uninstallPlugin(plugin.packageName, { purgeStore: true }), {
+      success: `${plugin.displayName} 已彻底清除，未引用的源码与 pnpm 缓存也已清理。`,
+      // Profile 清理先于 pnpm store prune；如果缓存维护失败，仍要把已经
+      // 完成的本地卸载反映到界面，避免用户误以为插件仍然存在。
+      onError: error => {
+        void refreshProfile()
+        showToast({ kind: 'error', message: errorText(error) })
+      },
     })
     if (!next) return
     setProfile(next)
@@ -706,7 +761,7 @@ export function useLauncherStore() {
         return updated
       })
     }
-  }, [api, run, settings])
+  }, [api, refreshProfile, run, settings, showToast])
 
   const trialPlugin = useCallback(async (packageName: string, profileName?: string): Promise<PluginTrialResult | undefined> => {
     const result = await run(`plugin-trial:${packageName}`, () => api.trialPlugin(packageName, profileName))
@@ -774,9 +829,9 @@ export function useLauncherStore() {
 
   const deleteProfile = useCallback(async (profileName: string) => {
     const next = await run(`profile-delete:${profileName}`, () => api.deleteProfile(profileName), { success: `Profile「${profileName}」已删除。` })
-    if (next !== undefined) await refreshProfiles()
+    if (next !== undefined) await Promise.all([refreshProfiles(), refreshPacks()])
     return next !== undefined
-  }, [api, refreshProfiles, run])
+  }, [api, refreshPacks, refreshProfiles, run])
 
   const refreshPackSnapshots = useCallback(async () => {
     try {
@@ -816,11 +871,11 @@ export function useLauncherStore() {
   const removePack = useCallback(async (packId: string): Promise<boolean> => {
     const next = await run(`pack-remove:${packId}`, async () => {
       const result = await api.removePack(packId)
-      await refreshPacks()
+      await Promise.all([refreshPacks(), refreshProfiles()])
       return result
     }, { success: result => `已删除 ${result.removed} 个整合包。` })
     return next !== undefined
-  }, [api, refreshPacks, run])
+  }, [api, refreshPacks, refreshProfiles, run])
 
   const exportPack = useCallback(async (packId: string): Promise<string | null> => {
     const path = await run(`pack-export:${packId}`, () => api.exportPack(packId))
@@ -954,6 +1009,7 @@ export function useLauncherStore() {
     launcherUpdate,
     launcherUpdateProgress,
     installProgress,
+    installQueue,
     pluginTrials,
     installedRepositories,
     installedSkills,
@@ -1007,6 +1063,11 @@ export function useLauncherStore() {
     clearApiKey,
     saveCustomApi,
     removeCustomApi,
+    probeApi,
+    pauseQueue,
+    resumeQueue,
+    cancelQueuedJob,
+    clearFinishedQueue,
     setGitHubAuthStatus: (next: GitHubAuthStatus) => {
       // A manual login/logout supersedes any status request already in flight.
       githubAuthRefreshVersion.current += 1

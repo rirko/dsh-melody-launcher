@@ -1,4 +1,5 @@
-import { app, BrowserWindow, net, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, net, protocol, safeStorage, shell } from 'electron'
+import { existsSync } from 'node:fs'
 import { cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -6,13 +7,33 @@ import { fileURLToPath } from 'node:url'
 import type { AppSettings, RuntimeOutput, WindowMode } from '../src/types'
 import { ACP_RUNTIME_DIRNAME, CREDENTIALS_LOCK_DIRNAME, createAiInstaller, healCredentialsLock, type AiInstaller } from './ai-install'
 import { createApplicationAddonManager, type ApplicationAddonManager } from './application-addons'
-import { applyWindowMode, createMainWindow, createRendererChannel } from './app-window'
+import { applyWindowMode, applyWindowModeImmediate, createMainWindow, createRendererChannel } from './app-window'
 import { createCatalogSyncService, type CatalogSyncService } from './catalog-sync'
 import { createCopilotSessionManager, type CopilotSessionManager } from './copilot-sessions'
 import { createDshMarketService, type DshMarketService } from './dsh-market'
 import { runCommand } from './command'
 import { readDeepSeekApiKey } from './credentials'
 import { resolveAgentApiForModel, resolveCopilotAgentApi } from './copilot-api'
+import { createApiProbe, type ApiProbeService } from './api-probe'
+import { createInstallQueue, type InstallQueue } from './install-queue'
+import { readLauncherBackground } from './launcher-asset'
+
+// 自定义插图协议必须在 app ready 之前声明为安全 scheme，渲染层的 CSS 才能引用。
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'launcher-asset', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
+])
+
+/** launcher-asset://<文件名> —— 只读暴露 userData/launcher-assets 下的主界面插图。 */
+function registerLauncherAssetProtocol(userData: string): void {
+  protocol.handle('launcher-asset', async request => {
+    const name = decodeURIComponent(new URL(request.url).hostname)
+    const asset = await readLauncherBackground(userData, name)
+    if (!asset) return new Response('Not Found', { status: 404 })
+    return new Response(new Uint8Array(asset.body), {
+      headers: { 'content-type': asset.contentType, 'cache-control': 'no-store' },
+    })
+  })
+}
 import { findInstalledDsh } from './dsh-install'
 import { buildPluginCommandArgs, createInstaller, syncProfilePnpmConfig, validateLocalPluginDirectory, type Installer } from './installer'
 import { registerIpcHandlers } from './ipc'
@@ -22,7 +43,9 @@ import { buildNetworkEnvironment } from './proxy'
 import {
   ensureNodeRuntime,
   ensurePnpmRuntime,
+  findManagedNodeRuntime,
   findSystemNodeRuntime,
+  pnpmExecutable,
   resolveNodeExecutable,
   type NodeRuntime,
   type NodeRuntimeProgress,
@@ -31,8 +54,9 @@ import {
 import { createProxyAwareFetch } from './network'
 import { createPackManager, type InstallInstaller, type PackInstallTarget, type PackManager } from './pack'
 import { createPluginTrialManager, type PluginTrialManager } from './plugin-trial'
+import { createPnpmStorePruner } from './plugin-store'
 import { readPluginReceipts, recordPluginInstall } from './plugin-receipts'
-import { configureProcessTracker, shutdownTrackedProcesses, withExecutableDirectoryOnPath } from './process'
+import { configureProcessTracker, shutdownTrackedProcesses, withExecutableDirectoryOnPath, withGitOnPath } from './process'
 import { createProcessSupervisor, type ProcessSupervisor } from './process-supervisor'
 import { readProfile, reorderPlugins, togglePlugin } from './profile'
 import { createRecommendedWebUiService, type RecommendedWebUiService } from './recommended-web-ui'
@@ -45,6 +69,7 @@ import { createRuntimeVersionService, type RuntimeVersionService } from './runti
 import { createSettingsStore, defaultSettings, type SettingsStore } from './settings'
 import { createTray, type TrayController } from './tray'
 import { recoverLegacyCredentials } from './dsh-credentials-compat'
+import { createNonstandardPackService, type NonstandardPackService } from './nonstandard-pack'
 
 /**
  * 应用入口与装配根。
@@ -56,6 +81,7 @@ const moduleDirectory = path.dirname(fileURLToPath(import.meta.url))
 const launcherIconPath = path.join(moduleDirectory, app.isPackaged ? '../dist/launcher-icon.png' : '../public/launcher-icon.png')
 
 let mainWindow: BrowserWindow | null = null
+let mainWindowMode: WindowMode = 'launcher'
 let processSupervisor: ProcessSupervisor | null = null
 let quitCleanupStarted = false
 let allowFinalQuit = false
@@ -84,6 +110,9 @@ interface Services {
   recommendedWebUi: RecommendedWebUiService
   runtimeVersions: RuntimeVersionService
   profiles: ProfileService
+  nonstandardPack: NonstandardPackService
+  apiProbe: ApiProbeService
+  installQueue: InstallQueue
   profilePoolReady: Promise<void>
 }
 
@@ -96,6 +125,7 @@ function createServices(): Services {
   const managedNodeRoot = path.join(userData, 'node-runtime')
   const managedPnpmRoot = path.join(userData, 'pnpm-runtime')
   const pluginSourceRoot = path.join(userData, 'plugin-sources')
+  const pluginStoreRoot = path.join(userData, 'plugin-store')
   const pluginReceiptsPath = path.join(userData, 'plugin-installs.json')
   const presetReceiptsPath = path.join(userData, 'preset-installs.json')
   const skillReceiptsPath = path.join(userData, 'skill-installs.json')
@@ -169,6 +199,11 @@ function createServices(): Services {
       managedRoot: settings.dshInstallPath,
       configuredExecutable: settings.launchExecutable,
     }),
+  })
+
+  const apiProbe = createApiProbe({
+    readSettings: () => settings.read(),
+    fetchImpl: proxyAwareFetch,
   })
 
   let applicationAddons: ApplicationAddonManager
@@ -289,7 +324,7 @@ function createServices(): Services {
             await syncProfilePnpmConfig(targetProfileDir, buildNetworkEnvironment(current).npmRegistry, pluginStoreRoot)
             const result = await runCommand(offlinePnpm.executable, ['install', '--dir', targetProfileDir, '--offline', '--no-frozen-lockfile', '--config.auto-install-peers=false', '--store-dir', pluginStoreRoot], {
               cwd: targetProfileDir,
-              env: withExecutableDirectoryOnPath(offlinePnpm.executable, withExecutableDirectoryOnPath(offlineNode.node, {
+              env: withGitOnPath(withExecutableDirectoryOnPath(offlinePnpm.executable, withExecutableDirectoryOnPath(offlineNode.node, {
                 ...process.env,
                 DSH_HOME: current.dshHome,
                 npm_config_store_dir: pluginStoreRoot,
@@ -297,7 +332,12 @@ function createServices(): Services {
                 pnpm_config_store_dir: pluginStoreRoot,
                 PNPM_CONFIG_STORE_DIR: pluginStoreRoot,
                 CI: 'true',
-              })),
+                npm_config_yes: 'true',
+                NPM_CONFIG_YES: 'true',
+                PNPM_CONFIG_YES: 'true',
+                COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
+              }))),
+              inactivityTimeoutMs: 5 * 60 * 1000,
               onOutput: (text, level) => events.output('plugin', level, text),
             })
             if (result.exitCode !== 0) throw new Error(`插件「${packageName}」无法从共享插件池补齐，请检查来源记录。`)
@@ -357,7 +397,26 @@ function createServices(): Services {
     preparePnpmRuntime: (nodeRuntime, onProgress) => preparePnpmRuntime('plugin', nodeRuntime, onProgress),
     pluginSourceRoot,
     pluginReceiptsPath,
-    packageStoreRoot: path.join(userData, 'plugin-store'),
+    packageStoreRoot: pluginStoreRoot,
+    syncProfilePool: async dshHome => { await consolidatePluginPool(dshHome) },
+    purgePnpmStore: createPnpmStorePruner({
+      storeRoot: pluginStoreRoot,
+      readSettings: () => settings.read(),
+      prepareNodeRuntime: () => prepareNodeRuntime('plugin'),
+      preparePnpmRuntime: nodeRuntime => preparePnpmRuntime('plugin', nodeRuntime),
+      resolveNodeRuntime: async () => {
+        // Cache maintenance must never trigger a runtime download. Any
+        // compatible already-installed Node runtime is sufficient for pnpm.
+        const system = findSystemNodeRuntime()
+        if (system) return system
+        return (await findManagedNodeRuntime(managedNodeRoot)) ?? null
+      },
+      resolvePnpmRuntime: async () => {
+        const executable = pnpmExecutable(managedPnpmRoot)
+        return existsSync(executable) ? { root: managedPnpmRoot, executable } : null
+      },
+      emitOutput: (level, text) => events.output('plugin', level, text),
+    }),
     presetReceiptsPath,
     skillReceiptsPath,
     skillSourceRoot,
@@ -383,8 +442,10 @@ function createServices(): Services {
     preparePnpmRuntime: node => preparePnpmRuntime('plugin', node),
     fetchImpl: githubAuth.fetch,
     packageStoreRoot: path.join(userData, 'plugin-store'),
+    syncProfilePool: async dshHome => { await consolidatePluginPool(dshHome) },
     emitProgress: progress => events.dshMarketProgress(progress),
     emitOutput: (level, text) => events.output('plugin', level, text),
+    removePluginLocally: (packageName, profileName, removeOptions) => installer.remove(packageName, profileName, removeOptions),
   })
 
   const pluginTrial = createPluginTrialManager({
@@ -397,6 +458,21 @@ function createServices(): Services {
     emitResult: result => events.pluginTrial(result),
     isRuntimeRunning: () => runtime.isRunning(),
     isInstallerBusy: () => installer.isBusy(),
+  })
+
+  const nonstandardPack = createNonstandardPackService({
+    githubAuth,
+    installer,
+    dshMarket,
+    profiles: profileService,
+    readSettings: () => settings.read(),
+    pluginReceiptsPath,
+    pluginSourceRoot,
+    ensureDshVersion: async version => {
+      const environment = await runtimeVersions.read(false)
+      if (!environment.dshInstalled.some(item => item.version === version)) await runtimeVersions.installDsh(version)
+    },
+    emitOutput: (level, text) => events.output('runtime', level, text),
   })
 
   let packManager: PackManager | null = null
@@ -457,7 +533,7 @@ function createServices(): Services {
     const commandArgs = buildPluginCommandArgs(current, executable, ['add', `file:${localDirectory}`], target.profileName)
     const result = await runCommand(executable, commandArgs, {
       cwd: current.workspace,
-        env: withExecutableDirectoryOnPath(
+        env: withGitOnPath(withExecutableDirectoryOnPath(
           pnpmRuntime.executable,
           withExecutableDirectoryOnPath(nodeRuntime.node, {
             ...process.env,
@@ -467,8 +543,14 @@ function createServices(): Services {
             pnpm_config_store_dir: path.join(app.getPath('userData'), 'plugin-store'),
             PNPM_CONFIG_STORE_DIR: path.join(app.getPath('userData'), 'plugin-store'),
             FORCE_COLOR: '0',
+            CI: 'true',
+            npm_config_yes: 'true',
+            NPM_CONFIG_YES: 'true',
+            PNPM_CONFIG_YES: 'true',
+            COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
           }),
-      ),
+        )),
+      inactivityTimeoutMs: 5 * 60 * 1000,
       onOutput: (text, level) => events.output('plugin', level, text),
     })
     if (result.exitCode !== 0) throw new Error(`插件安装失败（代码 ${result.exitCode}），请查看运行日志。`)
@@ -489,6 +571,7 @@ function createServices(): Services {
       commit: '',
       installedAt: new Date().toISOString(),
     })
+    await consolidatePluginPool(current.dshHome)
   }
 
   const packInstaller: InstallInstaller = {
@@ -552,6 +635,46 @@ function createServices(): Services {
     emitProgress: progress => events.launcherUpdateProgress(progress),
   })
 
+  // 全局下载任务队列：插件/Skill/预设/应用/整合包与 DSH、Node 运行时安装串行执行。
+  const installQueue = createInstallQueue({
+    storePath: path.join(userData, 'install-queue.json'),
+    executors: {
+      dsh: version => runtimeVersions.installDsh(version),
+      node: version => runtimeVersions.installNode(version),
+      plugin: async request => {
+        if (typeof request === 'string') return installer.install(request)
+        const current = await settings.read()
+        return installer.installPluginTarget({
+          repository: request.repository,
+          defaultBranch: request.defaultBranch,
+          targetId: request.targetId,
+          source: request.source,
+          // release 源插件：meta-repo 分析得到的 tgz 直链，覆盖重分析得到的 github 源。
+          tarballUrl: typeof request.tarballUrl === 'string' ? request.tarballUrl : undefined,
+        }, request.profileName ?? current.profileName)
+      },
+      skill: request => installer.installSkill(request),
+      preset: request => installer.installPreset(request),
+      application: async request => {
+        const installed = await applicationAddons.install(request)
+        const current = await settings.read()
+        const profile = await readProfile(current.dshHome, current.profileName, pluginReceiptsPath)
+        return { ...installed, profile }
+      },
+      'pack-create': request => packManager!.createPack(request),
+      'pack-import': async job => {
+        const result = await packManager!.importPack(job.path, job.items, job.name === undefined ? undefined : { name: job.name })
+        const current = await settings.read()
+        await consolidatePluginPool(current.dshHome)
+        return result
+      },
+      'dsh-market': job => job.action === 'update'
+        ? dshMarket.update(job.name, job.profileName)
+        : dshMarket.install(job.name, job.profileName, job.exactVersion),
+    },
+    emitEvent: snapshot => events.installQueue(snapshot),
+  })
+
   // 启动自愈：上次 AI 会话若在凭据锁期间崩溃（进程被杀、finally 未跑），
   // .credentials.yaml 会滞留在锁目录，这里把它还原回 dshHome。
   void settings
@@ -573,16 +696,41 @@ function createServices(): Services {
     if (result.dependencies > 0) events.output('plugin', 'info', `已将 ${result.dependencies} 个 Profile 插件依赖归并到共享插件池。`)
   }).catch(error => events.output('plugin', 'error', `旧整合包/插件池迁移失败：${error instanceof Error ? error.message : String(error)}`))
 
-  return { settings, pluginReceiptsPath, runtime, installer, launcherUpdater, pluginTrial, aiInstaller, copilot, packManager: packManager!, githubAuth, applicationAddons, catalogSync, dshMarket, recommendedWebUi, runtimeVersions, profiles: profileService, profilePoolReady }
+  return {
+    settings,
+    pluginReceiptsPath,
+    runtime,
+    installer,
+    launcherUpdater,
+    pluginTrial,
+    aiInstaller,
+    copilot,
+    packManager: packManager!,
+    githubAuth,
+    applicationAddons,
+    catalogSync,
+    dshMarket,
+    recommendedWebUi,
+    runtimeVersions,
+    profiles: profileService,
+    nonstandardPack,
+    apiProbe,
+    installQueue,
+    profilePoolReady,
+  }
 }
 
 function openMainWindow(): void {
+  mainWindowMode = 'launcher'
   const window = createMainWindow({
     preloadPath: path.join(moduleDirectory, 'preload.mjs'),
     iconPath: launcherIconPath,
     devServerUrl: process.env.VITE_DEV_SERVER_URL,
     indexPath: path.join(moduleDirectory, '../dist/index.html'),
-    onClosed: () => { mainWindow = null },
+    onClosed: () => {
+      mainWindow = null
+      mainWindowMode = 'launcher'
+    },
   })
   // 点 X 或 Alt+F4 只隐藏到托盘继续后台运行；托盘菜单「退出」经 app.quit()
   // 触发 before-quit 置位 isQuitting 后，这里才放行关闭。
@@ -602,9 +750,11 @@ function openMainWindow(): void {
 function showMainWindow(): void {
   const window = getWindow()
   if (!window || window.isDestroyed()) {
+    mainWindowMode = 'launcher'
     openMainWindow()
     return
   }
+  applyWindowModeImmediate(window, mainWindowMode)
   if (window.isMinimized()) window.restore()
   // 无边框透明窗口从后台唤起时常抢不到焦点，短暂置顶可确保激活。
   window.setAlwaysOnTop(true, 'screen-saver')
@@ -634,12 +784,19 @@ app.whenReady().then(async () => {
     console.error('[process-supervisor] 启动失败，退出时只能执行普通清理。', error)
   }
   services = createServices()
+  registerLauncherAssetProtocol(app.getPath('userData'))
   registerIpcHandlers({
     ...services,
+    launcherAssetsUserData: app.getPath('userData'),
     getWindow,
-    setWindowMode: (mode: WindowMode) => applyWindowMode(mainWindow, mode),
+    setWindowMode: (mode: WindowMode) => {
+      mainWindowMode = mode
+      applyWindowMode(mainWindow, mode)
+    },
   })
   await services.profilePoolReady
+  // Profile 池就绪后开始执行（含重启恢复）的下载队列任务。
+  services.installQueue.start()
   openMainWindow()
   tray = createTray({ iconPath: launcherIconPath, showMainWindow })
   app.on('activate', () => {

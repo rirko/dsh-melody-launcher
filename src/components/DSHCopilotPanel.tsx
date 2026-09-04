@@ -2,7 +2,7 @@ import { Bot, BrainCircuit, Check, CircleCheck, CornerDownLeft, History, LoaderC
 import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { AiApprovalRequest, AiSession, AiSessionPhase } from '../types'
+import type { AiApprovalRequest, AiSession, AiSessionBackend, AiSessionPhase } from '../types'
 import type { CopilotSessionState } from '../hooks/use-copilot-sessions'
 import type { AiInstallState } from '../hooks/use-ai-install'
 
@@ -17,10 +17,17 @@ function kindLabel(session: AiSession): string {
   return 'Copilot 对话'
 }
 
-function Message({ role, text, reasoning }: { role: string; text: string; reasoning?: string }) {
+/** Keep the active agent visible when a conversation uses the Codex backend. */
+export function copilotMessageRoleLabel(role: string, backend: AiSessionBackend = 'dsh'): string {
+  if (role === 'user') return '你'
+  if (role === 'tool' || role === 'system') return '系统'
+  return backend === 'codex' ? 'Codex' : 'DSH Copilot'
+}
+
+function Message({ role, text, reasoning, backend }: { role: string; text: string; reasoning?: string; backend?: AiSessionBackend }) {
   return (
     <div className={`copilot-message ${role}`}>
-      <span className="copilot-message-role">{role === 'user' ? '你' : role === 'tool' ? '系统' : 'DSH Copilot'}</span>
+      <span className="copilot-message-role">{copilotMessageRoleLabel(role, backend)}</span>
       {reasoning ? (
         <details className="copilot-thinking">
           <summary>思考过程</summary>
@@ -53,21 +60,29 @@ export function DSHCopilotPanel({ state, legacyAi, onLegacyApprove, onLegacyCanc
   const endRef = useRef<HTMLDivElement>(null)
 
   const beginResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
     event.preventDefault()
-    event.currentTarget.setPointerCapture(event.pointerId)
+    const handle = event.currentTarget
+    const pointerId = event.pointerId
+    handle.setPointerCapture(pointerId)
     const startX = event.clientX
     const startWidth = width
+    let finished = false
     onResizeStateChange?.(true)
     const move = (moveEvent: PointerEvent) => onWidthChange(startWidth + startX - moveEvent.clientX)
     const stop = () => {
+      if (finished) return
+      finished = true
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', stop)
       window.removeEventListener('pointercancel', stop)
+      handle.removeEventListener('lostpointercapture', stop)
       onResizeStateChange?.(false)
     }
     window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', stop, { once: true })
-    window.addEventListener('pointercancel', stop, { once: true })
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
+    handle.addEventListener('lostpointercapture', stop, { once: true })
   }
 
   useEffect(() => {
@@ -87,6 +102,8 @@ export function DSHCopilotPanel({ state, legacyAi, onLegacyApprove, onLegacyCanc
   const processing = selected ? ['queued', 'preparing', 'running'].includes(selected.phase) : false
   const pendingForSelected = pendingSubmission?.sessionId === selected?.id ? pendingSubmission : null
   const showResultFooter = selected ? ['done', 'error', 'cancelled'].includes(selected.phase) : false
+  const selectedBackend: AiSessionBackend = selected?.backend === 'codex' ? 'codex' : 'dsh'
+  const assistantLabel = selectedBackend === 'codex' ? 'Codex ACP' : 'DSH Copilot'
 
   // 回答结束后自动提交用户在生成期间准备好的下一条消息。
   useEffect(() => {
@@ -143,6 +160,12 @@ export function DSHCopilotPanel({ state, legacyAi, onLegacyApprove, onLegacyCanc
     void setModel(key).catch(() => onError?.('模型切换失败，请检查 API 配置。'))
   }
 
+  const handleBackendChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const backend = event.target.value === 'codex' ? 'codex' : 'dsh'
+    if ((selected?.backend ?? 'dsh') === backend) return
+    void create({ backend, title: backend === 'codex' ? 'Codex 对话' : 'DSH 对话' }).catch(() => onError?.('无法创建 Copilot 会话。'))
+  }
+
   const handleRollback = () => {
     void rollback().catch(() => { if (legacySession) onLegacyRollback() })
   }
@@ -156,16 +179,20 @@ export function DSHCopilotPanel({ state, legacyAi, onLegacyApprove, onLegacyCanc
       : canStop ? '停止当前回答' : '输入消息后提交'
 
   return (
-    <aside className={`copilot-panel ${open ? 'open' : 'closed'}`} aria-label="DSH Copilot" aria-hidden={!open}>
-      <div className="copilot-resize-handle" role="separator" aria-orientation="vertical" aria-label="调整 DSH Copilot 宽度" onPointerDown={beginResize} />
+    <aside className={`copilot-panel ${open ? 'open' : 'closed'}`} aria-label={assistantLabel} aria-hidden={!open}>
+      <div className="copilot-resize-handle" role="separator" aria-orientation="vertical" aria-label="调整 DSH Copilot 宽度" aria-valuemin={320} aria-valuemax={720} aria-valuenow={Math.round(width)} onPointerDown={beginResize} />
       <header className="copilot-header">
-        <div className="copilot-header-brand"><Bot size={18} /><div><strong>DSH Copilot</strong></div></div>
+        <div className="copilot-header-brand"><Bot size={18} /><div><strong>{assistantLabel}</strong></div></div>
         <div className="copilot-session-picker">
+          <select aria-label="选择 Copilot 后端" title="选择 Copilot 后端" value={selected?.backend ?? 'dsh'} onChange={handleBackendChange}>
+            <option value="dsh">DSH Copilot</option>
+            <option value="codex">Codex ACP</option>
+          </select>
           <select aria-label="切换 Copilot 会话" value={selectedId ?? ''} onChange={event => setSelectedId(event.target.value)}>
             {sessions.length === 0 && <option value="">新对话</option>}
             {sessions.map(session => <option key={session.id} value={session.id}>{session.title} · {PHASE_LABEL[session.phase]}</option>)}
           </select>
-          <button type="button" className="icon-button" title="新建会话" aria-label="新建会话" onClick={() => void create()}><MessageSquarePlus size={15} /></button>
+          <button type="button" className="icon-button" title="新建会话" aria-label="新建会话" onClick={() => void create({ backend: selected?.backend ?? 'dsh' })}><MessageSquarePlus size={15} /></button>
           {selected && <button type="button" className="icon-button" title="清除会话" aria-label="清除会话" disabled={['queued', 'preparing', 'running'].includes(selected.phase)} onClick={() => void remove(selected.id)}><Trash2 size={14} /></button>}
         </div>
       </header>
@@ -179,8 +206,8 @@ export function DSHCopilotPanel({ state, legacyAi, onLegacyApprove, onLegacyCanc
               </div>
               {selected.queue.position !== null && <div className="copilot-queue-note">修改队列第 {selected.queue.position} 项，共 {selected.queue.total} 项{selected.queue.reason ? ` · ${selected.queue.reason}` : ''}</div>}
               <div className="copilot-messages" role="log" aria-live="polite">
-                {selected.messages.length === 0 && <div className="copilot-empty"><Bot size={24} /><span>输入问题，让 DSH Copilot 分析当前 DSH 环境。</span></div>}
-                {selected.messages.map(message => <Message key={message.id} role={message.role} text={message.text} reasoning={message.reasoning} />)}
+                {selected.messages.length === 0 && <div className="copilot-empty"><Bot size={24} /><span>{selectedBackend === 'codex' ? '输入问题，让 Codex 使用本机工具分析当前工作区。' : '输入问题，让 DSH Copilot 分析当前 DSH 环境。'}</span></div>}
+                {selected.messages.map(message => <Message key={message.id} role={message.role} text={message.text} reasoning={message.reasoning} backend={selectedBackend} />)}
                 <div ref={endRef} />
               </div>
               {activePending && (
@@ -192,7 +219,7 @@ export function DSHCopilotPanel({ state, legacyAi, onLegacyApprove, onLegacyCanc
                 </div>
               )}
               <div className="copilot-composer">
-                {!legacySession && (
+                {!legacySession && selectedBackend === 'dsh' && (
                   <div className="copilot-model-bar">
                     <BrainCircuit size={13} aria-hidden="true" />
                     <select
@@ -210,9 +237,11 @@ export function DSHCopilotPanel({ state, legacyAi, onLegacyApprove, onLegacyCanc
                     </select>
                   </div>
                 )}
-                <div className="copilot-input-wrap"><textarea value={draft} placeholder={legacySession ? '该任务由原页面启动，完成后可新建对话。' : pendingForSelected ? '已准备提交，等待当前回答完成…' : processing ? '继续输入，提交将在当前回答完成后发送…' : '向 DSH Copilot 输入问题…'} disabled={legacySession || Boolean(pendingForSelected)} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !(event.ctrlKey || event.metaKey || event.shiftKey)) { event.preventDefault(); handleComposerAction() } }} /><button type="button" className={`copilot-send-button ${!hasDraft && canStop ? 'stop' : ''} ${pendingForSelected ? 'pending' : ''}`} title={composerButtonTitle} aria-label={composerButtonTitle} disabled={(legacySession && !legacyTaskActive) || pendingForSelected !== null || busy || (!hasDraft && !canStop)} onClick={handleComposerAction}>{pendingForSelected || busy ? <LoaderCircle size={15} className="spin" /> : !hasDraft && canStop ? <OctagonX size={15} /> : <CornerDownLeft size={15} />}</button></div><div className="copilot-composer-hint">↵ 发送 · Ctrl+Enter / Shift+Enter 换行</div></div>
+                {!legacySession && selectedBackend === 'codex' && <div className="copilot-codex-note">Codex ACP · 使用本机 Codex 工具与审批</div>}
+                <div className="copilot-input-wrap"><textarea value={draft} placeholder={legacySession ? '该任务由原页面启动，完成后可新建对话。' : pendingForSelected ? '已准备提交，等待当前回答完成…' : processing ? '继续输入，提交将在当前回答完成后发送…' : selectedBackend === 'codex' ? '向 Codex 输入问题…' : '向 DSH Copilot 输入问题…'} disabled={legacySession || Boolean(pendingForSelected)} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !(event.ctrlKey || event.metaKey || event.shiftKey)) { event.preventDefault(); handleComposerAction() } }} /><button type="button" className={`copilot-send-button ${!hasDraft && canStop ? 'stop' : ''} ${pendingForSelected ? 'pending' : ''}`} title={composerButtonTitle} aria-label={composerButtonTitle} disabled={(legacySession && !legacyTaskActive) || pendingForSelected !== null || busy || (!hasDraft && !canStop)} onClick={handleComposerAction}>{pendingForSelected || busy ? <LoaderCircle size={15} className="spin" /> : !hasDraft && canStop ? <OctagonX size={15} /> : <CornerDownLeft size={15} />}</button></div><div className="copilot-composer-hint">↵ 发送 · Ctrl+Enter / Shift+Enter 换行</div></div>
               {showResultFooter && <footer className="copilot-footer">
-                  <button type="button" className="danger-button" disabled={!selected.hasSnapshot} onClick={handleRollback}><History size={15} />还原快照</button><span className="copilot-footer-spacer" /><span className="copilot-complete"><CircleCheck size={14} />结果已保留</span>
+                  {selectedBackend === 'dsh' && <button type="button" className="danger-button" disabled={!selected.hasSnapshot} onClick={handleRollback}><History size={15} />还原快照</button>}
+                  <span className="copilot-footer-spacer" /><span className="copilot-complete"><CircleCheck size={14} />{selectedBackend === 'codex' ? '工作区结果已保留' : '结果已保留'}</span>
                 </footer>}
             </>
           ) : <div className="copilot-empty"><Bot size={24} /><span>正在准备 DSH Copilot…</span></div>}

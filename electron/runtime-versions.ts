@@ -295,7 +295,7 @@ export function createRuntimeVersionService(options: RuntimeVersionServiceOption
     try { child.kill('SIGTERM') } catch { /* 已经退出 */ }
   }
 
-  const executeTrackedCommand = (
+const executeTrackedCommand = (
     executable: string,
     args: string[],
     commandOptions: Parameters<typeof runCommand>[2],
@@ -303,6 +303,7 @@ export function createRuntimeVersionService(options: RuntimeVersionServiceOption
     let spawned: ChildProcessWithoutNullStreams | null = null
     return executeCommand(executable, args, {
       ...commandOptions,
+      inactivityTimeoutMs: commandOptions.inactivityTimeoutMs ?? 5 * 60 * 1000,
       onSpawn: child => {
         spawned = child
         activeCommand = child
@@ -517,7 +518,16 @@ export function createRuntimeVersionService(options: RuntimeVersionServiceOption
         heartbeat.unref()
         return executeTrackedCommand(pnpm.executable, args, {
           cwd: root,
-          env: withExecutableDirectoryOnPath(node.node, { ...process.env, FORCE_COLOR: '0', NPM_CONFIG_UPDATE_NOTIFIER: 'false' }),
+          env: withExecutableDirectoryOnPath(node.node, {
+            ...process.env,
+            FORCE_COLOR: '0',
+            NPM_CONFIG_UPDATE_NOTIFIER: 'false',
+            CI: 'true',
+            npm_config_yes: 'true',
+            NPM_CONFIG_YES: 'true',
+            PNPM_CONFIG_YES: 'true',
+            COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
+          }),
           onOutput: handlePackageOutput,
         }).finally(() => clearInterval(heartbeat))
       }

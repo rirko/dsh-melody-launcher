@@ -1124,36 +1124,105 @@ export function createSpawnAcpTransport(
   const lineHandlers: Array<(line: string) => void> = []
   const closeHandlers: Array<(error?: Error) => void> = []
   const reader = createInterface({ input: child.stdout })
-  reader.on('line', line => {
-    for (const handler of lineHandlers) handler(line)
-  })
-  child.stderr.on('data', chunk => onStderr(chunk.toString('utf8')))
-  const emitClose = (error?: Error) => {
-    const handlers = closeHandlers.splice(0)
-    for (const handler of handlers) handler(error)
+  let closed = false
+  let closeError: Error | undefined
+  let childTermination: Promise<void> | null = null
+
+  // A stdio EOF does not necessarily mean that the process tree has exited.
+  // This is common with .cmd wrappers on Windows: the wrapper can close one
+  // pipe while a descendant remains alive.  Keep termination idempotent and
+  // start it from every unexpected stream-close path.
+  const terminateChild = (): void => {
+    if (childTermination) return
+    childTermination = killChildProcessTree(child).catch(() => undefined)
   }
-  child.once('error', error => emitClose(error))
-  child.once('exit', code => {
+
+  reader.on('line', line => {
+    // One consumer must not prevent the remaining protocol consumers from
+    // seeing a frame.  ACP callbacks are application code and may throw.
+    for (const handler of [...lineHandlers]) {
+      try {
+        handler(line)
+      } catch {
+        // The ACP client reports protocol/application failures separately.
+      }
+    }
+  })
+  child.stderr.on('data', chunk => {
+    try {
+      onStderr(chunk.toString('utf8'))
+    } catch {
+      // Logging must never take down the child transport.
+    }
+  })
+  const emitClose = (error?: Error) => {
+    if (closed) return
+    closed = true
+    closeError = error
     reader.close()
+    const handlers = closeHandlers.splice(0)
+    for (const handler of handlers) {
+      try {
+        handler(error)
+      } catch {
+        // A close observer must not become an uncaught EventEmitter error.
+      }
+    }
+  }
+  const closeUnexpectedly = (error?: Error): void => {
+    emitClose(error)
+    // Do this after notifying ACP so pending requests are rejected promptly;
+    // killChildProcessTree is idempotent and also handles Windows wrappers.
+    terminateChild()
+  }
+  child.once('error', error => closeUnexpectedly(error))
+  child.stdin.once('error', error => closeUnexpectedly(error instanceof Error ? error : new Error(String(error))))
+  child.stdout.once('error', error => closeUnexpectedly(error instanceof Error ? error : new Error(String(error))))
+  child.once('exit', code => {
     emitClose(code === 0 ? undefined : new Error(`ACP server 退出（code ${code ?? '未知'}）`))
   })
+  // EOF without an exit event is a broken ACP connection, not a successful
+  // shutdown.  Keep an explicit error so a later non-zero child exit cannot
+  // be mistaken for a clean completion after the transport has already
+  // notified its observers.
+  const streamClosedError = () => new Error('ACP server stdout 已关闭')
+  child.stdout.once('end', () => closeUnexpectedly(streamClosedError()))
+  child.stdout.once('close', () => closeUnexpectedly(streamClosedError()))
+  child.stderr.once('error', error => closeUnexpectedly(error instanceof Error ? error : new Error(String(error))))
   return {
     send(line) {
+      if (closed) throw closeError ?? new Error('ACP 连接已关闭')
       child.stdin.write(`${line}\n`)
     },
     onLine(handler) {
+      if (closed) return
       lineHandlers.push(handler)
     },
     onClose(handler) {
-      closeHandlers.push(handler)
+      if (closed) {
+        try {
+          handler(closeError)
+        } catch {
+          // Late observers are best-effort and must not escape the caller.
+        }
+      } else {
+        closeHandlers.push(handler)
+      }
     },
     close() {
-      reader.close()
+      if (closed) {
+        terminateChild()
+        return
+      }
+      // Mark closed before ending stdin.  Some child processes emit an
+      // asynchronous stream error while stdin is being ended.
+      emitClose()
       try {
         child.stdin.end()
       } catch {
         // 流已关闭可忽略
       }
+      terminateChild()
     },
   }
 }
@@ -1341,6 +1410,7 @@ export async function prepareAcpRuntime(
   onOutput?.(`命令：${formatCommandLine(nodeRuntime.npm, args)}\n工作目录：${acpRuntimeRoot}`)
   const child = spawnCommand(nodeRuntime.npm, args, {
     cwd: acpRuntimeRoot,
+    stdin: 'ignore',
     env: nodeEnvironment(),
   })
   const stopInstallation = () => { void killChildProcessTree(child) }
@@ -1348,7 +1418,8 @@ export async function prepareAcpRuntime(
   let result
   try {
     result = await collectCommandOutput(child, {
-    onOutput: text => onOutput?.(text),
+      inactivityTimeoutMs: 5 * 60 * 1000,
+      onOutput: text => onOutput?.(text),
     })
   } finally {
     signal?.removeEventListener('abort', stopInstallation)

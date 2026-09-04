@@ -4,9 +4,10 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { consolidatePluginPool, createProfile, createProfileService, deleteProfile, ensureProfileCoreBundles, listProfiles, migrateLegacyPacks, switchProfile } from '../electron/profile-service'
 import { defaultSettings } from '../electron/settings'
-import { upsertPackRecord } from '../electron/pack-registry'
+import { readPackRegistry, upsertPackRecord } from '../electron/pack-registry'
 import { readPluginReceipts, recordPluginInstall } from '../electron/plugin-receipts'
 import { writePackManifest } from '../electron/pack-manifest-store'
+import { readProfile, togglePlugin } from '../electron/profile'
 import type { AppSettings } from '../src/types'
 
 const roots: string[] = []
@@ -172,6 +173,99 @@ describe('Profile service', () => {
     expect(alpha.dependencies['@demo/plugin']).toBe(`file:${shared}`)
   })
 
+  it('新 Profile 继承共享插件清单，且链接层尚未建立时仍能显示插件', async () => {
+    const env = await fixture()
+    await writeFile(path.join(env.dshHome, 'profiles', 'web', 'package.json'), JSON.stringify({
+      name: 'web',
+      dependencies: { '@demo/plugin': '1.0.0' },
+      dsh: { profile: { bundles: ['@demo/plugin'] } },
+    }), 'utf8')
+    const webPlugin = path.join(env.dshHome, 'profiles', 'web', 'node_modules', '@demo', 'plugin', 'package.json')
+    await mkdir(path.dirname(webPlugin), { recursive: true })
+    await writeFile(webPlugin, JSON.stringify({ name: '@demo/plugin', version: '1.0.0', dsh: { bundle: { patch: 'package.json' } } }), 'utf8')
+
+    await createProfile(env.options, { name: 'imported', empty: true })
+
+    const importedManifest = JSON.parse(await readFile(path.join(env.dshHome, 'profiles', 'imported', 'package.json'), 'utf8')) as { dependencies: Record<string, string> }
+    expect(importedManifest.dependencies?.['@demo/plugin']).toBeUndefined()
+    const imported = await readProfile(env.dshHome, 'imported')
+    expect(imported.plugins.find(plugin => plugin.packageName === '@demo/plugin')).toMatchObject({ version: '1.0.0', compatible: true, enabled: false, declaredInProfile: false })
+  })
+
+  it('未声明 Profile 可见共享插件但不报告缺失，启用时才写入来源', async () => {
+    const env = await fixture()
+    // The web Profile owns the dependency and its physical link. The desktop
+    // Profile should see the shared inventory without inheriting the manifest.
+    await writeFile(path.join(env.dshHome, 'profiles', 'web', 'package.json'), JSON.stringify({
+      name: 'web',
+      dependencies: { '@demo/plugin': '1.0.0' },
+      dsh: { profile: { bundles: [] } },
+    }), 'utf8')
+    const webPlugin = path.join(env.dshHome, 'profiles', 'web', 'node_modules', '@demo', 'plugin', 'package.json')
+    await mkdir(path.dirname(webPlugin), { recursive: true })
+    await writeFile(webPlugin, JSON.stringify({ name: '@demo/plugin', version: '1.0.0' }), 'utf8')
+
+    await createProfile(env.options, { name: 'desktop', empty: true })
+
+    const summaries = await listProfiles(env.options)
+    const desktop = summaries.find(item => item.id === 'desktop')
+    const profile = await readProfile(env.dshHome, 'desktop')
+    expect(profile.plugins.find(plugin => plugin.packageName === '@demo/plugin')).toMatchObject({
+      enabled: false,
+      declaredInProfile: false,
+    })
+    expect(desktop?.missingDependencies).toEqual([])
+
+    await togglePlugin(env.dshHome, 'desktop', '@demo/plugin', true)
+    const activatedManifest = JSON.parse(await readFile(path.join(env.dshHome, 'profiles', 'desktop', 'package.json'), 'utf8')) as { dependencies?: Record<string, string> }
+    expect(activatedManifest.dependencies?.['@demo/plugin']).toBe('1.0.0')
+  })
+
+  it('运行时核心包即使写入旧 Profile dependencies 也不计为缺失插件', async () => {
+    const env = await fixture()
+    await writeFile(path.join(env.dshHome, 'profiles', 'web', 'package.json'), JSON.stringify({
+      name: 'web',
+      dependencies: { '@deepseek-ai/dsh-app-boot': '0.1.1-rc.1' },
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-app-boot'] } },
+    }), 'utf8')
+
+    const web = (await listProfiles(env.options)).find(item => item.id === 'web')
+    expect(web?.pluginCount).toBe(0)
+    expect(web?.missingDependencies).toEqual([])
+  })
+
+  it('当前 Profile 的 file 来源已存在时不报告缺失依赖', async () => {
+    const env = await fixture()
+    const source = path.join(env.root, 'plugin-source')
+    await mkdir(source, { recursive: true })
+    await writeFile(path.join(source, 'package.json'), JSON.stringify({ name: '@demo/file-plugin', version: '1.0.0' }), 'utf8')
+    await createProfile(env.options, { name: 'file-profile', empty: true })
+    await writeFile(path.join(env.dshHome, 'profiles', 'file-profile', 'package.json'), JSON.stringify({
+      name: 'file-profile',
+      dependencies: { '@demo/file-plugin': `file:${source}` },
+      dsh: { profile: { bundles: ['@demo/file-plugin'] } },
+    }), 'utf8')
+
+    const profile = (await listProfiles(env.options)).find(item => item.id === 'file-profile')
+    expect(profile?.missingDependencies).toEqual([])
+  })
+
+  it('旧整合包共享本体目录存在时不报告缺失依赖', async () => {
+    const env = await fixture()
+    const body = path.join(env.dshHome, '.dsh-launcher-pack-bodies', 'legacy-pack', '@demo', 'plugin')
+    await mkdir(body, { recursive: true })
+    await writeFile(path.join(body, 'package.json'), JSON.stringify({ name: '@demo/plugin', version: '1.0.0' }), 'utf8')
+    await createProfile(env.options, { name: 'legacy-profile', empty: true })
+    await writeFile(path.join(env.dshHome, 'profiles', 'legacy-profile', 'package.json'), JSON.stringify({
+      name: 'legacy-profile',
+      dependencies: { '@demo/plugin': '1.0.0' },
+      dsh: { profile: { bundles: ['@demo/plugin'] } },
+    }), 'utf8')
+
+    const profile = (await listProfiles(env.options)).find(item => item.id === 'legacy-profile')
+    expect(profile?.missingDependencies).toEqual([])
+  })
+
   it('为旧 Profile 关闭 peer 自动安装并统一链接策略', async () => {
     const env = await fixture()
     await writeFile(path.join(env.dshHome, 'profiles', 'web', 'pnpm-workspace.yaml'), 'packages: []\n', 'utf8')
@@ -200,5 +294,61 @@ describe('Profile service', () => {
     expect(manifest.dsh.profile.bundles.slice(0, 2)).toEqual(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'])
     expect(manifest.dependencies['@deepseek-ai/dsh-base']).toBeUndefined()
     expect(manifest.dependencies['@deepseek-ai/dsh-web-app']).toBeUndefined()
+  })
+
+  it('不把旧 Profile 中由 DSH runtime 提供的核心依赖算作插件或缺失项', async () => {
+    const env = await fixture()
+    await writeFile(path.join(env.dshHome, 'profiles', 'web', 'package.json'), JSON.stringify({
+      name: 'web',
+      dependencies: {
+        '@deepseek-ai/dsh-app-boot': '0.1.0-rc.7',
+        '@deepseek-ai/dsh-client-ui': '0.1.0-rc.7',
+        cordis: '3.0.0',
+        '@cordisjs/logger': '1.0.0',
+        '@demo/plugin': '1.0.0',
+      },
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@demo/plugin'] } },
+    }), 'utf8')
+
+    const summary = (await listProfiles(env.options)).find(item => item.id === 'web')
+    expect(summary?.pluginCount).toBe(1)
+    expect(summary?.missingDependencies).toEqual(['@demo/plugin'])
+  })
+
+  it('把当前 Profile 的 file: 源和虚拟 store 包视为本地可用', async () => {
+    const env = await fixture()
+    const source = path.join(env.root, 'plugin-sources', 'demo-plugin')
+    await mkdir(source, { recursive: true })
+    await writeFile(path.join(source, 'package.json'), JSON.stringify({ name: '@demo/file-plugin', version: '1.0.0' }), 'utf8')
+    const virtualPackage = path.join(env.dshHome, 'profiles', 'web', 'node_modules', '.pnpm', 'demo-virtual@1.0.0', 'node_modules', '@demo', 'virtual-plugin')
+    await mkdir(virtualPackage, { recursive: true })
+    await writeFile(path.join(virtualPackage, 'package.json'), JSON.stringify({ name: '@demo/virtual-plugin', version: '1.0.0' }), 'utf8')
+    await writeFile(path.join(env.dshHome, 'profiles', 'web', 'package.json'), JSON.stringify({
+      name: 'web',
+      dependencies: {
+        '@demo/file-plugin': `file:${source}`,
+        '@demo/virtual-plugin': '1.0.0',
+      },
+      dsh: { profile: { bundles: ['@demo/file-plugin', '@demo/virtual-plugin'] } },
+    }), 'utf8')
+
+    const summary = (await listProfiles(env.options)).find(item => item.id === 'web')
+    expect(summary?.missingDependencies).toEqual([])
+  })
+
+  it('removes legacy pack records and manifests when deleting a unified Profile', async () => {
+    const env = await fixture()
+    await createProfile(env.options, { name: 'alpha' })
+    await upsertPackRecord(env.options.registryPath, {
+      id: 'alpha', name: 'Alpha', description: 'legacy', version: '1.0.0', source: 'created',
+      installedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), state: 'complete', plugins: [],
+    })
+    await writePackManifest(env.options.manifestRoot, 'alpha', {
+      name: 'Alpha', description: 'legacy', version: '1.0.0',
+      plugins: [],
+    })
+    await deleteProfile(env.options, 'alpha')
+    expect(await readPackRegistry(env.options.registryPath)).toEqual([])
+    await expect(access(path.join(env.options.manifestRoot, 'alpha.yaml'))).rejects.toThrow()
   })
 })

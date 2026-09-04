@@ -20,8 +20,16 @@ export function RuntimeDrawer({ mode, height, onModeChange, onHeightChange, onUs
   const failedDownload = installProgress?.phase === 'error'
   const downloadPercent = Math.max(0, Math.min(100, installProgress?.percent ?? 0))
   const downloadName = installProgress ? formatInstallName(installProgress) : ''
-  const idle = !activeDownload && !failedDownload && !runtime.running
-  const runningText = runtime.running ? `${runtime.applicationAddonName ?? 'DSH'} 正在运行` : ''
+  const queue = runtimeProps.installQueue
+  const pendingCount = queue.entries.filter(entry => entry.state === 'pending').length
+  const queueBadge = queue.paused ? '队列已暂停' : pendingCount > 0 ? `+${pendingCount} 排队` : ''
+  const statusParts: string[] = []
+  if (activeDownload) statusParts.push(`${progressStatus(installProgress?.phase)} · ${downloadPercent}%`)
+  else if (failedDownload) statusParts.push('下载失败')
+  else if (runtime.running) statusParts.push(`${runtime.applicationAddonName ?? 'DSH'} 正在运行`)
+  if (queueBadge) statusParts.push(queueBadge)
+  const statusText = statusParts.filter(Boolean).join(' · ')
+  const idle = statusText === ''
 
   useEffect(() => {
     if (!resizing) return
@@ -68,8 +76,8 @@ export function RuntimeDrawer({ mode, height, onModeChange, onHeightChange, onUs
       {mode !== 'hidden' && <div className="runtime-drawer-resize" role="separator" aria-label="调整运行日志高度" onPointerDown={startResize} />}
       <button type="button" className="runtime-drawer-handle" onClick={cycleMode} aria-expanded={mode !== 'hidden'} aria-label={`运行与日志，当前${modeLabel}，点击切换`} title={`运行与日志 · ${modeLabel}`}>
         <span className={`runtime-drawer-handle-copy ${idle ? 'idle' : ''}`}>
-          <strong>{idle ? '运行与日志 · 无活动内容' : activeDownload || failedDownload ? downloadName : '运行与日志'}</strong>
-          {!idle && <small>{activeDownload ? `${progressStatus(installProgress?.phase)} · ${downloadPercent}%` : failedDownload ? '下载失败' : runningText}</small>}
+          <strong>{idle ? '运行与日志 · 无活动内容' : activeDownload || failedDownload ? downloadName : queueBadge ? '下载队列' : '运行与日志'}</strong>
+          {!idle && <small>{statusText}</small>}
         </span>
         {activeDownload && <span className="runtime-drawer-handle-progress" aria-label={`下载进度 ${downloadPercent}%`}><span style={{ width: `${downloadPercent}%` }} /></span>}
         <span

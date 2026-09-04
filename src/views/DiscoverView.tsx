@@ -561,7 +561,7 @@ export function DiscoverView({
     try {
       const result = await api.installPlugin(repo.kind === 'dsh'
         ? repo.fullName
-        : {
+          : {
             repository: sourceRepository ?? repo.fullName,
             defaultBranch: sourceRepository && target ? target.commit : repo.defaultBranch,
             targetId: target?.id ?? '',

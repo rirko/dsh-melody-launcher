@@ -1,20 +1,25 @@
-import { AppWindow, CircleAlert, CircleCheck, CircleStop, ExternalLink, LoaderCircle, Pause, Play, SquareTerminal, Wrench } from 'lucide-react'
+import { AppWindow, CircleAlert, CircleCheck, CircleStop, Clipboard, ExternalLink, ListOrdered, LoaderCircle, Pause, Play, SquareTerminal, Wrench, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { AppSettings, InstallProgress, InstalledApplicationAddon, RuntimeOutput, RuntimeState } from '../types'
+import type { AppSettings, InstallProgress, InstallQueueSnapshot, InstalledApplicationAddon, RuntimeOutput, RuntimeState } from '../types'
 
-/** 运行与日志页：进程状态、启动参数与实时输出。 */
+/** 运行与日志页：进程状态、启动参数、下载队列与实时输出。 */
 
 export interface RuntimeViewProps {
   runtime: RuntimeState
   settings: AppSettings
   logs: RuntimeOutput[]
   installProgress: InstallProgress | null
+  installQueue: InstallQueueSnapshot
   busy: boolean
   onToggleRuntime: () => void
   onPauseDownload: () => void
   onOpenHarness: () => void
   onClearLogs: () => void
   onRepairRuntime: () => void
+  onPauseQueue: () => void
+  onResumeQueue: () => void
+  onCancelQueuedJob: (id: number) => void
+  onClearFinishedQueue: () => void
   aiActive: boolean
   activeRuntimeReplacement: InstalledApplicationAddon | null
   compact?: boolean
@@ -25,12 +30,17 @@ export function RuntimeView({
   settings,
   logs,
   installProgress,
+  installQueue,
   busy,
   onToggleRuntime,
   onPauseDownload,
   onOpenHarness,
   onClearLogs,
   onRepairRuntime,
+  onPauseQueue,
+  onResumeQueue,
+  onCancelQueuedJob,
+  onClearFinishedQueue,
   aiActive,
   activeRuntimeReplacement,
   compact = false,
@@ -38,6 +48,7 @@ export function RuntimeView({
   const logEnd = useRef<HTMLDivElement>(null)
   const progressSample = useRef<{ repository: string; bytes: number; timestamp: number } | null>(null)
   const [downloadSpeed, setDownloadSpeed] = useState(0)
+  const [copyState, setCopyState] = useState<'idle' | 'copied'>('idle')
 
   const downloadVisible = installProgress !== null && installProgress.phase !== 'complete'
   const downloadActive = downloadVisible && installProgress?.phase !== 'error'
@@ -47,6 +58,9 @@ export function RuntimeView({
   const downloadName = installProgress ? formatInstallName(installProgress) : ''
   const downloadStatus = installProgress ? progressStatus(installProgress.phase) : ''
   const downloadSize = installProgress ? formatDownloadSize(installProgress) : ''
+  const queuePendingCount = installQueue.entries.filter(entry => entry.state === 'pending').length
+  const queueRunningCount = installQueue.entries.filter(entry => entry.state === 'running').length
+  const queueFinishedCount = installQueue.entries.filter(entry => entry.state === 'done' || entry.state === 'failed' || entry.state === 'cancelled').length
 
   useEffect(() => {
     if (!installProgress || installProgress.phase === 'complete' || installProgress.phase === 'error' || installProgress.downloadedBytes == null) {
@@ -73,6 +87,32 @@ export function RuntimeView({
   useEffect(() => {
     logEnd.current?.scrollIntoView?.({ block: 'nearest' })
   }, [logs])
+
+  const copyLogs = async () => {
+    if (logs.length === 0) return
+    const text = logs.map(log => {
+      const time = new Date(log.timestamp).toLocaleTimeString('zh-CN', { hour12: false })
+      const channel = log.channel === 'plugin' ? 'PLUGIN' : log.channel === 'test' ? 'TEST' : log.channel === 'ai' ? 'COPILOT' : 'DSH'
+      return `${time}\t${channel}\n${log.text}`
+    }).join('\n')
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      // Electron normally exposes navigator.clipboard; keep a DOM fallback
+      // for older packaged builds and restricted browser contexts.
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      const copied = document.execCommand('copy')
+      textarea.remove()
+      if (!copied) throw new Error('clipboard unavailable')
+    }
+    setCopyState('copied')
+    window.setTimeout(() => setCopyState('idle'), 1800)
+  }
 
   if (compact) {
     // 保留完整终端输出，由半隐藏抽屉内的日志框负责滚动，调整抽屉高度时可显示更多记录。
@@ -120,8 +160,35 @@ export function RuntimeView({
         <div><span>启动模式</span><code>{activeRuntimeReplacement ? '应用加载项替代 Web' : runtime.port ? `Web · ${runtime.port}（当前）` : `Web · ${settings.webPort}（首选）`}</code></div>
       </div>
 
+      {installQueue.entries.length > 0 && (
+        <section className="install-queue" aria-label="下载队列">
+          <header>
+            <div><ListOrdered size={16} /><strong>下载队列</strong><span>{installQueue.paused ? '已暂停' : `${queueRunningCount} 个执行中 · ${queuePendingCount} 个排队`}</span></div>
+            <div className="install-queue-header-actions">
+              <button type="button" onClick={installQueue.paused ? onResumeQueue : onPauseQueue}>
+                {installQueue.paused ? <Play size={13} /> : <Pause size={13} />}{installQueue.paused ? '继续' : '暂停'}
+              </button>
+              <button type="button" onClick={onClearFinishedQueue} disabled={queueFinishedCount === 0}>清除已完成</button>
+            </div>
+          </header>
+          <ul>
+            {installQueue.entries.map(entry => (
+              <li key={entry.id} className={`install-queue-item ${entry.state}`}>
+                <span className="install-queue-item-state">{queueStateLabel(entry.state)}</span>
+                <span className="install-queue-item-label" title={entry.error ?? entry.label}>{entry.label}</span>
+                {entry.state === 'failed' && entry.error && <span className="install-queue-item-error">{entry.error}</span>}
+                {entry.state === 'running' && <LoaderCircle size={14} className="spin" />}
+                {entry.state === 'pending' && (
+                  <button type="button" className="icon-button" title="取消该任务" aria-label={`取消 ${entry.label}`} onClick={() => onCancelQueuedJob(entry.id)}><X size={14} /></button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="log-panel">
-        <header><div><SquareTerminal size={17} /><strong>运行日志</strong><span>{logs.length} 条</span></div><button type="button" onClick={onClearLogs} disabled={logs.length === 0}>清空</button></header>
+        <header><div><SquareTerminal size={17} /><strong>运行日志</strong><span>{logs.length} 条</span></div><div className="log-header-actions"><button type="button" onClick={() => void copyLogs()} disabled={logs.length === 0} title="复制完整运行日志"><Clipboard size={13} />{copyState === 'copied' ? '已复制' : '复制日志'}</button><button type="button" onClick={onClearLogs} disabled={logs.length === 0}>清空</button></div></header>
         <div className="log-output" role="log" aria-live="polite">
           {logs.length === 0 ? (
             <div className="log-empty"><SquareTerminal size={22} /><span>启动 DSH 后，输出会显示在这里。</span></div>
@@ -151,6 +218,14 @@ function progressStatus(phase: InstallProgress['phase']): string {
   if (phase === 'building') return '正在构建'
   if (phase === 'configuring' || phase === 'verifying') return '正在完成安装'
   if (phase === 'error') return '下载失败'
+  return '已完成'
+}
+
+function queueStateLabel(state: InstallQueueSnapshot['entries'][number]['state']): string {
+  if (state === 'pending') return '排队中'
+  if (state === 'running') return '进行中'
+  if (state === 'failed') return '失败'
+  if (state === 'cancelled') return '已取消'
   return '已完成'
 }
 

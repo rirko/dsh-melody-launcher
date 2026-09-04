@@ -25,7 +25,7 @@ import { useNavigation } from './hooks/use-navigation'
 import { usePackInstall } from './hooks/use-pack-install'
 import { isInstallProgressActive } from './lib/install-progress'
 import { clampRuntimeDrawerHeight, RUNTIME_DRAWER_AUTO_CLOSE_MS } from './lib/runtime-drawer'
-import type { CatalogRepositoryAnalysis, ManagedPlugin, PackPluginEntry, ProfileRepositoryImportMode, ProfileRepositoryImportPreview, RuntimeDrawerMode } from './types'
+import type { CatalogRepositoryAnalysis, ManagedPlugin, NonstandardPackImportPreview, PackPluginEntry, ProfileRepositoryImportMode, ProfileRepositoryImportPreview, RuntimeDrawerMode } from './types'
 import { DiscoverView } from './views/DiscoverView'
 import { PacksView } from './views/PacksView'
 import { PluginsView } from './views/PluginsView'
@@ -70,6 +70,7 @@ function LauncherShell() {
   const [repositoryImportOpen, setRepositoryImportOpen] = useState(false)
   const [repositoryImportUrl, setRepositoryImportUrl] = useState('')
   const [repositoryImportPreview, setRepositoryImportPreview] = useState<ProfileRepositoryImportPreview | null>(null)
+  const [nonstandardImportPreview, setNonstandardImportPreview] = useState<NonstandardPackImportPreview | null>(null)
   const [repositoryImportBusy, setRepositoryImportBusy] = useState(false)
   const [repositoryImportError, setRepositoryImportError] = useState<string | null>(null)
   const [updateOpen, setUpdateOpen] = useState(false)
@@ -112,6 +113,14 @@ function LauncherShell() {
   useEffect(() => {
     document.documentElement.dataset.theme = store.settings?.uiTheme ?? 'forest'
   }, [store.settings?.uiTheme])
+
+  // 自定义主界面插图经 launcher-asset:// 协议注入 CSS 变量；置空回落内置默认图。
+  useEffect(() => {
+    const root = document.documentElement
+    const background = store.settings?.launcherBackground
+    if (background) root.style.setProperty('--launcher-background-image', `url("launcher-asset://${background}")`)
+    else root.style.removeProperty('--launcher-background-image')
+  }, [store.settings?.launcherBackground])
 
   const installingResource = isInstallProgressActive(store.installProgress)
   const installingDsh = store.busy === BUSY.dshInstall
@@ -257,6 +266,7 @@ function LauncherShell() {
     setRepositoryImportOpen(true)
     setRepositoryImportUrl('')
     setRepositoryImportPreview(null)
+    setNonstandardImportPreview(null)
     setRepositoryImportError(null)
   }
 
@@ -264,7 +274,14 @@ function LauncherShell() {
     setRepositoryImportBusy(true)
     setRepositoryImportError(null)
     try {
-      setRepositoryImportPreview(await api.analyzeProfileRepository(repositoryImportUrl))
+      try {
+        setRepositoryImportPreview(await api.analyzeProfileRepository(repositoryImportUrl))
+        setNonstandardImportPreview(null)
+      } catch (standardError) {
+        const fallback = await api.analyzeNonstandardPackRepository(repositoryImportUrl)
+        setRepositoryImportPreview(null)
+        setNonstandardImportPreview(fallback)
+      }
     } catch (error) {
       setRepositoryImportError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -272,18 +289,41 @@ function LauncherShell() {
     }
   }
 
+  const confirmNonstandardRepositoryImport = async (name?: string, packageNames?: string[], installDsh?: boolean) => {
+    setRepositoryImportBusy(true)
+    setRepositoryImportError(null)
+    setRepositoryImportOpen(false)
+    setRepositoryImportBusy(false)
+    try {
+      const result = await api.importNonstandardPackRepository(repositoryImportUrl, { name, packageNames, installDsh })
+      await Promise.all([store.refreshProfiles(), store.refreshPacks(), store.refreshProfile(), store.refreshRuntimeEnvironment()]).catch(() => undefined)
+      const failed = result.importFailures?.length ?? 0
+      const succeeded = result.importedPluginCount ?? result.pluginCount
+      store.showToast({
+        kind: failed > 0 ? 'error' : 'success',
+        message: `导入完成：成功 ${succeeded}，失败 ${failed}。已创建 Profile「${result.name}」，当前 Profile 未自动切换。`,
+      })
+    } catch (error) {
+      store.showToast({ kind: 'error', message: `导入失败：${error instanceof Error ? error.message : String(error)}` })
+    }
+  }
+
   const confirmRepositoryImport = async (mode: ProfileRepositoryImportMode, name?: string, overwrite?: boolean, resolutions?: Record<string, PackPluginEntry>) => {
     setRepositoryImportBusy(true)
     setRepositoryImportError(null)
+    setRepositoryImportOpen(false)
+    setRepositoryImportBusy(false)
     try {
-      await api.importProfileRepository(repositoryImportUrl, { mode, name, overwrite, resolutions })
-      await Promise.all([store.refreshProfiles(), store.refreshPacks(), store.refreshProfile()])
-      setRepositoryImportOpen(false)
-      store.showToast({ kind: 'success', message: '已创建新的 Profile，当前 Profile 未自动切换。' })
+      const result = await api.importProfileRepository(repositoryImportUrl, { mode, name, overwrite, resolutions })
+      await Promise.all([store.refreshProfiles(), store.refreshPacks(), store.refreshProfile(), store.refreshRuntimeEnvironment()]).catch(() => undefined)
+      const failed = result.importFailures?.length ?? 0
+      const succeeded = result.importedPluginCount ?? result.pluginCount
+      store.showToast({
+        kind: failed > 0 ? 'error' : 'success',
+        message: `导入完成：成功 ${succeeded}，失败 ${failed}。已创建 Profile「${result.name}」，当前 Profile 未自动切换。`,
+      })
     } catch (error) {
-      setRepositoryImportError(error instanceof Error ? error.message : String(error))
-    } finally {
-      setRepositoryImportBusy(false)
+      store.showToast({ kind: 'error', message: `导入失败：${error instanceof Error ? error.message : String(error)}` })
     }
   }
 
@@ -459,7 +499,14 @@ function LauncherShell() {
                   }}
                   onInstallationState={store.adoptCatalogInstallationState}
                   onInstallStarted={store.beginInstall}
-                  onInstallFinished={store.finishInstall}
+                  onInstallFinished={(repository, succeeded, message) => {
+                    store.finishInstall(repository, succeeded, message)
+                    // pnpm/DSH can update a Profile manifest before a later
+                    // Git fetch or build step fails. Always re-read the
+                    // selected Profile so a partial install is immediately
+                    // visible (or removed) in the Plugin page.
+                    void store.refreshProfile()
+                  }}
                   onPluginInstalled={(repository, result) => {
                     store.applyCatalogPluginInstall(repository, result)
                     store.showToast({
@@ -564,12 +611,17 @@ function LauncherShell() {
                 settings={settings}
                 logs={store.logs}
                 installProgress={store.installProgress}
+                installQueue={store.installQueue}
                 busy={runtimeBusy}
                 onToggleRuntime={toggleRuntime}
                 onPauseDownload={() => { void store.cancelRuntimeDownload() }}
                 onOpenHarness={openHarness}
                 onClearLogs={store.clearLogs}
                 onRepairRuntime={() => { setCopilotOpen(true); void ai.repairRuntime(settings.profileName) }}
+                onPauseQueue={() => { void store.pauseQueue() }}
+                onResumeQueue={() => { void store.resumeQueue() }}
+                onCancelQueuedJob={id => { void store.cancelQueuedJob(id) }}
+                onClearFinishedQueue={() => { void store.clearFinishedQueue() }}
                 aiActive={ai.active}
                 activeRuntimeReplacement={store.activeRuntimeReplacement}
               />
@@ -627,6 +679,7 @@ function LauncherShell() {
           onClearDeepSeek={store.clearApiKey}
           onSaveCustom={store.saveCustomApi}
           onRemoveCustom={store.removeCustomApi}
+          onProbe={store.probeApi}
         />
       )}
       {githubAccountOpen && (
@@ -700,11 +753,13 @@ function LauncherShell() {
         open={repositoryImportOpen}
         url={repositoryImportUrl}
         preview={repositoryImportPreview}
+        nonstandardPreview={nonstandardImportPreview}
         busy={repositoryImportBusy}
         error={repositoryImportError}
-        onUrlChange={value => { setRepositoryImportUrl(value); setRepositoryImportPreview(null); setRepositoryImportError(null) }}
+        onUrlChange={value => { setRepositoryImportUrl(value); setRepositoryImportPreview(null); setNonstandardImportPreview(null); setRepositoryImportError(null) }}
         onAnalyze={() => void analyzeRepositoryImport()}
         onConfirm={(mode, name, overwrite) => void confirmRepositoryImport(mode, name, overwrite)}
+        onConfirmNonstandard={(name, packageNames, installDsh) => void confirmNonstandardRepositoryImport(name, packageNames, installDsh)}
         onClose={() => { if (!repositoryImportBusy) setRepositoryImportOpen(false) }}
       />
       {updateOpen && store.launcherUpdate && (

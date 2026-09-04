@@ -20,6 +20,10 @@ const WINDOW_MODE_ANIMATION_DURATION = 100
 // Drive high-refresh displays more frequently than the traditional 60 Hz
 // interval. Windows still coalesces updates to the compositor refresh rate.
 const WINDOW_MODE_ANIMATION_FRAME = 8
+// A transparent BrowserWindow can keep the old backing surface after its first
+// native expansion. Repaint once immediately and once after the compositor
+// has committed the new bounds so the newly exposed right edge is filled.
+const WINDOW_MODE_REPAINT_DELAY = 16
 const WINDOW_BACKGROUND_COLOR = '#00000000'
 const WINDOW_WORK_AREA_MARGIN = 24
 
@@ -61,6 +65,37 @@ function cancelWindowModeAnimation(window: BrowserWindow): void {
   current.cancelled = true
   if (current.timer) clearTimeout(current.timer)
   windowModeAnimations.delete(window)
+}
+
+function invalidateAfterResize(window: BrowserWindow): void {
+  if (window.isDestroyed() || window.webContents.isDestroyed()) return
+  window.webContents.invalidate()
+  setTimeout(() => {
+    if (window.isDestroyed() || window.webContents.isDestroyed()) return
+    window.webContents.invalidate()
+  }, WINDOW_MODE_REPAINT_DELAY)
+}
+
+/**
+ * Apply a mode without the visual transition. This is used when a transparent
+ * window is first shown or restored from the tray, where the native bounds may
+ * have been restored independently from the renderer surface.
+ */
+export function applyWindowModeImmediate(window: BrowserWindow | null, mode: WindowMode): void {
+  if (!window || window.isDestroyed()) return
+  cancelWindowModeAnimation(window)
+
+  const size = WINDOW_MODES[mode]
+  if (window.isMaximized()) window.unmaximize()
+
+  const targetBounds = centeredTargetBounds(window.getBounds(), size)
+  window.setMinimumSize(
+    Math.min(size.minWidth, targetBounds.width),
+    Math.min(size.minHeight, targetBounds.height),
+  )
+  window.setBounds(targetBounds, false)
+  syncWindowShadow(window)
+  invalidateAfterResize(window)
 }
 
 export function isWindowMode(value: unknown): value is WindowMode {
@@ -113,6 +148,7 @@ export function createMainWindow(options: CreateWindowOptions): BrowserWindow {
   window.once('closed', options.onClosed)
   attachWindowShadow(window)
   window.once('ready-to-show', () => {
+    applyWindowModeImmediate(window, 'launcher')
     window.show()
     showWindowShadow(window)
   })
@@ -184,6 +220,7 @@ export function applyWindowMode(window: BrowserWindow | null, mode: WindowMode):
 
     if (progress >= 1) {
       window.setMinimumSize(targetMinWidth, targetMinHeight)
+      invalidateAfterResize(window)
       windowModeAnimations.delete(window)
       return
     }

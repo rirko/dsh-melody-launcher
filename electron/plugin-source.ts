@@ -39,9 +39,19 @@ async function downloadArchive(
   onProgress: ProgressListener,
   fetchImpl: typeof fetch,
 ): Promise<void> {
-  const response = await fetchImpl(`https://codeload.github.com/${repository}/zip/${commit}`, {
-    headers: { 'User-Agent': 'DSH-Launcher' },
-  })
+  const url = `https://codeload.github.com/${repository}/zip/${commit}`
+  let response: Response | null = null
+  let lastError: unknown = null
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      response = await fetchImpl(url, { headers: { 'User-Agent': 'DSH-Launcher' } })
+      if (response.ok || (response.status >= 400 && response.status < 500 && response.status !== 429)) break
+    } catch (error) {
+      lastError = error
+    }
+    if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)))
+  }
+  if (!response) throw new Error(`下载插件仓库失败：${lastError instanceof Error ? lastError.message : String(lastError ?? '网络请求失败')}`)
   if (!response.ok || !response.body) throw new Error(`下载插件仓库失败（HTTP ${response.status}）。`)
   const declaredTotal = Number(response.headers.get('content-length'))
   const total = Number.isFinite(declaredTotal) && declaredTotal > 0 ? declaredTotal : undefined
@@ -83,8 +93,11 @@ export async function prepareSubdirectoryPlugin(
   if (!isSafeRepositoryName(repository) || !/^[a-f0-9]{40}$/i.test(target.commit)) {
     throw new Error('插件仓库或提交版本无效。')
   }
-  if (!target.subdirectory || path.posix.isAbsolute(target.subdirectory)) throw new Error('插件子目录无效。')
-  const normalizedSubdirectory = path.posix.normalize(target.subdirectory)
+  // Root-level GitHub Bundles are valid too. They use the exact same immutable
+  // archive flow as a subdirectory Bundle, only without an extra path segment.
+  const requestedSubdirectory = target.subdirectory ?? ''
+  if (path.posix.isAbsolute(requestedSubdirectory)) throw new Error('插件子目录无效。')
+  const normalizedSubdirectory = requestedSubdirectory === '' ? '' : path.posix.normalize(requestedSubdirectory)
   if (normalizedSubdirectory === '..' || normalizedSubdirectory.startsWith('../')) throw new Error('插件子目录超出了仓库范围。')
 
   const [owner, name] = repository.split('/')

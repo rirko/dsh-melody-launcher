@@ -2,10 +2,10 @@ import { access, cp, mkdir, readdir, readFile, rename, rm, writeFile } from 'nod
 import path from 'node:path'
 import { parse, stringify } from 'yaml'
 import type { AppSettings, ProfileState } from '../src/types'
-import { readPackRegistry, type PackRecord } from './pack-registry'
+import { readPackRegistry, removePackRecord, type PackRecord } from './pack-registry'
 import { readPluginReceipts, removePluginReceipt } from './plugin-receipts'
-import { readPackManifest } from './pack-manifest-store'
-import { readProfile, isSafePackageName, isSafeProfileName } from './profile'
+import { readPackManifest, removePackManifest } from './pack-manifest-store'
+import { isDshCorePackage, readProfile, isSafePackageName, isSafeProfileName } from './profile'
 
 /** Metadata stored next to the DSH package manifest. It is deliberately not
  * used by DSH itself; package.json remains the runtime source of truth. */
@@ -17,12 +17,18 @@ export interface ProfileMetadata {
   createdAt: string
   updatedAt: string
   exportedAt?: string | null
+  packName?: string
+  distributionKind?: 'standard-profile' | 'meta-repo' | 'distribution'
+  importState?: 'complete' | 'partial' | 'failed'
+  importFailures?: string[]
+  dshSourceVersion?: string | null
+  importWarnings?: string[]
 }
 
 export type ProfileSource =
   | { kind: 'local'; path?: string }
   | { kind: 'github'; repository: string; branch?: string; commit?: string }
-  | { kind: 'import'; format: 'zip' | 'yaml' | 'github'; reference?: string }
+  | { kind: 'import'; format: 'zip' | 'yaml' | 'github' | 'distribution'; reference?: string; branch?: string; commit?: string; packName?: string; distributionKind?: 'standard-profile' | 'meta-repo' | 'distribution' }
 
 export interface ProfileSummary extends ProfileMetadata {
   id: string
@@ -41,6 +47,11 @@ export interface ProfileCreateOptions {
   description?: string
   dshVersion?: string | null
   cloneFrom?: string
+  /** Do not inherit dependency specifiers from the selected Profile. */
+  empty?: boolean
+  source?: ProfileSource | null
+  packName?: string
+  distributionKind?: 'standard-profile' | 'meta-repo' | 'distribution'
 }
 
 export interface ProfileServiceOptions {
@@ -92,10 +103,6 @@ function profileDirFor(dshHome: string, name: string): string {
   return path.join(dshHome, 'profiles', name)
 }
 
-function isDshCorePackage(packageName: string): boolean {
-  return /^@deepseek-ai\//.test(packageName) || packageName === 'cordis' || /^@cordisjs\//.test(packageName)
-}
-
 function defaultMetadata(name: string, dshVersion: string | null = null): ProfileMetadata {
   const now = new Date().toISOString()
   return { name, description: '', dshVersion, source: null, createdAt: now, updatedAt: now, exportedAt: null }
@@ -107,8 +114,8 @@ function normalizeMetadata(raw: unknown, fallbackName: string): ProfileMetadata 
   const sourceKind = source?.kind
   const normalizedSource: ProfileSource | null = sourceKind === 'github' && typeof source?.repository === 'string'
     ? { kind: 'github', repository: source.repository, ...(typeof source.branch === 'string' ? { branch: source.branch } : {}), ...(typeof source.commit === 'string' ? { commit: source.commit } : {}) }
-    : sourceKind === 'import' && (source?.format === 'zip' || source?.format === 'yaml' || source?.format === 'github')
-      ? { kind: 'import', format: source.format, ...(typeof source.reference === 'string' ? { reference: source.reference } : {}) }
+    : sourceKind === 'import' && (source?.format === 'zip' || source?.format === 'yaml' || source?.format === 'github' || source?.format === 'distribution')
+      ? { kind: 'import', format: source.format, ...(typeof source.reference === 'string' ? { reference: source.reference } : {}), ...(typeof source.branch === 'string' ? { branch: source.branch } : {}), ...(typeof source.commit === 'string' ? { commit: source.commit } : {}), ...(typeof source.packName === 'string' ? { packName: source.packName } : {}), ...(source.distributionKind === 'standard-profile' || source.distributionKind === 'meta-repo' || source.distributionKind === 'distribution' ? { distributionKind: source.distributionKind } : {}) }
       : sourceKind === 'local'
         ? { kind: 'local', ...(typeof source?.path === 'string' ? { path: source.path } : {}) }
         : null
@@ -121,6 +128,12 @@ function normalizeMetadata(raw: unknown, fallbackName: string): ProfileMetadata 
     createdAt: typeof value.createdAt === 'string' ? value.createdAt : new Date(0).toISOString(),
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
     exportedAt: typeof value.exportedAt === 'string' ? value.exportedAt : null,
+    packName: typeof value.packName === 'string' ? value.packName : undefined,
+    distributionKind: value.distributionKind === 'standard-profile' || value.distributionKind === 'meta-repo' || value.distributionKind === 'distribution' ? value.distributionKind : undefined,
+    importState: value.importState === 'complete' || value.importState === 'partial' || value.importState === 'failed' ? value.importState : undefined,
+    importFailures: Array.isArray(value.importFailures) ? value.importFailures.filter((item): item is string => typeof item === 'string').slice(0, 200) : undefined,
+    dshSourceVersion: typeof value.dshSourceVersion === 'string' ? value.dshSourceVersion : null,
+    importWarnings: Array.isArray(value.importWarnings) ? value.importWarnings.filter((item): item is string => typeof item === 'string').slice(0, 100) : undefined,
   }
 }
 
@@ -225,11 +238,102 @@ async function missingDependencies(profile: ProfileState): Promise<string[]> {
     // A disabled dependency is still declared by package.json and must have a
     // valid link before switching. Otherwise enabling it later would produce a
     // Profile that only fails after the user has already switched environments.
-    if (plugin.builtin) continue
+    if (plugin.builtin || isDshCorePackage(plugin.packageName)) continue
+    // The plugin list is the union of the shared pool. An inactive package that
+    // is not declared by this Profile is only a candidate; it does not need a
+    // link until the user activates it.
+    if (!plugin.declaredInProfile && !plugin.enabled) continue
     const manifest = path.join(profile.profileDir, 'node_modules', ...plugin.packageName.split('/'), 'package.json')
-    if (!await exists(manifest)) missing.push(plugin.packageName)
+    if (await exists(manifest)) continue
+    // Depending on the pnpm linker, a package may be present only under the
+    // Profile's virtual store while its top-level link is temporarily absent.
+    // It is still usable locally and should not be reported as missing.
+    if (await profileVirtualPackageExists(profile.profileDir, plugin.packageName)) continue
+    missing.push(plugin.packageName)
   }
   return missing
+}
+
+async function profileVirtualPackageExists(profileDir: string, packageName: string): Promise<boolean> {
+  const virtualRoot = path.join(profileDir, 'node_modules', '.pnpm')
+  const entries = await readdir(virtualRoot, { withFileTypes: true }).catch(() => [])
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const manifest = path.join(virtualRoot, entry.name, 'node_modules', ...packageName.split('/'), 'package.json')
+    if (await exists(manifest)) return true
+  }
+  return false
+}
+
+type ProfileDependencyManifest = {
+  dependencies?: Record<string, unknown>
+  devDependencies?: Record<string, unknown>
+  optionalDependencies?: Record<string, unknown>
+  peerDependencies?: Record<string, unknown>
+}
+
+const PROFILE_DEPENDENCY_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+  'peerDependencies',
+] as const
+
+async function readProfileDependencyManifest(profileDir: string): Promise<ProfileDependencyManifest | null> {
+  try {
+    const value = JSON.parse(await readFile(path.join(profileDir, 'package.json'), 'utf8')) as unknown
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value as ProfileDependencyManifest
+      : null
+  } catch {
+    return null
+  }
+}
+
+/** Resolve a local `file:`/`link:` dependency without invoking pnpm. */
+function resolveLocalDependencyReference(profileDir: string, specifier: unknown): string | null {
+  if (typeof specifier !== 'string') return null
+  const prefix = specifier.startsWith('file:') ? 'file:' : specifier.startsWith('link:') ? 'link:' : null
+  if (!prefix) return null
+  let raw = specifier.slice(prefix.length).trim()
+  if (!raw) return null
+  try { raw = decodeURIComponent(raw) } catch { /* keep legacy raw path */ }
+  if (raw.startsWith('//')) {
+    try {
+      const parsed = new URL(`file:${raw}`)
+      if (parsed.host && parsed.host !== 'localhost') return null
+      raw = decodeURIComponent(parsed.pathname)
+      if (/^\/[A-Za-z]:\//.test(raw)) raw = raw.slice(1)
+    } catch {
+      return null
+    }
+  }
+  return path.resolve(path.isAbsolute(raw) ? raw : path.join(profileDir, raw))
+}
+
+async function hasPackageManifest(directory: string): Promise<boolean> {
+  return exists(path.join(directory, 'package.json'))
+}
+
+/** Check current and legacy shared plugin body layouts. */
+async function hasSharedPluginBody(root: string, packageName: string): Promise<boolean> {
+  const parts = packageName.split('/')
+  const hasBodyAt = async (directory: string): Promise<boolean> => {
+    if (await hasPackageManifest(directory)) return true
+    const entries = await readdir(directory, { withFileTypes: true }).catch(() => [])
+    for (const entry of entries) {
+      if (entry.isDirectory() && !entry.isSymbolicLink() && await hasPackageManifest(path.join(directory, entry.name))) return true
+    }
+    return false
+  }
+
+  if (await hasBodyAt(path.join(root, ...parts))) return true
+  const entries = await readdir(root, { withFileTypes: true }).catch(() => [])
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue
+    if (await hasBodyAt(path.join(root, entry.name, ...parts))) return true
+  }
+  return false
 }
 
 /**
@@ -242,16 +346,25 @@ async function locallyAvailableDependencies(dshHome: string, profileName: string
   const wanted = new Set(packageNames)
   const available = new Set<string>()
   const profilesRoot = path.join(dshHome, 'profiles')
+  const currentProfileDir = path.join(profilesRoot, profileName)
+  const currentManifest = await readProfileDependencyManifest(currentProfileDir)
+  // Imported/local plugins are often declared with a file: source before
+  // pnpm has created the Profile-specific link. They are locally available,
+  // so summary views must not call them missing.
+  for (const packageName of wanted) {
+    for (const field of PROFILE_DEPENDENCY_FIELDS) {
+      const sourcePath = resolveLocalDependencyReference(currentProfileDir, currentManifest?.[field]?.[packageName])
+      if (sourcePath && await hasPackageManifest(sourcePath)) {
+        available.add(packageName)
+        break
+      }
+    }
+  }
   const entries = await readdir(profilesRoot, { withFileTypes: true }).catch(() => [])
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name === profileName || !isSafeProfileName(entry.name)) continue
     const siblingDir = path.join(profilesRoot, entry.name)
-    let manifest: { dependencies?: Record<string, unknown> } | null = null
-    try {
-      manifest = JSON.parse(await readFile(path.join(siblingDir, 'package.json'), 'utf8')) as { dependencies?: Record<string, unknown> }
-    } catch {
-      // A sibling without a manifest cannot provide a reusable dependency spec.
-    }
+    const manifest = await readProfileDependencyManifest(siblingDir)
     for (const packageName of wanted) {
       if (available.has(packageName)) continue
       const directNodeModule = path.join(siblingDir, 'node_modules', ...packageName.split('/'), 'package.json')
@@ -259,11 +372,16 @@ async function locallyAvailableDependencies(dshHome: string, profileName: string
         available.add(packageName)
         continue
       }
-      const specifier = manifest?.dependencies?.[packageName]
-      if (typeof specifier === 'string' && specifier.startsWith('file:')) {
-        const rawPath = specifier.slice('file:'.length)
-        const sourcePath = path.resolve(path.isAbsolute(rawPath) ? rawPath : path.join(siblingDir, rawPath))
-        if (await exists(path.join(sourcePath, 'package.json'))) available.add(packageName)
+      if (await profileVirtualPackageExists(siblingDir, packageName)) {
+        available.add(packageName)
+        continue
+      }
+      for (const field of PROFILE_DEPENDENCY_FIELDS) {
+        const sourcePath = resolveLocalDependencyReference(siblingDir, manifest?.[field]?.[packageName])
+        if (sourcePath && await hasPackageManifest(sourcePath)) {
+          available.add(packageName)
+          break
+        }
       }
     }
   }
@@ -274,7 +392,7 @@ async function locallyAvailableDependencies(dshHome: string, profileName: string
   for (const packageName of wanted) {
     if (available.has(packageName)) continue
     for (const rootName of ['.dsh-launcher-plugin-bodies', '.dsh-launcher-pack-bodies']) {
-      if (await exists(path.join(dshHome, rootName, ...packageName.split('/')))) {
+      if (await hasSharedPluginBody(path.join(dshHome, rootName), packageName)) {
         available.add(packageName)
         break
       }
@@ -296,8 +414,8 @@ async function summaryFor(options: ProfileServiceOptions, name: string, selected
     id: name,
     profileDir,
     initialized: profile.initialized,
-    pluginCount: profile.plugins.filter(plugin => !plugin.builtin).length,
-    enabledPluginCount: profile.plugins.filter(plugin => !plugin.builtin && plugin.enabled).length,
+    pluginCount: profile.plugins.filter(plugin => !plugin.builtin && !isDshCorePackage(plugin.packageName)).length,
+    enabledPluginCount: profile.plugins.filter(plugin => !plugin.builtin && !isDshCorePackage(plugin.packageName) && plugin.enabled).length,
     disabledPluginCount: profile.disabledCount,
     missingDependencies: missing,
     hasNodeModules: await exists(path.join(profileDir, 'node_modules')),
@@ -438,12 +556,12 @@ export async function consolidatePluginPool(dshHome: string): Promise<{ profiles
         dependencies += 1
       }
     }
+    // Keep each Profile's dependency declarations independent. Shared specs
+    // are still used to normalize an existing wildcard declaration, but an
+    // inactive plugin from a sibling Profile is not injected here; the global
+    // inventory exposes it and togglePlugin adds the specifier on activation.
     for (const [packageName, sharedSpecifier] of sharedSpecs) {
-      if (nextDependencies[packageName] === undefined) {
-        nextDependencies[packageName] = sharedSpecifier
-        changed = true
-        dependencies += 1
-      } else if (nextDependencies[packageName] === '*' && sharedSpecifier !== '*') {
+      if (nextDependencies[packageName] === '*' && sharedSpecifier !== '*') {
         nextDependencies[packageName] = sharedSpecifier
         changed = true
         dependencies += 1
@@ -470,20 +588,12 @@ export async function createProfile(options: ProfileServiceOptions, input: Profi
       if (await exists(path.join(source, file))) await cp(path.join(source, file), path.join(directory, file))
     }
   } else {
-    // A new Profile starts with no active bundles, but it participates in the
-    // same installed-plugin pool. Copy only non-core dependency specs from the
-    // currently selected Profile; links are materialized lazily on switch.
-    let dependencies: Record<string, string> = {}
-    try {
-      const current = await options.readSettings()
-      const currentManifest = JSON.parse(await readFile(path.join(dshHome, 'profiles', current.profileName, 'package.json'), 'utf8')) as { dependencies?: Record<string, unknown> }
-      dependencies = Object.fromEntries(Object.entries(currentManifest.dependencies ?? {}).filter(([name, spec]) =>
-        isSafePackageName(name) && !isDshCorePackage(name) && typeof spec === 'string',
-      )) as Record<string, string>
-    } catch {
-      // An empty pool is valid before the first plugin is installed.
-    }
-    await writeFile(path.join(directory, 'package.json'), `${JSON.stringify({ name: `dsh-profile-${input.name}`, private: true, dependencies, dsh: { profile: { bundles: [] } } }, null, 2)}\n`, 'utf8')
+    // A newly-created Profile is an empty activation environment. The shared
+    // inventory still makes every installed plugin visible in its management
+    // page, and togglePlugin adds the selected source to this Profile when the
+    // user activates it. Only an explicit clone copies dependency declarations
+    // and the activation order from another Profile.
+    await writeFile(path.join(directory, 'package.json'), `${JSON.stringify({ name: `dsh-profile-${input.name}`, private: true, dependencies: {}, dsh: { profile: { bundles: [] } } }, null, 2)}\n`, 'utf8')
   }
   // Clones may carry a legacy workspace file as well; normalize both creation
   // paths before the first switch or install can invoke pnpm.
@@ -493,8 +603,15 @@ export async function createProfile(options: ProfileServiceOptions, input: Profi
   await writeProfileMetadata(dshHome, input.name, {
     description: input.description ?? sourceMetadata?.description ?? '',
     dshVersion: input.dshVersion ?? sourceMetadata?.dshVersion ?? null,
-    source: { kind: 'local' },
+    source: input.source ?? { kind: 'local' },
+    packName: input.packName,
+    distributionKind: input.distributionKind,
   })
+  // A Profile owns its activation sequence, but all Profiles expose the same
+  // installed plugin pool. Reconcile the new manifest immediately so the
+  // Plugins page can show every locally available plugin even before this
+  // Profile's link layer is materialized.
+  await consolidatePluginPool(dshHome)
   return summaryFor(scoped, input.name, false)
 }
 
@@ -554,6 +671,11 @@ export async function deleteProfile(options: ProfileServiceOptions, profileName:
   if (packBodiesRoot) {
     await rm(path.join(packBodiesRoot, profileName), { recursive: true, force: true }).catch(() => undefined)
   }
+  // Unified Profiles are the runtime source of truth, but older releases may
+  // still have a matching legacy pack registry/manifest. Remove both so a
+  // refresh cannot resurrect a deleted Profile under its old pack name.
+  if (options.registryPath) await removePackRecord(options.registryPath, profileName)
+  if (options.manifestRoot) await removePackManifest(options.manifestRoot, profileName)
 }
 
 function migratedPackageManifest(profileName: string, record: PackRecord, base?: Record<string, unknown>): Record<string, unknown> {

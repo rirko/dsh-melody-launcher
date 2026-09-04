@@ -28,6 +28,10 @@ export interface AppSettings {
   network?: NetworkSettings
   /** 是否已向用户问过「官方推荐整合包 DSH Web UI」的下载/启用（弹过一次后不再弹）。 */
   recommendedWebUiPrompted?: boolean
+  /** 自定义主界面插图文件名（存于 userData/launcher-assets）；null 表示使用内置默认图。 */
+  launcherBackground?: string | null
+  /** 资源市场 Skill 仓库压缩包体积上限（MB）；解压体积与文件数防线随其等比放宽。 */
+  skillMaxArchiveMb?: number
 }
 
 export interface NetworkSettings {
@@ -70,6 +74,19 @@ export interface CustomApiProviderInput {
   modelIds: string[]
   /** 编辑时留空表示保留现有密钥；新建时留空表示该服务无需鉴权。 */
   apiKey?: string
+}
+
+/** 连通性检测目标：DeepSeek 官方或某个自定义 provider 路由。 */
+export type ApiProbeTarget = { target: 'deepseek-official' } | { target: 'custom'; route: string }
+
+export interface ApiProbeResult {
+  ok: boolean
+  /** HTTP 状态码；网络层失败（超时/不可达）为 null。 */
+  status: number | null
+  latencyMs: number
+  /** 是否经回退的最小真实请求确认（/models 不被网关支持时）。 */
+  usedFallback: boolean
+  message: string
 }
 
 export interface GitHubRateLimit {
@@ -122,6 +139,24 @@ export interface ManagedPlugin {
   locked: boolean
   compatible: boolean
   order: number | null
+  /** Whether this Profile declares the dependency in its own manifest.
+   *
+   * The launcher exposes the union of the shared plugin pool in every
+   * Profile. An undeclared plugin is therefore visible as an inactive
+   * candidate, but is not a missing dependency until the user activates it.
+   */
+  declaredInProfile?: boolean
+  /** The installation route used when this plugin was imported. */
+  actualSource?: 'market' | 'npm' | 'github' | 'local'
+  /** Originating distribution/profile metadata, when applicable. */
+  packOrigin?: PluginPackOrigin
+}
+
+export interface PluginPackOrigin {
+  packName: string
+  packRepository: string
+  packCommit: string | null
+  componentId: string
 }
 
 export interface ProfileState {
@@ -233,6 +268,8 @@ export interface PluginInstallRequest {
   profileName?: string // 安装到指定 profile
   /** release 源插件：meta-repo 分析得到的 tgz 直链，安装时覆盖重分析得到的 github 源。 */
   tarballUrl?: string
+  /** 整合包清单声明的安装来源；用于防止同名 npm 包改写 GitHub 来源。 */
+  source?: 'npm' | 'github'
 }
 
 export interface DshInstallationStatus {
@@ -258,8 +295,10 @@ export interface ProfileSourceMetadata {
   repository?: string
   branch?: string
   commit?: string
-  format?: 'zip' | 'yaml' | 'github'
+  format?: 'zip' | 'yaml' | 'github' | 'distribution'
   reference?: string
+  packName?: string
+  distributionKind?: 'standard-profile' | 'meta-repo' | 'distribution'
 }
 
 export interface ProfileSummary {
@@ -279,6 +318,10 @@ export interface ProfileSummary {
   missingDependencies: string[]
   hasNodeModules: boolean
   selected: boolean
+  importState?: 'complete' | 'partial' | 'failed'
+  importFailures?: string[]
+  /** Number of plugins installed by the most recent import operation. */
+  importedPluginCount?: number
 }
 
 export interface ProfileCreateRequest {
@@ -592,6 +635,51 @@ export interface InstallProgress {
   totalBytes?: number
 }
 
+/** 下载任务队列支持的任务种类；payload 全部可 JSON 序列化以便持久化。 */
+export type InstallQueueKind =
+  | 'dsh'
+  | 'node'
+  | 'plugin'
+  | 'skill'
+  | 'preset'
+  | 'application'
+  | 'pack-create'
+  | 'pack-import'
+  | 'dsh-market'
+
+export interface InstallQueueJobInputs {
+  /** 要下载的 DSH 版本号。 */
+  dsh: string
+  /** 要下载的 Node.js 版本号。 */
+  node: string
+  plugin: string | PluginInstallRequest
+  skill: SkillInstallRequest
+  preset: PresetInstallRequest
+  application: ApplicationInstallRequest
+  'pack-create': PackCreateRequest
+  'pack-import': { path: string; items?: string[]; name?: string }
+  'dsh-market': { action: 'install' | 'update'; name: string; profileName?: string; exactVersion?: string }
+}
+
+export type InstallQueueEntryState = 'pending' | 'running' | 'done' | 'failed' | 'cancelled'
+
+/** 队列条目（不携带 payload，渲染层只负责展示）。 */
+export interface InstallQueueEntry {
+  id: number
+  kind: InstallQueueKind
+  label: string
+  state: InstallQueueEntryState
+  enqueuedAt: string
+  startedAt: string | null
+  finishedAt: string | null
+  error: string | null
+}
+
+export interface InstallQueueSnapshot {
+  paused: boolean
+  entries: InstallQueueEntry[]
+}
+
 export interface RepositoryInstallResult {
   kind: 'plugin' | 'dsh'
   profile: ProfileState
@@ -701,6 +789,8 @@ export interface PackPluginEntry {
 }
 
 export type AiSessionKind = 'chat' | 'repository-install' | 'plugin-adaptation' | 'runtime-repair'
+/** Copilot agent implementation.  Existing sessions default to DSH. */
+export type AiSessionBackend = 'dsh' | 'codex'
 export type AiSessionPhase = 'idle' | 'queued' | 'preparing' | 'running' | 'done' | 'cancelled' | 'error' | 'interrupted'
 
 export interface AiMessage {
@@ -733,6 +823,8 @@ export interface AiSessionSummary {
   messageCount: number
   pendingApproval: AiApprovalRequest | null
   hasSnapshot: boolean
+  /** Backend used by this conversation; omitted in pre-Codex persisted data. */
+  backend?: AiSessionBackend
   /** 会话固定使用的模型（"provider|model"）；空表示自动选择。 */
   model?: string | null
 }
@@ -761,6 +853,7 @@ export type AiSessionEvent =
 
 export interface AiSessionCreateInput {
   kind?: AiSessionKind
+  backend?: AiSessionBackend
   title?: string
   subject?: string | null
 }
@@ -934,6 +1027,61 @@ export interface ProfileRepositoryImportPreview {
   blockers: string[]
 }
 
+export type NonstandardPackKind = 'standard-profile' | 'meta-repo' | 'distribution' | 'plugin' | 'skill' | 'application' | 'unknown'
+export type PackComponentCategory = 'core' | 'optional' | 'workspace' | 'vendored' | 'preset' | 'skill' | 'application' | 'runtime' | 'unknown'
+export type PackComponentSource = 'market' | 'npm' | 'github' | 'local' | 'unavailable'
+
+export interface NonstandardPackPluginPreview {
+  componentId: string
+  packageName: string
+  displayName: string
+  category: PackComponentCategory
+  enabled: boolean
+  order: number
+  repository: string | null
+  defaultBranch: string | null
+  subdirectory: string | null
+  version: string | null
+  commit: string | null
+  /** Source explicitly declared by a non-standard distribution manifest. */
+  declaredSource: 'npm' | 'github' | 'github-tarball' | 'link' | null
+  source: PackComponentSource
+  sourceLabel: string
+  targetId: string | null
+  reason?: string
+}
+
+export interface NonstandardPackSkippedComponent {
+  id: string
+  name: string
+  category: Exclude<PackComponentCategory, 'core' | 'optional' | 'workspace' | 'vendored' | 'unknown'> | 'unknown'
+  reason: string
+}
+
+export interface NonstandardPackImportPreview {
+  repository: string
+  branch: string
+  commit: string | null
+  kind: NonstandardPackKind
+  name: string
+  description: string
+  profileName: string
+  dshVersion: string | null
+  dshVersionInstalled?: boolean
+  dshSourceVersion: string | null
+  warnings: string[]
+  plugins: NonstandardPackPluginPreview[]
+  skipped: NonstandardPackSkippedComponent[]
+  blockers: string[]
+}
+
+export interface NonstandardPackImportOptions {
+  name?: string
+  packageNames?: string[]
+  /** Explicitly opt into installing the exact DSH version declared by the pack. */
+  installDsh?: boolean
+}
+
 export interface PackInstallResult {
   id: string
   installed: string[]
@@ -993,6 +1141,12 @@ export interface DshMarketProgress {
   totalBytes?: number | null
 }
 
+/** 插件卸载选项。purgeStore 表示跨所有 Profile 彻底清除，并离线回收受控 pnpm 缓存。 */
+export interface PluginUninstallOptions {
+  profileName?: string
+  purgeStore?: boolean
+}
+
 export interface LauncherApi {
   getSettings(): Promise<AppSettings>
   saveSettings(settings: AppSettings): Promise<AppSettings>
@@ -1018,6 +1172,7 @@ export interface LauncherApi {
   listCustomApiProviders(): Promise<CustomApiProvider[]>
   saveCustomApiProvider(input: CustomApiProviderInput): Promise<CustomApiProvider[]>
   removeCustomApiProvider(route: string): Promise<CustomApiProvider[]>
+  probeApiConnectivity(target: ApiProbeTarget): Promise<ApiProbeResult>
   getGitHubAuthStatus(): Promise<GitHubAuthStatus>
   loginGitHubWithToken(token: string): Promise<GitHubAuthStatus>
   beginGitHubDeviceLogin(): Promise<GitHubDeviceAuthorization>
@@ -1028,6 +1183,8 @@ export interface LauncherApi {
   getGitHubStarStatus(repository: string): Promise<boolean>
   setGitHubStar(repository: string, starred: boolean): Promise<boolean>
   chooseDirectory(kind: 'dshInstallPath' | 'dshHome' | 'workspace'): Promise<string | null>
+  chooseLauncherBackground(): Promise<string | null>
+  clearLauncherBackground(): Promise<void>
   readProfile(): Promise<ProfileState>
   listProfiles(): Promise<ProfileSummary[]>
   createProfile(request: ProfileCreateRequest): Promise<ProfileSummary>
@@ -1039,6 +1196,9 @@ export interface LauncherApi {
   importProfile(path: string, options?: { name?: string; overwrite?: boolean }): Promise<ProfileSummary>
   analyzeProfileRepository(url: string): Promise<ProfileRepositoryImportPreview>
   importProfileRepository(url: string, options: { mode: ProfileRepositoryImportMode; name?: string; overwrite?: boolean; resolutions?: Record<string, PackPluginEntry> }): Promise<ProfileSummary>
+  analyzeNonstandardPackRepository(url: string): Promise<NonstandardPackImportPreview>
+  importNonstandardPackRepository(url: string, options?: NonstandardPackImportOptions): Promise<ProfileSummary>
+  resolvePackPluginSources(preview: NonstandardPackImportPreview): Promise<NonstandardPackPluginPreview[]>
   matchProfilePlugin(packageName: string): Promise<PackPluginEntry | null>
   togglePlugin(packageName: string, enabled: boolean, profileName?: string): Promise<LinkedComponentToggleResult>
   reorderPlugins(packageNames: string[]): Promise<ProfileState>
@@ -1047,13 +1207,13 @@ export interface LauncherApi {
   analyzeCatalogRepository(fullName: string, defaultBranch: string, repositoryUpdatedAt?: string): Promise<CatalogRepositoryAnalysis>
   importCatalogUrl(url: string): Promise<CatalogImportResult>
   loadDshMarket(): Promise<DshMarketCatalog>
-  installDshMarketPlugin(name: string): Promise<DshMarketInstalledPlugin[]>
-  updateDshMarketPlugin(name: string): Promise<DshMarketInstalledPlugin[]>
-  uninstallDshMarketPlugin(name: string): Promise<DshMarketInstalledPlugin[]>
+  installDshMarketPlugin(name: string, profileName?: string, exactVersion?: string): Promise<DshMarketInstalledPlugin[]>
+  updateDshMarketPlugin(name: string, profileName?: string): Promise<DshMarketInstalledPlugin[]>
+  uninstallDshMarketPlugin(name: string, profileName?: string): Promise<DshMarketInstalledPlugin[]>
   toggleDshMarketPlugin(name: string, enabled: boolean): Promise<DshMarketInstalledPlugin[]>
   checkDshMarketUpdates(force?: boolean): Promise<Record<string, DshMarketUpdateStatus>>
   installPlugin(request: string | PluginInstallRequest): Promise<RepositoryInstallResult>
-  uninstallPlugin(packageName: string): Promise<ProfileState>
+  uninstallPlugin(packageName: string, options?: PluginUninstallOptions): Promise<ProfileState>
   trialPlugin(packageName: string, profileName?: string): Promise<PluginTrialResult>
   readPluginTrials(): Promise<PluginTrialResult[]>
   installSkill(request: SkillInstallRequest): Promise<SkillInstallResult>
@@ -1070,6 +1230,11 @@ export interface LauncherApi {
   getRuntimeState(): Promise<RuntimeState>
   startRuntime(): Promise<RuntimeState>
   stopRuntime(): Promise<RuntimeState>
+  listInstallQueue(): Promise<InstallQueueSnapshot>
+  pauseInstallQueue(): Promise<void>
+  resumeInstallQueue(): Promise<void>
+  cancelInstallQueueJob(id: number): Promise<void>
+  clearFinishedInstallQueue(): Promise<void>
   openExternal(url: string): Promise<void>
   openPath(path: string): Promise<void>
   openProfilePluginFolder(packageName: string): Promise<void>
@@ -1125,6 +1290,7 @@ export interface LauncherApi {
   onRuntimeOutput(listener: (output: RuntimeOutput) => void): () => void
   onRuntimeState(listener: (state: RuntimeState) => void): () => void
   onInstallProgress(listener: (progress: InstallProgress) => void): () => void
+  onInstallQueue(listener: (snapshot: InstallQueueSnapshot) => void): () => void
   onPluginTrialEvent(listener: (result: PluginTrialResult) => void): () => void
   onAiInstallEvent(listener: (event: AiInstallEvent) => void): () => void
   onAiSessionEvent(listener: (event: AiSessionEvent) => void): () => void

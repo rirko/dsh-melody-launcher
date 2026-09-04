@@ -345,10 +345,14 @@ function recommendedProfile(manifest: PackageManifest, currentProfile: string): 
   name: string
   platform: PluginInstallTarget['platform']
 } {
-  if (manifest.dsh?.client?.platform === 'web') return { name: 'web', platform: 'web' }
+  // The platform describes how the bundle runs; it is not a request to place
+  // the plugin in a global `web` Profile. Profiles are user-selectable
+  // environments, so a normal resource-market install must stay in the
+  // Profile that was active when the repository was analyzed.
+  if (manifest.dsh?.client?.platform === 'web') return { name: currentProfile, platform: 'web' }
   const packageName = manifest.name?.toLowerCase() ?? ''
   if (packageName === 'dsh-cc-tui' || /(?:^|[-_/])tui(?:$|[-_/])/.test(packageName)) {
-    return { name: 'cc-tui', platform: 'terminal' }
+    return { name: currentProfile, platform: 'terminal' }
   }
   return { name: currentProfile, platform: 'unknown' }
 }

@@ -1,4 +1,5 @@
 import {
+  Activity,
   Check,
   CircleAlert,
   CircleCheck,
@@ -14,6 +15,8 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import type {
+  ApiProbeResult,
+  ApiProbeTarget,
   CredentialStatus,
   CustomApiProtocol,
   CustomApiProvider,
@@ -30,6 +33,7 @@ interface CredentialDialogProps {
   onClearDeepSeek: () => Promise<boolean>
   onSaveCustom: (input: CustomApiProviderInput) => Promise<boolean>
   onRemoveCustom: (route: string) => Promise<boolean>
+  onProbe: (target: ApiProbeTarget) => Promise<ApiProbeResult>
 }
 
 interface ProviderDraft {
@@ -84,6 +88,7 @@ export function CredentialDialog({
   onClearDeepSeek,
   onSaveCustom,
   onRemoveCustom,
+  onProbe,
 }: CredentialDialogProps) {
   const [tab, setTab] = useState<'deepseek' | 'custom'>('deepseek')
   const [apiKey, setApiKey] = useState('')
@@ -92,6 +97,20 @@ export function CredentialDialog({
   const [confirmingClear, setConfirmingClear] = useState(false)
   const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null)
   const [draft, setDraft] = useState<ProviderDraft | null>(null)
+  const [probing, setProbing] = useState<string | null>(null)
+  const [probeResults, setProbeResults] = useState<Record<string, ApiProbeResult>>({})
+
+  /** key 为 'deepseek' 或 provider 路由；结果同时经 store toast 呈现。 */
+  const probe = async (target: ApiProbeTarget, key: string) => {
+    if (busy || probing !== null) return
+    setProbing(key)
+    try {
+      const result = await onProbe(target)
+      setProbeResults(current => ({ ...current, [key]: result }))
+    } finally {
+      setProbing(null)
+    }
+  }
 
   const saveDeepSeek = async () => {
     if (!apiKey.trim() || busy) return
@@ -163,6 +182,9 @@ export function CredentialDialog({
                 </div>
               </label>
               <p className="credential-privacy">Key 仅写入当前 DSH_HOME 的本机凭据文件。启动器不会回显、记录或上传它。</p>
+              {probeResults['deepseek'] && (
+                <p className={`api-probe-result ${probeResults['deepseek'].ok ? 'ok' : 'fail'}`}>{probeResults['deepseek'].message}</p>
+              )}
             </form>
           ) : (
             <div className="custom-api-panel">
@@ -184,11 +206,17 @@ export function CredentialDialog({
                         <strong>{provider.displayName}</strong>
                         <span>{provider.route} · {PROTOCOL_LABELS[provider.protocol]}</span>
                         <small title={provider.baseUrl}>{provider.baseUrl}</small>
+                        {probeResults[provider.route] && (
+                          <small className={`api-probe-result ${probeResults[provider.route].ok ? 'ok' : 'fail'}`}>{probeResults[provider.route].message}</small>
+                        )}
                       </div>
                       <div className="custom-api-meta">
                         <span>{provider.modelIds.length} 个模型</span>
                         <small className={provider.hasApiKey ? 'configured' : ''}>{provider.hasApiKey ? '密钥已配置' : '无本地密钥'}</small>
                       </div>
+                      <button type="button" className="icon-button" title="测试连接" aria-label={`测试 ${provider.displayName}`} disabled={busy || probing !== null} onClick={() => void probe({ target: 'custom', route: provider.route }, provider.route)}>
+                        {probing === provider.route ? <LoaderCircle size={15} className="spin" /> : <Activity size={15} />}
+                      </button>
                       <button type="button" className="icon-button" title="编辑" aria-label={`编辑 ${provider.displayName}`} disabled={busy} onClick={() => { setDraft(draftFromProvider(provider)); setConfirmingRemove(null) }}><Pencil size={15} /></button>
                       <button
                         type="button"
@@ -241,6 +269,9 @@ export function CredentialDialog({
                   if (await onClearDeepSeek()) setConfirmingClear(false)
                 }}><Trash2 size={16} />{confirmingClear ? '再次点击确认清除' : '清除 Key'}</button>
               )}
+              <button type="button" className="secondary-button" disabled={busy || probing !== null} onClick={() => void probe({ target: 'deepseek-official' }, 'deepseek')}>
+                {probing === 'deepseek' ? <LoaderCircle className="spin" size={16} /> : <Activity size={16} />}测试连接
+              </button>
               <button type="button" className="secondary-button" onClick={onClose} disabled={busy}>关闭</button>
               <button type="submit" form="deepseek-api-form" className="primary-command" disabled={busy || !apiKey.trim()}>{busy ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}{status.configured ? '替换 Key' : '保存 Key'}</button>
             </>

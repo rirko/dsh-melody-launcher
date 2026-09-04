@@ -43,17 +43,19 @@ import { approveAllIgnoredBuilds, denyBuildKeys } from './plugin-install'
 import { analyzeMetaRepository } from './meta-repo-catalog'
 import { analyzeRepository } from './plugin-catalog'
 import { prepareSubdirectoryPlugin, type PluginSourceProgress } from './plugin-source'
+import { purgeUnusedPluginSources } from './plugin-source-cleanup'
 import { readPluginReceipts, recordPluginInstall, removePluginReceipt } from './plugin-receipts'
 import { readPresetReceipts, recordPresetInstall } from './preset-receipts'
 import { readSkillReceipts, recordSkillInstall } from './skill-receipts'
-import { isSafePackageName, isSafeProfileName, readProfile } from './profile'
-import { withExecutableDirectoryOnPath } from './process'
+import { isSafePackageName, isSafeProfileName, readProfile, removePluginFromProfile, removeUnusedSharedPluginBodies } from './profile'
+import { gitUnavailableMessage, isGitHostedSpecifier, isGitUnavailableOutput, findGitExecutable, withExecutableDirectoryOnPath, withGitOnPath } from './process'
+import { isNpmVersionUnavailableError } from './npm-install'
 import { buildNetworkEnvironment } from './proxy'
 import { analyzeSkillRepository } from './skill-catalog'
 import { readInstalledSkills as readLocalSkills, toggleInstalledSkill } from './skill-format'
 import { installPresetFromRepository, readInstalledPresets as readLocalPresets, toggleInstalledPreset, uninstallInstalledPreset } from './preset-install'
 import { downloadReleaseAsset } from './release-download'
-import { installSkillFromRepository } from './skill-install'
+import { installSkillFromRepository, skillInstallLimits } from './skill-install'
 import {
   DSH_SUBPROCESS_LOCAL_PACKAGE,
   ensureDshScriptPolicy,
@@ -107,6 +109,23 @@ export function validateLocalPluginDirectory(localDirectory?: string): string {
   return localDirectory
 }
 
+/** Resolve a Profile `file:` dependency before uninstall removes its manifest entry. */
+function resolveFileDependency(manifestPath: string, specifier: unknown): string | null {
+  if (typeof specifier !== 'string' || !specifier.startsWith('file:')) return null
+  let raw = specifier.slice('file:'.length).trim()
+  if (!raw) return null
+  try { raw = decodeURIComponent(raw) } catch { /* keep legacy raw path */ }
+  if (raw.startsWith('//')) {
+    try {
+      const parsed = new URL(`file:${raw}`)
+      if (parsed.host && parsed.host !== 'localhost') return null
+      raw = decodeURIComponent(parsed.pathname)
+      if (/^\/[A-Za-z]:\//.test(raw)) raw = raw.slice(1)
+    } catch { return null }
+  }
+  return path.resolve(path.dirname(manifestPath), raw)
+}
+
 function validateNpmVersion(version?: string): string | undefined {
   if (version === undefined) return undefined
   const normalized = version.trim()
@@ -130,6 +149,13 @@ export interface InstallerOptions {
   pluginReceiptsPath: string
   /** 所有 Profile 共用的受控 pnpm store；Profile 自己仍保留独立链接层。 */
   packageStoreRoot?: string
+  /** 安装成功后同步共享插件池；同步失败只记录日志，不影响安装结果。 */
+  syncProfilePool?: (dshHome: string) => Promise<void>
+  /**
+   * 清理受控 pnpm store 中已经不再被任何 Profile 引用的缓存。
+   * 该回调由主进程注入，必须使用启动器自带的 pnpm，并以 offline 模式执行。
+   */
+  purgePnpmStore?: (storeRoot: string) => Promise<void>
   /** Agent 预设安装凭据文件的路径。 */
   presetReceiptsPath: string
   /** Skill 安装凭据文件的路径。 */
@@ -141,6 +167,8 @@ export interface InstallerOptions {
   isRuntimeRunning: () => boolean
   /** 测试注入用的命令执行器替身；缺省用真实 runCommand。 */
   runCommand?: (executable: string, args: string[], options: CommandOptions) => Promise<CommandResult>
+  /** Git 解析器，测试可模拟未安装 Git 的系统。 */
+  resolveGitExecutable?: (environment: NodeJS.ProcessEnv) => string | null
   /** 所有 GitHub HTTP 请求统一从这里注入认证。 */
   githubFetch?: typeof fetch
 }
@@ -160,12 +188,19 @@ export interface Installer {
       version?: string
       /** release 源插件的 tgz 直链（meta-repo 分析时解析），覆盖重分析得到的 github 源。 */
       tarballUrl?: string
+      /** 整合包清单声明的来源，优先于重新分析得到的 npm/GitHub 候选。 */
+      source?: 'npm' | 'github'
     },
     profileOverride?: string,
   ): Promise<RepositoryInstallResult>
   /** 直接安装 npm 发布的标准 Bundle；用于没有 GitHub 仓库的清单条目。 */
   installNpmPackage(
     request: { packageName: string; version?: string; repository?: string; approvedBuildKeys?: string[]; deniedBuildKeys?: string[] },
+    profileOverride?: string,
+  ): Promise<RepositoryInstallResult>
+  /** Install a validated package directory into a target Profile. */
+  installLocalPlugin(
+    request: { packageName: string; directory: string; repository?: string; commit?: string; version?: string },
     profileOverride?: string,
   ): Promise<RepositoryInstallResult>
   /** 检测一个插件仓库，返回可安装组件清单（带 5 分钟缓存）。 */
@@ -199,8 +234,8 @@ export interface Installer {
   uninstallPreset(name: string): Promise<InstalledPreset[]>
   /** 汇总当前 Profile 与安装凭据里已安装的仓库，用于在列表中标记「已安装」。 */
   listInstalledRepositories(): Promise<string[]>
-  /** 卸载插件；显式指定 Profile 时只处理该 Profile，否则从本机所有 Profile 清理。 */
-  remove(packageName: string, profileName?: string): Promise<ProfileState>
+  /** 卸载插件；purgeStore 会忽略显式 Profile 并从本机所有 Profile 彻底清除。 */
+  remove(packageName: string, profileName?: string, options?: { purgeStore?: boolean }): Promise<ProfileState>
   detectDsh(): Promise<DshInstallationStatus>
   checkDshUpdate(): Promise<DshUpdateStatus>
   isBusy(): boolean
@@ -210,6 +245,11 @@ export interface Installer {
 const NODE_RUNTIME_PROGRESS_FLOOR = 5
 const NODE_RUNTIME_PROGRESS_CEILING = 17
 const DOWNLOAD_PROGRESS_FLOOR = 28
+/**
+ * pnpm/npm 的依赖解析可能数分钟没有新的一行输出，因此这里只限制“无输出”
+ * 而不是整次安装时长。超时后会终止 DSH、cmd 和 pnpm 的整棵进程树。
+ */
+const INSTALL_COMMAND_IDLE_TIMEOUT_MS = 5 * 60 * 1000
 
 /** Release 插件 tgz 安装包体积上限（插件可能比 Skill 大，放宽到 256 MiB）。 */
 const MAX_RELEASE_BYTES = 256 * 1024 * 1024
@@ -253,6 +293,18 @@ export async function syncProfilePnpmConfig(
 export function createInstaller(options: InstallerOptions): Installer {
   let active: InstallProgress | null = null
   const executeCommand = options.runCommand ?? runCommand
+  const resolveGit = options.resolveGitExecutable ?? findGitExecutable
+
+  /** Keep a successful install successful even if another Profile cannot be synchronized. */
+  const syncInstalledPluginPool = async (dshHome: string): Promise<void> => {
+    if (!options.syncProfilePool) return
+    try {
+      await options.syncProfilePool(dshHome)
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      options.emitOutput('error', `共享插件池同步失败：${detail}`)
+    }
+  }
 
   const emit = (progress: InstallProgress) => {
     active = progress
@@ -533,6 +585,38 @@ export function createInstaller(options: InstallerOptions): Installer {
     if (deniedRegistryBuildKeys.length > 0) await denyBuildKeys(workspacePath, deniedRegistryBuildKeys)
     await syncProfilePnpmConfig(path.join(settings.dshHome, 'profiles', targetProfile), network.npmRegistry, options.packageStoreRoot)
 
+    const commandEnvironment = withGitOnPath(withExecutableDirectoryOnPath(
+      pnpmRuntime.executable,
+      withExecutableDirectoryOnPath(nodeRuntime.node, {
+        ...process.env,
+        ...network.proxy,
+        npm_config_registry: network.npmRegistry,
+        NPM_CONFIG_REGISTRY: network.npmRegistry,
+        DSH_HOME: settings.dshHome,
+        // DSH 内部会同步调用 pnpm。明确告诉 npm/pnpm 当前没有 TTY，
+        // 避免 allow-builds、清理确认或下载提示把安装挂在 stdin 上。
+        CI: 'true',
+        npm_config_yes: 'true',
+        NPM_CONFIG_YES: 'true',
+        PNPM_CONFIG_YES: 'true',
+        COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
+        NPM_CONFIG_UPDATE_NOTIFIER: 'false',
+        ...(options.packageStoreRoot ? { npm_config_store_dir: options.packageStoreRoot, NPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
+        ...(options.packageStoreRoot ? { pnpm_config_store_dir: options.packageStoreRoot, PNPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
+        FORCE_COLOR: '0',
+      }),
+    ))
+
+    // A GitHub dependency makes pnpm invoke Git before it can emit useful
+    // package progress. Fail immediately with an actionable message instead
+    // of waiting through pnpm's network retries and then showing its generic
+    // allow-builds hint.
+    if (args.some(isGitHostedSpecifier) && !resolveGit(commandEnvironment)) {
+      const message = gitUnavailableMessage()
+      options.emitOutput('error', message)
+      throw new Error(message)
+    }
+
     options.emitOutput('info', `插件操作：${args.join(' ')}`)
     if (installingRepository) {
       emit({ repository: installingRepository, kind: 'plugin', phase: 'resolving', percent: 18, message: '正在解析插件仓库' })
@@ -546,19 +630,8 @@ export function createInstaller(options: InstallerOptions): Installer {
     try {
       result = await executeCommand(executable, commandArgs, {
         cwd: settings.workspace,
-        env: withExecutableDirectoryOnPath(
-          pnpmRuntime.executable,
-          withExecutableDirectoryOnPath(nodeRuntime.node, {
-            ...process.env,
-            ...network.proxy,
-            npm_config_registry: network.npmRegistry,
-            NPM_CONFIG_REGISTRY: network.npmRegistry,
-            DSH_HOME: settings.dshHome,
-            ...(options.packageStoreRoot ? { npm_config_store_dir: options.packageStoreRoot, NPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
-            ...(options.packageStoreRoot ? { pnpm_config_store_dir: options.packageStoreRoot, PNPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
-            FORCE_COLOR: '0',
-          }),
-        ),
+        env: commandEnvironment,
+        inactivityTimeoutMs: INSTALL_COMMAND_IDLE_TIMEOUT_MS,
         onOutput: (text, level: OutputLevel) => {
           options.emitOutput(level, text)
           tracker?.handleOutput(text)
@@ -566,6 +639,12 @@ export function createInstaller(options: InstallerOptions): Installer {
       })
     } finally {
       tracker?.stop()
+    }
+
+    if (result.exitCode !== 0 && isGitUnavailableOutput(result.output)) {
+      const message = gitUnavailableMessage()
+      options.emitOutput('error', message)
+      throw new Error(message)
     }
 
     // pnpm 升级后，旧 Profile 的 node_modules 可能还链着旧版 store（ERR_PNPM_UNEXPECTED_STORE）。
@@ -582,17 +661,22 @@ export function createInstaller(options: InstallerOptions): Installer {
       })
       const migrate = await executeCommand(pnpmRuntime.executable, ['install'], {
         cwd: profilePath,
-        env: withExecutableDirectoryOnPath(nodeRuntime.node, {
+        env: withGitOnPath(withExecutableDirectoryOnPath(nodeRuntime.node, {
           ...process.env,
           ...network.proxy,
           npm_config_registry: network.npmRegistry,
           NPM_CONFIG_REGISTRY: network.npmRegistry,
           CI: 'true',
+          npm_config_yes: 'true',
+          NPM_CONFIG_YES: 'true',
+          PNPM_CONFIG_YES: 'true',
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
           DSH_HOME: settings.dshHome,
           ...(options.packageStoreRoot ? { npm_config_store_dir: options.packageStoreRoot, NPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
           ...(options.packageStoreRoot ? { pnpm_config_store_dir: options.packageStoreRoot, PNPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
           FORCE_COLOR: '0',
-        }),
+        })),
+        inactivityTimeoutMs: INSTALL_COMMAND_IDLE_TIMEOUT_MS,
         onOutput: (text, level: OutputLevel) => options.emitOutput(level, text),
       })
       if (migrate.exitCode === 0) {
@@ -625,6 +709,135 @@ export function createInstaller(options: InstallerOptions): Installer {
       throw new Error(`插件操作失败（代码 ${result.exitCode}）。${diagnostics ? `\n${diagnostics}` : ' 请查看运行日志。'}`)
     }
     options.emitOutput('success', '插件操作完成。')
+  }
+
+  /**
+   * Local and vendored plugin sources are installed through a `file:` specifier.
+   * pnpm does not run an arbitrary `build` script for those sources, so a source
+   * package that declares a generated Bundle patch can otherwise be linked into
+   * the Profile without its `dist` output. Build it before creating the specifier.
+   */
+  const ensureLocalPluginBuild = async (directory: string, repository: string, packageName: string): Promise<void> => {
+    const manifestPath = path.join(directory, 'package.json')
+    let manifest: Record<string, unknown>
+    try {
+      manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>
+    } catch (error) {
+      throw new Error(`无法读取本地插件 ${packageName} 的 package.json：${error instanceof Error ? error.message : String(error)}`)
+    }
+
+    const dsh = manifest.dsh && typeof manifest.dsh === 'object' ? manifest.dsh as Record<string, unknown> : null
+    const bundle = dsh?.bundle && typeof dsh.bundle === 'object' ? dsh.bundle as Record<string, unknown> : null
+    const patch = typeof bundle?.patch === 'string' ? bundle.patch.trim() : ''
+    if (!patch) return
+
+    const resolvedDirectory = path.resolve(directory)
+    const patchPath = path.resolve(directory, patch)
+    if (patchPath !== resolvedDirectory && !patchPath.startsWith(`${resolvedDirectory}${path.sep}`)) {
+      throw new Error(`插件 ${packageName} 的 Bundle 补丁路径超出了源码目录。`)
+    }
+    if (existsSync(patchPath)) return
+
+    const scripts = manifest.scripts && typeof manifest.scripts === 'object' ? manifest.scripts as Record<string, unknown> : null
+    const buildScript = typeof scripts?.build === 'string' ? scripts.build.trim() : ''
+    if (!buildScript) {
+      throw new Error(`插件 ${packageName} 声明了 ${patch}，但构建产物不存在，且没有 build 脚本。`)
+    }
+
+    const settings = await options.readSettings()
+    const nodeRuntime = await prepareNode(repository)
+    const pnpmRuntime = await preparePnpm(nodeRuntime, repository)
+    const environment = withExecutableDirectoryOnPath(pnpmRuntime.executable, withExecutableDirectoryOnPath(nodeRuntime.node, {
+      ...process.env,
+      DSH_HOME: settings.dshHome,
+      CI: 'true',
+      npm_config_yes: 'true',
+      NPM_CONFIG_YES: 'true',
+      PNPM_CONFIG_YES: 'true',
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
+      NPM_CONFIG_UPDATE_NOTIFIER: 'false',
+      ...(options.packageStoreRoot ? { npm_config_store_dir: options.packageStoreRoot, NPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
+      ...(options.packageStoreRoot ? { pnpm_config_store_dir: options.packageStoreRoot, PNPM_CONFIG_STORE_DIR: options.packageStoreRoot } : {}),
+      FORCE_COLOR: '0',
+    }))
+    const tracker = trackPackageProgress(repository, 'plugin', `正在准备 ${packageName} 构建环境`)
+    try {
+      options.emitOutput('info', `[${repository}] ${packageName} 的构建产物 ${patch} 不存在，准备执行 build。`)
+      emit({ repository, kind: 'plugin', phase: 'configuring', percent: Math.max(32, currentPercent(32)), message: `正在准备 ${packageName} 构建环境` })
+
+      // A GitHub/archive source normally has no node_modules. Install the
+      // source workspace dependencies before running its build script. Keep
+      // the install non-interactive and use the launcher's shared store.
+      if (!existsSync(path.join(directory, 'node_modules'))) {
+        const dependencyInstall = await executeCommand(pnpmRuntime.executable, [
+          'install',
+          '--dir', directory,
+          '--no-frozen-lockfile',
+          '--config.auto-install-peers=false',
+          ...(options.packageStoreRoot ? ['--store-dir', options.packageStoreRoot] : []),
+        ], {
+          cwd: directory,
+          env: environment,
+          inactivityTimeoutMs: INSTALL_COMMAND_IDLE_TIMEOUT_MS,
+          onOutput: (text, level: OutputLevel) => {
+            options.emitOutput(level, text)
+            tracker.handleOutput(text)
+          },
+        })
+        if (dependencyInstall.exitCode !== 0) {
+          throw new Error(`插件 ${packageName} 构建依赖安装失败（代码 ${dependencyInstall.exitCode}），请查看运行日志。`)
+        }
+      }
+
+      emit({ repository, kind: 'plugin', phase: 'configuring', percent: Math.max(58, currentPercent(58)), message: `正在构建 ${packageName}` })
+      const build = await executeCommand(pnpmRuntime.executable, ['run', 'build'], {
+        cwd: directory,
+        env: environment,
+        inactivityTimeoutMs: INSTALL_COMMAND_IDLE_TIMEOUT_MS,
+        onOutput: (text, level: OutputLevel) => {
+          options.emitOutput(level, text)
+          tracker.handleOutput(text)
+        },
+      })
+      if (build.exitCode !== 0) {
+        throw new Error(`插件 ${packageName} 构建失败（代码 ${build.exitCode}），请查看运行日志。`)
+      }
+    } finally {
+      tracker.stop()
+    }
+
+    if (!existsSync(patchPath)) {
+      throw new Error(`插件 ${packageName} 构建完成，但仍未生成 ${patch}。`)
+    }
+    options.emitOutput('success', `[${repository}] ${packageName} 构建完成，已生成 ${patch}。`)
+  }
+
+  /** npm 精确版本失效时只对该包回退到 registry 的 latest。 */
+  async function runNpmPluginCommand(
+    packageName: string,
+    version: string | null | undefined,
+    repository: string,
+    profileName: string,
+    approvedBuildKeys: string[] = [],
+    deniedBuildKeys: string[] = [],
+  ): Promise<boolean> {
+    const exactSpecifier = version ? `${packageName}@${version}` : packageName
+    try {
+      await runPluginCommand(['add', exactSpecifier], repository, true, profileName, approvedBuildKeys, deniedBuildKeys)
+      return false
+    } catch (error) {
+      if (!version || !isNpmVersionUnavailableError(error, packageName, version)) throw error
+      options.emitOutput('info', `npm 未找到 ${packageName}@${version}，正在尝试安装 latest。`)
+      emit({
+        repository,
+        kind: 'plugin',
+        phase: 'resolving',
+        percent: Math.max(12, currentPercent(12)),
+        message: `版本 ${version} 不存在，正在尝试 npm latest`,
+      })
+      await runPluginCommand(['add', packageName], repository, true, profileName, approvedBuildKeys, deniedBuildKeys)
+      return true
+    }
   }
 
   /** 把 DSH 本体装进启动器自己的运行目录，并把启动命令切过去。 */
@@ -685,11 +898,16 @@ export function createInstaller(options: InstallerOptions): Installer {
         selectedVersion ? `${DSH_PACKAGE_NAME}@${selectedVersion}` : `${DSH_PACKAGE_NAME}@latest`,
       ], {
         cwd: runtimeRoot,
-        env: withExecutableDirectoryOnPath(nodeRuntime.node, {
+        env: withGitOnPath(withExecutableDirectoryOnPath(nodeRuntime.node, {
           ...process.env,
           FORCE_COLOR: '0',
           NPM_CONFIG_UPDATE_NOTIFIER: 'false',
-        }),
+          CI: 'true',
+          npm_config_yes: 'true',
+          NPM_CONFIG_YES: 'true',
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
+        })),
+        inactivityTimeoutMs: INSTALL_COMMAND_IDLE_TIMEOUT_MS,
         onOutput: (text, level: OutputLevel) => {
           options.emitOutput(level, text)
           tracker.handleOutput(text)
@@ -706,11 +924,16 @@ export function createInstaller(options: InstallerOptions): Installer {
           DSH_SUBPROCESS_LOCAL_PACKAGE,
         ], {
           cwd: runtimeRoot,
-          env: withExecutableDirectoryOnPath(nodeRuntime.node, {
+          env: withGitOnPath(withExecutableDirectoryOnPath(nodeRuntime.node, {
             ...process.env,
             FORCE_COLOR: '0',
             NPM_CONFIG_UPDATE_NOTIFIER: 'false',
-          }),
+            CI: 'true',
+            npm_config_yes: 'true',
+            NPM_CONFIG_YES: 'true',
+            COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
+          })),
+          inactivityTimeoutMs: INSTALL_COMMAND_IDLE_TIMEOUT_MS,
           onOutput: (text, level: OutputLevel) => {
             options.emitOutput(level, text)
             tracker.handleOutput(text)
@@ -761,11 +984,11 @@ export function createInstaller(options: InstallerOptions): Installer {
         : ['--yes', DSH_PACKAGE_NAME]
     const result = await executeCommand(executable, [...prefix, '--profile', profileName, '--dump-config'], {
       cwd: settings.workspace,
-      env: withExecutableDirectoryOnPath(nodeRuntime.node, {
+      env: withGitOnPath(withExecutableDirectoryOnPath(nodeRuntime.node, {
         ...process.env,
         DSH_HOME: settings.dshHome,
         FORCE_COLOR: '0',
-      }),
+      })),
       onOutput: (text, level: OutputLevel) => options.emitOutput(level, text),
     })
     if (result.exitCode !== 0) {
@@ -796,6 +1019,7 @@ export function createInstaller(options: InstallerOptions): Installer {
         await runPluginCommand(['add', `github:${fullName}`], fullName)
         emit({ repository: fullName, kind, phase: 'configuring', percent: 90, message: '正在更新插件配置' })
         const settings = await options.readSettings()
+        await syncInstalledPluginPool(settings.dshHome)
         const profile = await readProfile(settings.dshHome, settings.profileName, options.pluginReceiptsPath)
         const dshInstallation = await detectDsh()
         emit({ repository: fullName, kind, phase: 'complete', percent: 100, message: '插件安装完成' })
@@ -814,18 +1038,28 @@ export function createInstaller(options: InstallerOptions): Installer {
       }
     },
 
-    async remove(packageName: string, profileName?: string): Promise<ProfileState> {
+    async remove(packageName: string, profileName?: string, removeOptions?: { purgeStore?: boolean }): Promise<ProfileState> {
+      if (active) throw new Error(`正在执行 ${active.repository}，请等待当前任务完成。`)
       const settings = await options.readSettings()
+      if (removeOptions?.purgeStore && (!options.packageStoreRoot || !options.purgePnpmStore)) {
+        throw new Error('当前安装器未配置可用的受控 pnpm store，无法执行彻底清除。')
+      }
       const currentProfile = settings.profileName
       const receipts = await readPluginReceipts(options.pluginReceiptsPath).catch(() => [])
       const receiptProfiles = receipts
         .filter(receipt => receipt.packageName === packageName && isSafeProfileName(receipt.profileName))
         .map(receipt => receipt.profileName)
 
-      // 传入 profileName 的调用用于整合包/内部流程，只操作指定 Profile；
-      // UI 的普通卸载不传该参数，因此会覆盖本机所有已登记的 Profile。
-      const targetProfiles = new Set<string>(profileName ? [profileName] : [currentProfile, ...receiptProfiles])
-      if (!profileName) {
+      // `purgeStore` 是“彻底清除”语义：无论请求来自哪个 Profile，
+      // 都必须先解除所有 Profile 的依赖和激活引用，再回收共享本体/缓存。
+      // 未开启 purgeStore 的内部调用仍保留单 Profile 语义。
+      const purgeAllProfiles = removeOptions?.purgeStore === true
+      const targetProfiles = new Set<string>(
+        purgeAllProfiles || !profileName
+          ? [currentProfile, ...(profileName && isSafeProfileName(profileName) ? [profileName] : []), ...receiptProfiles]
+          : [profileName],
+      )
+      if (purgeAllProfiles || !profileName) {
         try {
           const entries = await readdir(path.join(settings.dshHome, 'profiles'), { withFileTypes: true })
           for (const entry of entries) {
@@ -837,33 +1071,150 @@ export function createInstaller(options: InstallerOptions): Installer {
       }
 
       const failures: string[] = []
-      for (const targetProfile of targetProfiles) {
-        let profile: ProfileState | null = null
-        try {
-          profile = await readProfile(settings.dshHome, targetProfile, options.pluginReceiptsPath)
-        } catch {
-          // 清理安装回执仍可继续；损坏的 Profile 不应阻塞其他 Profile 的卸载。
-        }
-        const installed = profile?.plugins.some(item => item.packageName === packageName && !item.builtin) ?? false
-        const hasReceipt = receiptProfiles.includes(targetProfile)
-
-        if (profileName || installed) {
+      // Keep the source references before removing receipts. They are needed
+      // to safely delete GitHub snapshots/release archives only after every
+      // Profile link and receipt for this package has been handled.
+      const removedReceipts = receipts.filter(receipt => (
+        receipt.packageName === packageName && targetProfiles.has(receipt.profileName)
+      ))
+      const removedFileReferences: string[] = []
+      try {
+        // Uninstall is a local manifest operation. Calling DSH/pnpm here would
+        // re-resolve every remaining dependency and can unexpectedly contact
+        // npm/GitHub, so each Profile is edited directly instead.
+        for (const targetProfile of targetProfiles) {
+          let profile: ProfileState | null = null
           try {
-            await runPluginCommand(['remove', packageName], undefined, true, targetProfile)
+            profile = await readProfile(settings.dshHome, targetProfile, options.pluginReceiptsPath)
+          } catch {
+            // 清理安装回执仍可继续；损坏的 Profile 不应阻塞其他 Profile 的卸载。
+          }
+          const installed = profile?.plugins.some(item => item.packageName === packageName && !item.builtin) ?? false
+          const hasReceipt = receiptProfiles.includes(targetProfile)
+          const directPackagePath = path.join(
+            settings.dshHome,
+            'profiles',
+            targetProfile,
+            'node_modules',
+            ...packageName.split('/'),
+          )
+          const linked = existsSync(directPackagePath)
+          let declared = false
+          try {
+            const manifestPath = path.join(settings.dshHome, 'profiles', targetProfile, 'package.json')
+            const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
+              dependencies?: Record<string, unknown>
+              devDependencies?: Record<string, unknown>
+              optionalDependencies?: Record<string, unknown>
+              peerDependencies?: Record<string, unknown>
+              dsh?: { profile?: { bundles?: unknown } }
+            }
+            declared = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'].some(field => {
+              const dependencies = manifest[field as keyof typeof manifest]
+              return dependencies && typeof dependencies === 'object'
+                && Object.prototype.hasOwnProperty.call(dependencies, packageName)
+            }) || (Array.isArray(manifest.dsh?.profile?.bundles) && manifest.dsh.profile.bundles.includes(packageName))
+          } catch (error) {
+            // A missing manifest means an uninitialized Profile. A malformed
+            // or unreadable one cannot be proven free of this package, so a
+            // global purge must not reclaim shared bodies/caches underneath it.
+            if (purgeAllProfiles && (error as NodeJS.ErrnoException).code !== 'ENOENT') {
+              failures.push(`${targetProfile}: 无法读取 Profile 配置：${error instanceof Error ? error.message : String(error)}`)
+              continue
+            }
+            // A malformed Profile is still handled when it has a receipt; the
+            // direct manifest check below prevents healthy-but-unlinked
+            // Profiles from being skipped.
+          }
+
+          // A purge scans every Profile, but only profiles that actually
+          // reference the package need to be edited. An explicit non-purge
+          // request still targets its named Profile even when its manifest is
+          // stale, so removePluginFromProfile can perform the final check.
+          if ((purgeAllProfiles || !profileName) && !installed && !declared && !hasReceipt && !linked) continue
+
+          // Legacy local installs may not record their concrete source path in
+          // the receipt. Capture the target's `file:` dependency now; after a
+          // successful uninstall it becomes an eligible launcher cache.
+          try {
+            const manifestPath = path.join(settings.dshHome, 'profiles', targetProfile, 'package.json')
+            const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>
+            for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+              const dependencies = manifest[field]
+              if (!dependencies || typeof dependencies !== 'object') continue
+              const reference = resolveFileDependency(manifestPath, (dependencies as Record<string, unknown>)[packageName])
+              if (reference) removedFileReferences.push(reference)
+            }
+          } catch {
+            // removePluginFromProfile below reports any manifest failure.
+          }
+
+          let removed = false
+          try {
+            removed = await removePluginFromProfile(settings.dshHome, targetProfile, packageName)
           } catch (error) {
             failures.push(`${targetProfile}: ${error instanceof Error ? error.message : String(error)}`)
             continue
           }
-        } else if (!hasReceipt) {
-          continue
-        }
-        await removePluginReceipt(options.pluginReceiptsPath, targetProfile, packageName)
-      }
 
-      if (failures.length > 0) {
-        throw new Error(`插件未能从所有本机 Profile 完全卸载：${failures.join('；')}`)
+          // A complete purge must never proceed to shared-store cleanup while
+          // a Profile that was known to reference the package remains intact.
+          // Treat an unexpected no-op as a per-Profile failure instead of
+          // silently deleting its receipt and claiming global removal.
+          if (purgeAllProfiles && (installed || declared || linked) && !removed) {
+            failures.push(`${targetProfile}: 未能解除对 ${packageName} 的引用`)
+            continue
+          }
+
+          if (removed) options.emitOutput('success', `[${targetProfile}] ${packageName} 已从本地 Profile 清理。`)
+          await removePluginReceipt(options.pluginReceiptsPath, targetProfile, packageName)
+        }
+
+        if (failures.length === 0) {
+          const removedBody = await removeUnusedSharedPluginBodies(settings.dshHome, packageName)
+          if (removedBody) options.emitOutput('success', `${packageName} 已从共享插件本体池删除。`)
+          else options.emitOutput('info', `${packageName} 的共享本体仍被其他 Profile 引用，已保留。`)
+
+          // pnpm 的 store 是内容寻址缓存，不能按目录名直接删除。只有用户
+          // 明确选择“彻底卸载”时才运行离线 prune，让 pnpm 根据所有 Profile
+          // 的引用关系回收目标插件及其不再使用的传递依赖。
+          if (removeOptions?.purgeStore && options.packageStoreRoot && options.purgePnpmStore) {
+            try {
+              const remainingReceipts = await readPluginReceipts(options.pluginReceiptsPath).catch(() => [])
+              const removedSources = await purgeUnusedPluginSources({
+                sourceRoot: options.pluginSourceRoot,
+                removedReceipts,
+                remainingReceipts,
+                removedFileReferences,
+                profileRoot: path.join(settings.dshHome, 'profiles'),
+              })
+              if (removedSources.length > 0) {
+                options.emitOutput('success', `已清理 ${removedSources.length} 个插件源码缓存。`)
+              }
+            } catch (error) {
+              const detail = error instanceof Error ? error.message : String(error)
+              options.emitOutput('error', `插件源码缓存清理失败：${detail}`)
+              throw new Error(`插件已从 Profile 卸载，但源码缓存清理失败：${detail}`)
+            }
+            options.emitOutput('info', '正在离线清理未被 Profile 引用的 pnpm 缓存…')
+            try {
+              await options.purgePnpmStore(options.packageStoreRoot)
+              options.emitOutput('success', `${packageName} 的未引用 pnpm 缓存已清理。`)
+            } catch (error) {
+              const detail = error instanceof Error ? error.message : String(error)
+              options.emitOutput('error', `pnpm 缓存清理失败：${detail}`)
+              throw new Error(`插件已从 Profile 卸载，但 pnpm 缓存清理失败：${detail}`)
+            }
+          }
+        }
+
+        if (failures.length > 0) {
+          throw new Error(`插件未能从所有本机 Profile 完全卸载：${failures.join('；')}`)
+        }
+        return readProfile(settings.dshHome, profileName ?? currentProfile, options.pluginReceiptsPath)
+      } finally {
+        active = null
       }
-      return readProfile(settings.dshHome, profileName ?? currentProfile, options.pluginReceiptsPath)
     },
 
     analyzePlugin,
@@ -916,6 +1267,8 @@ export function createInstaller(options: InstallerOptions): Installer {
         version?: string
         /** release 源插件：meta-repo 分析得到的 tgz 直链，覆盖重分析得到的 github 源。 */
         tarballUrl?: string
+        /** 清单声明的来源，优先于重新分析得到的候选来源。 */
+        source?: 'npm' | 'github'
       },
       profileOverride?: string,
     ): Promise<RepositoryInstallResult> {
@@ -928,6 +1281,11 @@ export function createInstaller(options: InstallerOptions): Installer {
         const found = analysis.targets.find(item => item.id === request.targetId)
         if (!found) throw new Error(analysis.summary || '所选插件组件已经失效，请重新检测仓库。')
         const target = { ...found }
+        // A distribution manifest is authoritative about whether a component
+        // is npm- or GitHub-backed. A repository may publish a same-named npm
+        // package, but that must not silently replace a pinned Git source.
+        if (request.source === 'github') target.source = 'github'
+        if (request.source === 'npm') target.source = 'npm'
         // 尊重整合包声明的 pin：仓库已前进时仍按导出时的 commit / version 安装。
         if (request.commit && target.source === 'github') target.commit = request.commit
         if (request.version && target.source === 'npm') target.version = request.version
@@ -939,10 +1297,44 @@ export function createInstaller(options: InstallerOptions): Installer {
         const profileName = resolveInstallProfile(target, profileOverride)
 
         let specifier: string
+        // pnpm's Git fetcher requires a system Git executable. When the
+        // launcher is running on a machine without Git, use the immutable
+        // GitHub archive for the already-pinned commit instead. This keeps the
+        // install deterministic and still runs the same local Bundle build and
+        // validation steps.
+        let installedSource = target.source
+        let installedActualSource: 'market' | 'npm' | 'github' | 'local' | undefined = target.source === 'github' ? 'github' : undefined
+        // Keep the archive fallback in one place. Besides machines where Git
+        // is absent from PATH, this is also used when a stale/broken Git path
+        // was detected as present but pnpm later reports that it cannot start
+        // Git. The archive is pinned to the same commit, so the install stays
+        // deterministic and does not silently move to the branch head.
+        const prepareGithubArchive = async (): Promise<string> => {
+          if (!options.githubFetch) throw new Error(gitUnavailableMessage())
+          const onProgress = (progress: PluginSourceProgress) =>
+            emit({ repository: fullName, kind: 'plugin', phase: 'downloading', ...progress })
+          const packageDirectory = await prepareSubdirectoryPlugin(
+            options.pluginSourceRoot,
+            fullName,
+            target,
+            onProgress,
+            options.githubFetch,
+          )
+          await ensureLocalPluginBuild(packageDirectory, fullName, target.packageName)
+          installedSource = 'archive-subdirectory'
+          installedActualSource = 'github'
+          options.emitOutput('info', `[${fullName}] Git 不可用，已改用固定 commit 的 GitHub 压缩包安装。`)
+          return `file:${packageDirectory}`
+        }
         if (target.source === 'npm') {
           specifier = target.version ? `${target.packageName}@${target.version}` : target.packageName
         } else if (target.source === 'github') {
-          specifier = `github:${fullName}#${target.commit}`
+          const gitAvailable = Boolean(resolveGit(process.env))
+          if (!gitAvailable && options.githubFetch) {
+            specifier = await prepareGithubArchive()
+          } else {
+            specifier = `github:${fullName}#${target.commit}`
+          }
         } else if (target.source === 'release') {
           // 源码 pin 不一定带构建产物，Release tgz 是官方安装包：下载后 `dsh plugin add file:<tgz>`。
           // tgz 会作为 file: 依赖写入 Profile package.json，必须放在持久目录且不能删除，
@@ -959,17 +1351,36 @@ export function createInstaller(options: InstallerOptions): Installer {
           await writeFile(tgzPath, asset)
           specifier = `file:${tgzPath}`
         } else if (target.source === 'local-directory') {
-          specifier = `file:${validateLocalPluginDirectory(target.localDirectory)}`
+          const packageDirectory = validateLocalPluginDirectory(target.localDirectory)
+          await ensureLocalPluginBuild(packageDirectory, fullName, target.packageName)
+          specifier = `file:${packageDirectory}`
         } else {
           const onProgress = (progress: PluginSourceProgress) =>
             emit({ repository: fullName, kind: 'plugin', phase: 'downloading', ...progress })
           const packageDirectory = options.githubFetch
             ? await prepareSubdirectoryPlugin(options.pluginSourceRoot, fullName, target, onProgress, options.githubFetch)
             : await prepareSubdirectoryPlugin(options.pluginSourceRoot, fullName, target, onProgress)
+          await ensureLocalPluginBuild(packageDirectory, fullName, target.packageName)
           specifier = `file:${packageDirectory}`
         }
 
-        await runPluginCommand(['add', specifier], fullName, true, profileName)
+        let usedLatest = false
+        if (target.source === 'npm') {
+          usedLatest = await runNpmPluginCommand(target.packageName, target.version, fullName, profileName)
+        } else {
+          try {
+            await runPluginCommand(['add', specifier], fullName, true, profileName)
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error)
+            const gitUnavailable = detail.includes('未找到 Git') || isGitUnavailableOutput(detail)
+            if (target.source !== 'github' || !specifier.startsWith('github:') || !gitUnavailable || !options.githubFetch) throw error
+            // A Git executable can disappear between detection and pnpm's
+            // fetch (or be a stale path). Retry once through the immutable
+            // archive instead of leaving a half-written Git dependency behind.
+            specifier = await prepareGithubArchive()
+            await runPluginCommand(['add', specifier], fullName, true, profileName)
+          }
+        }
         emit({ repository: fullName, kind: 'plugin', phase: 'configuring', percent: 88, message: '正在核对插件加载顺序' })
         const settings = await options.readSettings()
         const installedProfile = await readProfile(settings.dshHome, profileName, options.pluginReceiptsPath)
@@ -977,20 +1388,23 @@ export function createInstaller(options: InstallerOptions): Installer {
         if (!installedPlugin?.enabled || !installedPlugin.compatible) {
           throw new Error('包已下载，但 DSH 没有把它识别为有效 Bundle。请检查插件清单和补丁文件。')
         }
+        if (usedLatest) options.emitOutput('success', `已回退到 npm latest，实际安装版本：${installedPlugin.version ?? '未知'}`)
         emit({ repository: fullName, kind: 'plugin', phase: 'verifying', percent: 94, message: '正在验证插件组合配置' })
         await verifyProfileComposition(profileName, fullName)
         await recordPluginInstall(options.pluginReceiptsPath, {
           repository: fullName,
           packageName: target.packageName,
           profileName,
-          source: target.source,
+           source: installedSource,
           subdirectory: target.subdirectory,
-          version: target.version,
-          commit: target.commit,
+          version: usedLatest ? installedPlugin.version ?? null : target.version,
+           commit: target.commit,
           defaultBranch: request.defaultBranch,
-          targetId: request.targetId,
-          installedAt: new Date().toISOString(),
-        })
+           targetId: request.targetId,
+           installedAt: new Date().toISOString(),
+           ...(installedActualSource ? { actualSource: installedActualSource } : {}),
+         })
+        await syncInstalledPluginPool(settings.dshHome)
         // The receipt is the authoritative source for local `file:` and archive-subdirectory
         // installs. Re-read after recording it so the returned Profile immediately exposes
         // the GitHub repository to the renderer.
@@ -1030,11 +1444,10 @@ export function createInstaller(options: InstallerOptions): Installer {
       if (active) throw new Error(`正在安装 ${active.repository}，请等待当前任务完成。`)
       emit({ repository, kind: 'plugin', phase: 'preparing', percent: 5, message: '正在准备 npm 插件' })
       try {
-        const specifier = version ? `${request.packageName}@${version}` : request.packageName
-        await runPluginCommand(
-          ['add', specifier],
+        const usedLatest = await runNpmPluginCommand(
+          request.packageName,
+          version,
           repository,
-          true,
           profileName,
           request.approvedBuildKeys ?? [],
           request.deniedBuildKeys ?? [],
@@ -1046,6 +1459,7 @@ export function createInstaller(options: InstallerOptions): Installer {
         if (!installedPlugin?.enabled || !installedPlugin.compatible) {
           throw new Error('包已下载，但 DSH 没有把它识别为有效 Bundle。请检查插件清单和补丁文件。')
         }
+        if (usedLatest) options.emitOutput('success', `已回退到 npm latest，实际安装版本：${installedPlugin.version ?? '未知'}`)
         await verifyProfileComposition(profileName, repository)
         await recordPluginInstall(options.pluginReceiptsPath, {
           repository,
@@ -1053,11 +1467,12 @@ export function createInstaller(options: InstallerOptions): Installer {
           profileName,
           source: 'npm',
           subdirectory: null,
-          version: version ?? installedPlugin.version ?? null,
+          version: usedLatest ? installedPlugin.version ?? null : version ?? installedPlugin.version ?? null,
           commit: '',
           targetId: request.packageName,
           installedAt: new Date().toISOString(),
         })
+        await syncInstalledPluginPool(settings.dshHome)
         const profile = profileName === settings.profileName
           ? await readProfile(settings.dshHome, profileName, options.pluginReceiptsPath)
           : await readProfile(settings.dshHome, settings.profileName, options.pluginReceiptsPath)
@@ -1072,6 +1487,45 @@ export function createInstaller(options: InstallerOptions): Installer {
       }
     },
 
+    async installLocalPlugin(request, profileOverride) {
+      if (!isSafePackageName(request.packageName)) throw new Error('本地插件包名无效。')
+      const directory = validateLocalPluginDirectory(request.directory)
+      const settings = await options.readSettings()
+      const profileName = profileOverride ?? settings.profileName
+      const repository = request.repository ?? `file:${directory}`
+      if (active) throw new Error(`正在安装 ${active.repository}，请等待当前任务完成。`)
+      emit({ repository, kind: 'plugin', phase: 'preparing', percent: 5, message: '正在准备整合包本地插件' })
+      try {
+        await ensureLocalPluginBuild(directory, repository, request.packageName)
+        await runPluginCommand(['add', `file:${directory}`], repository, true, profileName)
+        const installedProfile = await readProfile(settings.dshHome, profileName, options.pluginReceiptsPath)
+        const installedPlugin = installedProfile.plugins.find(plugin => plugin.packageName === request.packageName)
+        if (!installedPlugin?.compatible) throw new Error('本地插件没有检测到有效 DSH Bundle。')
+        await verifyProfileComposition(profileName, repository)
+        await recordPluginInstall(options.pluginReceiptsPath, {
+          repository,
+          packageName: request.packageName,
+          profileName,
+          source: 'local-directory',
+          subdirectory: null,
+          version: request.version ?? installedPlugin.version ?? null,
+          commit: request.commit ?? '',
+          targetId: request.packageName,
+          installedAt: new Date().toISOString(),
+          actualSource: 'local',
+        })
+        await syncInstalledPluginPool(settings.dshHome)
+        const currentProfile = profileName === settings.profileName
+          ? installedProfile
+          : await readProfile(settings.dshHome, settings.profileName, options.pluginReceiptsPath)
+        emit({ repository, kind: 'plugin', phase: 'complete', percent: 100, message: `本地插件已安装到 ${profileName} Profile` })
+        return { kind: 'plugin', profile: currentProfile, settings, dshInstallation: await detectDsh(), installedProfileName: profileName, packageName: request.packageName }
+      } catch (error) {
+        emit({ repository, kind: 'plugin', phase: 'error', percent: currentPercent(0), message: error instanceof Error ? error.message : '本地插件安装失败' })
+        throw error
+      } finally { active = null }
+    },
+
     async installSkill(request: SkillInstallRequest): Promise<SkillInstallResult> {
       if (active) throw new Error(`正在安装 ${active.repository}，请等待当前任务完成。`)
       emit({ repository: request.repository, kind: 'skill', phase: 'preparing', percent: 5, message: '正在确认 Skill 格式' })
@@ -1080,11 +1534,12 @@ export function createInstaller(options: InstallerOptions): Installer {
         const target = analysis.targets.find(item => item.id === request.targetId)
         if (!target) throw new Error(analysis.summary || '所选 Skill 已失效，请重新检测仓库。')
         const settings = await options.readSettings()
+        const limits = skillInstallLimits(settings.skillMaxArchiveMb)
         const onProgress = (progress: { percent: number; message: string; downloadedBytes?: number; totalBytes?: number }) =>
           emit({ repository: request.repository, kind: 'skill', phase: 'downloading', ...progress })
         const installedSkill = options.githubFetch
-          ? await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, request.repository, target, onProgress, options.githubFetch)
-          : await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, request.repository, target, onProgress)
+          ? await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, request.repository, target, onProgress, options.githubFetch, limits)
+          : await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, request.repository, target, onProgress, undefined, limits)
         await recordSkillInstall(options.skillReceiptsPath, {
           name: target.name,
           format: target.format,
@@ -1114,11 +1569,12 @@ export function createInstaller(options: InstallerOptions): Installer {
 
     async installSkillPinned({ repository, target }): Promise<InstalledSkill> {
       const settings = await options.readSettings()
+      const limits = skillInstallLimits(settings.skillMaxArchiveMb)
       const onProgress = (progress: { percent: number; message: string; downloadedBytes?: number; totalBytes?: number }) =>
         emit({ repository, kind: 'skill', phase: 'downloading', ...progress })
       const installedSkill = options.githubFetch
-        ? await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, repository, target, onProgress, options.githubFetch)
-        : await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, repository, target, onProgress)
+        ? await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, repository, target, onProgress, options.githubFetch, limits)
+        : await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, repository, target, onProgress, undefined, limits)
       await recordSkillInstall(options.skillReceiptsPath, {
         name: target.name,
         format: target.format,

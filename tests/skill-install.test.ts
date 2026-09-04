@@ -115,3 +115,17 @@ describe('installSkillFromDirectory', () => {
     await expect(installSkillFromDirectory(dshHome, 'guide', 'bundle', outsideDir)).rejects.toThrow('超出')
   })
 })
+
+describe('skill install limits', () => {
+  it('scales unpack and file budgets with the configured archive cap', async () => {
+    const { skillInstallLimits } = await import('../electron/skill-install')
+    expect(skillInstallLimits(undefined).archiveMb).toBe(64)
+    const relaxed = skillInstallLimits(256)
+    expect(relaxed.archiveBytes).toBe(256 * 1024 * 1024)
+    expect(relaxed.unpackedBytes).toBe(1024 * 1024 * 1024)
+    expect(relaxed.files).toBeGreaterThan(5000)
+    expect(relaxed.archiveFiles).toBeGreaterThan(12000)
+    expect(skillInstallLimits(8).archiveMb).toBe(16)
+    expect(skillInstallLimits(9999).archiveMb).toBe(2048)
+  })
+})

@@ -20,6 +20,7 @@ const marketSettings: AppSettings = {
 describe('dsh-market source rules', () => {
   it('uses npm before GitHub and preserves monorepo subpaths', () => {
     expect(dshMarketInstallTarget({ url: 'https://github.com/a/b', npm: 'dsh-demo' })).toBe('dsh-demo')
+    expect(dshMarketInstallTarget({ url: 'https://github.com/a/b', npm: 'dsh-demo' }, '0.1.0-rc.7')).toBe('dsh-demo@0.1.0-rc.7')
     expect(dshMarketInstallTarget({ url: 'https://github.com/a/b/tree/main/packages/demo', npm: null })).toBe('github:a/b#path:/packages/demo')
     expect(parseDshMarketSourceUrl('https://github.com/a/b/tree/main/../secret')).toBeNull()
   })
@@ -67,6 +68,27 @@ describe('dsh-market source rules', () => {
     expect(second.plugins[0]?.name).toBe('demo')
     expect(requests).toEqual(['https://awesome-dsh-plugin.com/plugins.json'])
     expect(progress.at(-1)).toBe('complete')
+  })
+
+  it('uninstalls locally without loading the remote market registry', async () => {
+    const requests: string[] = []
+    const removed: string[] = []
+    const service = createDshMarketService({
+      readSettings: async () => marketSettings,
+      prepareNodeRuntime: async () => { throw new Error('not used by local uninstall') },
+      preparePnpmRuntime: async () => { throw new Error('not used by local uninstall') },
+      fetchImpl: async input => {
+        requests.push(String(input))
+        throw new Error('remote request is forbidden during uninstall')
+      },
+      removePluginLocally: async packageName => { removed.push(packageName) },
+      emitProgress: () => undefined,
+      emitOutput: () => undefined,
+    })
+
+    await service.uninstall('demo-package')
+    expect(removed).toEqual(['demo-package'])
+    expect(requests).toEqual([])
   })
 
   it('migrates an old Profile store before retrying a plugin operation', async () => {

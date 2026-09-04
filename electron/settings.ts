@@ -45,6 +45,8 @@ export function defaultSettings(input: DefaultSettingsInput): AppSettings {
     aiDeveloperMode: false,
     aiPrompt: '',
     recommendedWebUiPrompted: false,
+    launcherBackground: null,
+    skillMaxArchiveMb: 64,
   }
 }
 
@@ -56,6 +58,20 @@ function validUiTheme(value: unknown): value is UiTheme {
 
 function validWebPort(value: unknown): value is number {
   return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 65535
+}
+
+/** 主界面插图只接受「时间戳 + 白名单扩展名」的托管文件名，其余一律回落默认图。 */
+function validLauncherBackground(value: unknown): string | null {
+  return typeof value === 'string' && /^background-\d{10,16}\.(png|jpe?g|webp)$/.test(value)
+    ? value
+    : null
+}
+
+/** Skill 压缩包上限（MB）：16 到 2048 之外的取值一律回落默认 64。 */
+function validSkillMaxArchiveMb(value: unknown): number {
+  return Number.isInteger(value) && (value as number) >= 16 && (value as number) <= 2048
+    ? value as number
+    : 64
 }
 
 function validRuntimeVersion(value: unknown): value is string {
@@ -135,6 +151,8 @@ export function validateSettings(input: AppSettings): AppSettings {
     aiPrompt: typeof input.aiPrompt === 'string' ? input.aiPrompt.slice(0, 20_000) : '',
     network: validNetworkSettings(input.network),
     recommendedWebUiPrompted: Boolean(input.recommendedWebUiPrompted),
+    launcherBackground: validLauncherBackground(input.launcherBackground),
+    skillMaxArchiveMb: validSkillMaxArchiveMb(input.skillMaxArchiveMb),
   }
 }
 
@@ -162,6 +180,8 @@ export function mergeStoredSettings(defaults: AppSettings, stored: Partial<AppSe
     aiPrompt: typeof stored.aiPrompt === 'string' ? stored.aiPrompt.slice(0, 20_000) : '',
     network: validNetworkSettings(stored.network) ?? defaults.network,
     recommendedWebUiPrompted: Boolean(stored.recommendedWebUiPrompted),
+    launcherBackground: validLauncherBackground(stored.launcherBackground),
+    skillMaxArchiveMb: validSkillMaxArchiveMb(stored.skillMaxArchiveMb),
   }
 }
 

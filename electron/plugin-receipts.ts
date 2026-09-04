@@ -13,6 +13,11 @@ export interface PluginInstallReceipt {
   defaultBranch?: string
   targetId?: string
   installedAt: string
+  packName?: string
+  packRepository?: string
+  packCommit?: string | null
+  componentId?: string
+  actualSource?: 'market' | 'npm' | 'github' | 'local'
 }
 interface ReceiptFile {
   version: 1

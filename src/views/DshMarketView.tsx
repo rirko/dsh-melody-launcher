@@ -45,7 +45,9 @@ export function DshMarketView({ onProfileChanged }: DshMarketViewProps) {
 
   const visible = useMemo(() => {
     const list = (catalog?.plugins ?? []).filter(plugin => {
-      if (category !== 'all' && plugin.category !== category) return false
+      if (category === '__installed') {
+        if (!plugin.installed) return false
+      } else if (category !== 'all' && plugin.category !== category) return false
       const text = `${plugin.name} ${plugin.owner} ${plugin.description.zh ?? ''} ${plugin.description.en ?? ''}`.toLowerCase()
       return text.includes(query.trim().toLowerCase())
     })
@@ -62,14 +64,19 @@ export function DshMarketView({ onProfileChanged }: DshMarketViewProps) {
     try {
       if (action === 'install') await api.installDshMarketPlugin(plugin.name)
       else if (action === 'update') await api.updateDshMarketPlugin(plugin.name)
-      else if (action === 'uninstall') await api.uninstallDshMarketPlugin(plugin.name)
+      else if (action === 'uninstall') await api.uninstallPlugin(plugin.npm ?? plugin.name, { purgeStore: true })
       else await api.toggleDshMarketPlugin(plugin.name, enabled === true)
       // The market service and startup-item manager share the same Profile on
       // disk, but their renderer state is otherwise independent. Refresh the
       // shared Profile before redrawing the market so both switches agree.
       await onProfileChanged?.()
       await load()
-    } catch (cause) { setError(cause instanceof Error ? cause.message : '操作失败') }
+    } catch (cause) {
+      // Profile removal happens before the optional pnpm cache prune. Refresh
+      // the shared list even when cache maintenance reports an error.
+      if (action === 'uninstall') await onProfileChanged?.()
+      setError(cause instanceof Error ? cause.message : '操作失败')
+    }
     finally { setBusy(null) }
   }
 
@@ -88,7 +95,7 @@ export function DshMarketView({ onProfileChanged }: DshMarketViewProps) {
       </div>
       <div className="dsh-market-toolbar">
         <label className="dsh-market-search"><Search size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索名称、作者或描述" /></label>
-        <select value={category} onChange={event => setCategory(event.target.value)} aria-label="插件分类"><option value="all">全部分类</option>{categories.map(([id, label]) => <option key={id} value={id}>{label.zh ?? label.en ?? id}</option>)}</select>
+        <select value={category} onChange={event => setCategory(event.target.value)} aria-label="插件分类"><option value="all">全部分类</option><option value="__installed">已安装</option>{categories.map(([id, label]) => <option key={id} value={id}>{label.zh ?? label.en ?? id}</option>)}</select>
         <select value={sort} onChange={event => setSort(event.target.value as Sort)} aria-label="排序"><option value="stars">星数最多</option><option value="updated">最近加入</option><option value="name">名称排序</option></select>
       </div>
       {progress && progress.phase !== 'complete' && progress.phase !== 'error' && (
@@ -103,7 +110,7 @@ export function DshMarketView({ onProfileChanged }: DshMarketViewProps) {
       )}
       {error && <div className="error-banner"><span>{error}</span><button type="button" onClick={() => void load()}>重试</button></div>}
       {loading && catalog === null && <div className="empty-state"><LoaderCircle size={22} className="spin" /><span>正在读取 DSH Market 目录…</span></div>}
-      {!loading && catalog !== null && visible.length === 0 && <div className="empty-state"><Search size={22} /><span>没有匹配的精选插件。</span></div>}
+      {!loading && catalog !== null && visible.length === 0 && <div className="empty-state"><Search size={22} /><span>{category === '__installed' ? '当前 Profile 还没有已安装的精选插件。' : '没有匹配的精选插件。'}</span></div>}
       <div className="dsh-market-grid">
         {visible.map(plugin => {
           const isBusy = busy === plugin.name
@@ -112,7 +119,7 @@ export function DshMarketView({ onProfileChanged }: DshMarketViewProps) {
               <div className="dsh-market-card-head"><div><h2>{plugin.name}</h2><span>{plugin.owner}</span></div><span className="dsh-market-stars"><Star size={13} />{formatStars(plugin.stars)}</span></div>
               <div className="dsh-market-meta"><span>{plugin.category}</span>{plugin.npm ? <code>npm</code> : <code>GitHub</code>}{plugin.installed && <b className={plugin.enabled ? 'market-enabled' : 'market-disabled'}>{plugin.enabled ? '已启用' : '未启用'}</b>}</div>
               <p>{plugin.description.zh ?? plugin.description.en ?? '暂无描述'}</p>
-              <div className="dsh-market-card-foot"><button type="button" className="dsh-market-link" onClick={() => void api.openExternal(plugin.url)}><ExternalLink size={13} />仓库</button><span className="dsh-market-grow" />{plugin.installed && <button type="button" className="icon-button" title={plugin.enabled ? '停用插件' : '启用插件'} disabled={isBusy} onClick={() => void mutate(plugin, 'toggle', !plugin.enabled)}>{plugin.enabled ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}</button>}{plugin.installed && plugin.updateAvailable && <button type="button" className="secondary-button dsh-market-action" disabled={isBusy} onClick={() => void mutate(plugin, 'update')}>{isBusy ? <LoaderCircle size={13} className="spin" /> : <RefreshCw size={13} />}更新</button>}{plugin.installed ? <button type="button" className="danger-button dsh-market-action" disabled={isBusy} onClick={() => void mutate(plugin, 'uninstall')}><Trash2 size={13} />卸载</button> : <button type="button" className="primary-command dsh-market-action" disabled={isBusy} onClick={() => void mutate(plugin, 'install')}>{isBusy ? <LoaderCircle size={13} className="spin" /> : <Check size={13} />}安装</button>}</div>
+              <div className="dsh-market-card-foot"><button type="button" className="dsh-market-link" onClick={() => void api.openExternal(plugin.url)}><ExternalLink size={13} />仓库</button><span className="dsh-market-grow" />{plugin.installed && <button type="button" className="icon-button" title={plugin.enabled ? '停用插件' : '启用插件'} disabled={isBusy} onClick={() => void mutate(plugin, 'toggle', !plugin.enabled)}>{plugin.enabled ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}</button>}{plugin.installed && plugin.updateAvailable && <button type="button" className="secondary-button dsh-market-action" disabled={isBusy} onClick={() => void mutate(plugin, 'update')}>{isBusy ? <LoaderCircle size={13} className="spin" /> : <RefreshCw size={13} />}更新</button>}{plugin.installed ? <button type="button" className="danger-button dsh-market-action" title="彻底清除插件及未引用的 pnpm 缓存" disabled={isBusy} onClick={() => void mutate(plugin, 'uninstall')}><Trash2 size={13} />卸载</button> : <button type="button" className="primary-command dsh-market-action" disabled={isBusy} onClick={() => void mutate(plugin, 'install')}>{isBusy ? <LoaderCircle size={13} className="spin" /> : <Check size={13} />}安装</button>}</div>
             </article>
           )
         })}

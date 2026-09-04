@@ -60,6 +60,31 @@ describe('repository plugin analysis', () => {
     })
   })
 
+  it('keeps a Web bundle in the currently selected Profile', async () => {
+    const repository = 'demo/current-profile-plugin'
+    const manifest = {
+      name: '@demo/current-profile-plugin',
+      version: '1.2.0',
+      repository: `https://github.com/${repository}`,
+      dsh: { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web' } },
+    }
+    const analysis = await analyzeRepository(repository, 'main', 'pack-123123', mockFetch({
+      [commitUrl(repository)]: json({ sha: commit }),
+      [rawUrl(repository, 'package.json')]: json(manifest),
+      [treeUrl(repository)]: json({ tree: [
+        { path: 'package.json', type: 'blob' },
+        { path: 'cordis.patch.yml', type: 'blob' },
+      ] }),
+      ['https://registry.npmjs.org/%40demo%2Fcurrent-profile-plugin/latest']: json(manifest),
+    }))
+
+    expect(analysis.targets[0]).toMatchObject({
+      packageName: '@demo/current-profile-plugin',
+      profileName: 'pack-123123',
+      platform: 'web',
+    })
+  })
+
   it('finds a private bundle in a repository subdirectory', async () => {
     const repository = 'demo/skin-collection'
     const analysis = await analyzeRepository(repository, 'main', 'web', mockFetch({
@@ -270,7 +295,7 @@ describe('repository plugin analysis', () => {
       repository: `https://github.com/${repository}.git`,
       dsh: { bundle: { patch: './cordis.patch.yml' } },
     }
-    const analysis = await analyzeRepository(repository, 'main', 'web', mockFetch({
+    const analysis = await analyzeRepository(repository, 'main', 'pack-123123', mockFetch({
       [commitUrl(repository)]: json({ message: 'rate limited' }, 403),
       ['https://raw.githubusercontent.com/demo/dsh-tui/main/package.json']: json(manifest),
       ['https://registry.npmjs.org/%40demo%2Fdsh-tui/latest']: json(manifest),
@@ -280,7 +305,8 @@ describe('repository plugin analysis', () => {
     expect(analysis.targets[0]).toMatchObject({
       packageName: '@demo/dsh-tui',
       source: 'npm',
-      profileName: 'cc-tui',
+      profileName: 'pack-123123',
+      platform: 'terminal',
       commit: 'main',
     })
   })

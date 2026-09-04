@@ -12,6 +12,7 @@ import {
   findAvailableWebPort,
   isDshWebLaunch,
   runtimeEnvironment,
+  withDshProfile,
   withDshWebPort,
 } from '../electron/runtime'
 import type { ApplicationLaunchPlan } from '../electron/application-addons'
@@ -110,6 +111,8 @@ describe('DSH Web 端口', () => {
   it('识别直接调用和 npx 调用的 DSH Web 命令', () => {
     expect(isDshWebLaunch('/opt/dsh/dsh', ['web'])).toBe(true)
     expect(isDshWebLaunch('npx', ['--yes', '@deepseek-ai/dsh', 'web'])).toBe(true)
+    expect(isDshWebLaunch('/opt/dsh/dsh', ['--profile', 'pack-123123'])).toBe(true)
+    expect(isDshWebLaunch('/opt/dsh/dsh', ['plugin', '--profile', 'pack-123123', 'list'])).toBe(false)
     expect(isDshWebLaunch('node', ['./server.js'])).toBe(false)
   })
 
@@ -120,6 +123,16 @@ describe('DSH Web 端口', () => {
     expect(withDshWebPort('npx', ['--yes', '@deepseek-ai/dsh', 'web', '--port=4000'], 3083)).toEqual([
       '--yes', '@deepseek-ai/dsh', 'web', '--no-open', '--port', '3083',
     ])
+  })
+
+  it('启动 Web 时绑定当前 Profile，并替换旧的 Profile 参数', () => {
+    expect(withDshProfile('dsh.cmd', ['web'], 'pack-123123')).toEqual([
+      '--profile', 'pack-123123',
+    ])
+    expect(withDshProfile('npx', ['--yes', '@deepseek-ai/dsh', 'web', '--profile=web'], 'desktop')).toEqual([
+      '--yes', '@deepseek-ai/dsh', '--profile', 'desktop',
+    ])
+    expect(withDshProfile('node', ['./server.js'], 'desktop')).toEqual(['./server.js'])
   })
 
   it('首选端口占用时选择后续端口', async () => {
@@ -155,6 +168,27 @@ describe('DSH Web 端口', () => {
 })
 
 describe('应用加载项运行模式', () => {
+  it('启动 DSH Web 时将当前 Profile 传给实际子进程', async () => {
+    const settings = { ...controllerSettings(), profileName: 'pack-123123' }
+    const child = fakeChild(4099)
+    const spawnProcess = vi.fn((_executable: string, _args: string[]) => child)
+    const runtime = createRuntimeController({
+      readSettings: async () => settings,
+      prepareNodeRuntime: async () => managedNode(),
+      fallbackWorkspace: () => process.cwd(),
+      emitOutput: () => {},
+      emitState: () => {},
+      openExternal: () => {},
+      spawnProcess,
+    })
+
+    await runtime.start()
+    expect(spawnProcess.mock.calls[0]?.[1]).toEqual([
+      '--profile', 'pack-123123', '--no-open', '--port', '3080',
+    ])
+    await runtime.stop()
+  })
+
   it('并发启动请求复用同一个启动流程', async () => {
     const settings = controllerSettings()
     const child = fakeChild(4150)

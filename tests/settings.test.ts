@@ -225,3 +225,25 @@ describe('adoptDetectedDsh', () => {
     })).toBe(baseSettings)
   })
 })
+
+describe('skillMaxArchiveMb', () => {
+  it('defaults to 64 when missing or out of range', () => {
+    expect(validateSettings(baseSettings).skillMaxArchiveMb).toBe(64)
+    expect(validateSettings({ ...baseSettings, skillMaxArchiveMb: 8 }).skillMaxArchiveMb).toBe(64)
+    expect(validateSettings({ ...baseSettings, skillMaxArchiveMb: 4096 }).skillMaxArchiveMb).toBe(64)
+    expect(validateSettings({ ...baseSettings, skillMaxArchiveMb: 100.5 }).skillMaxArchiveMb).toBe(64)
+    expect(defaultSettings({ homeDirectory: '/home/tester', documentsDirectory: '/home/tester/Documents', platform: 'linux' }).skillMaxArchiveMb).toBe(64)
+  })
+
+  it('keeps valid values through validate and merge', () => {
+    expect(validateSettings({ ...baseSettings, skillMaxArchiveMb: 256 }).skillMaxArchiveMb).toBe(256)
+    expect(mergeStoredSettings(
+      defaultSettings({ homeDirectory: '/home/tester', documentsDirectory: '/home/tester/Documents', platform: 'linux' }),
+      { skillMaxArchiveMb: 512 },
+    ).skillMaxArchiveMb).toBe(512)
+    expect(mergeStoredSettings(
+      defaultSettings({ homeDirectory: '/home/tester', documentsDirectory: '/home/tester/Documents', platform: 'linux' }),
+      { skillMaxArchiveMb: 'huge' as unknown as number },
+    ).skillMaxArchiveMb).toBe(64)
+  })
+})
