@@ -208,7 +208,9 @@ export async function readDshUsage(dshHome: string, nowMs = Date.now()): Promise
 }
 
 /** 60 秒内存缓存 + in-flight 去重（同 deepseek-balance 模式）。 */
-export function createDshUsageService(deps: { readDshHome: () => Promise<string>; cacheMs?: number }) {
+export interface DshUsageService { get(force?: boolean): Promise<DshUsageResult> }
+
+export function createDshUsageService(deps: { readDshHome: () => Promise<string>; cacheMs?: number }): DshUsageService {
   const cacheMs = deps.cacheMs ?? 60_000
   let cached: { at: number; dshHome: string; result: DshUsageResult } | null = null
   let inflight: Promise<DshUsageResult> | null = null

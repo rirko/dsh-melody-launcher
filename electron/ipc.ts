@@ -2,7 +2,7 @@ import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { IPC, IPC_EVENTS } from '../src/constants'
+import { IPC, IPC_EVENTS, IPC_WHEELCHAIR } from '../src/constants'
 import type { AiSessionCreateInput, ApplicationInstallRequest, AppSettings, ApiProbeTarget, CustomApiProviderInput, PackCreateRequest, PluginInstallRequest, PresetInstallRequest, SkillInstallRequest, WindowMode, ProfileRepositoryImportMode, PackPluginEntry, NonstandardPackImportPreview, PluginUninstallOptions } from '../src/types'
 import type { ApiProbeService } from './api-probe'
 import type { ApplicationAddonManager } from './application-addons'
@@ -45,6 +45,9 @@ import { analyzeProfileRepository, applyReceiptMatches, applySelectedMatches, lo
 import type { NonstandardPackService } from './nonstandard-pack'
 import type { InstallQueue } from './install-queue'
 import { clearLauncherBackgrounds, importLauncherBackground } from './launcher-asset'
+import type { DeepSeekBalanceService } from './deepseek-balance'
+import type { DshUsageService } from './dsh-usage'
+import { createNewsCacheStore, fetchNewsFeed, JUYA_NEWS_FEED_URL, lookupNewsCache, type NewsCacheFile } from './juya-news'
 
 /**
  * 渲染层能触达主进程的全部入口。
@@ -73,12 +76,16 @@ export interface IpcDependencies {
   nonstandardPack: NonstandardPackService
   apiProbe: ApiProbeService
   installQueue: InstallQueue
+  /** 轮椅模式三卡服务（PR #94 纯新增模块，原版实现零改动）。 */
+  deepSeekBalance: DeepSeekBalanceService
+  dshUsageService: DshUsageService
+  newsCachePath: string
   getWindow: () => BrowserWindow | null
   setWindowMode: (mode: WindowMode) => void
 }
 
 export function registerIpcHandlers(deps: IpcDependencies): void {
-  const { settings, pluginReceiptsPath, launcherAssetsUserData, runtime, installer, launcherUpdater, pluginTrial, aiInstaller, copilot, packManager, githubAuth, applicationAddons, catalogSync, dshMarket, recommendedWebUi, runtimeVersions, profiles, nonstandardPack, apiProbe, installQueue } = deps
+  const { settings, pluginReceiptsPath, launcherAssetsUserData, runtime, installer, launcherUpdater, pluginTrial, aiInstaller, copilot, packManager, githubAuth, applicationAddons, catalogSync, dshMarket, recommendedWebUi, runtimeVersions, profiles, nonstandardPack, apiProbe, installQueue, deepSeekBalance, dshUsageService, newsCachePath } = deps
   const linkedComponents = createLinkedComponentController({
     readSettings: () => settings.read(),
     // Include the shared-pool inventory and profile-scoped receipts when
@@ -730,6 +737,35 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     installQueue.cancel(id)
   })
   ipcMain.handle(IPC.installQueueClearFinished, () => installQueue.clearFinished())
+
+  // —— 轮椅模式三卡（PR #94 纯新增能力；数据源独立，不触碰原版任何服务）——
+  const newsStore = createNewsCacheStore(newsCachePath)
+  let newsRefreshing = false
+  const refreshNewsInBackground = (): void => {
+    if (newsRefreshing) return
+    newsRefreshing = true
+    fetchNewsFeed(githubAuth.fetch, JUYA_NEWS_FEED_URL)
+      .then((items: NewsCacheFile['items']) => newsStore.write({ version: 2, fetchedAt: Date.now(), items }).catch(() => undefined))
+      .catch((cause: unknown) => console.error('[juya-news] background refresh failed', cause))
+      .finally(() => { newsRefreshing = false })
+  }
+  ipcMain.handle(IPC_WHEELCHAIR.deepseekBalance, (_event, force?: boolean) => deepSeekBalance.get(force === true))
+  ipcMain.handle(IPC_WHEELCHAIR.dshUsage, (_event, force?: boolean) => dshUsageService.get(force === true))
+  ipcMain.handle(IPC_WHEELCHAIR.newsFeed, async () => {
+    const lookup = lookupNewsCache(await newsStore.read(), Date.now())
+    if (lookup.status === 'fresh') return { status: 'ok' as const, items: lookup.items }
+    if (lookup.status === 'stale') {
+      refreshNewsInBackground()
+      return { status: 'ok' as const, items: lookup.items }
+    }
+    try {
+      const items = await fetchNewsFeed(githubAuth.fetch, JUYA_NEWS_FEED_URL)
+      await newsStore.write({ version: 2, fetchedAt: Date.now(), items })
+      return { status: 'ok' as const, items }
+    } catch (cause) {
+      return { status: 'error' as const, message: cause instanceof Error ? cause.message : '订阅源读取失败' }
+    }
+  })
 
   ipcMain.handle(IPC.aiStatus, () => aiInstaller.status())
   ipcMain.handle(IPC.aiHasSnapshot, () => aiInstaller.hasSnapshot())

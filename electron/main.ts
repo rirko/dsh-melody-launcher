@@ -16,6 +16,8 @@ import { readDeepSeekApiKey } from './credentials'
 import { resolveAgentApiForModel, resolveCopilotAgentApi } from './copilot-api'
 import { createApiProbe, type ApiProbeService } from './api-probe'
 import { createInstallQueue, type InstallQueue } from './install-queue'
+import { createDeepSeekBalanceService } from './deepseek-balance'
+import { createDshUsageService } from './dsh-usage'
 import { readLauncherBackground } from './launcher-asset'
 
 // 自定义插图协议必须在 app ready 之前声明为安全 scheme，渲染层的 CSS 才能引用。
@@ -113,6 +115,8 @@ interface Services {
   nonstandardPack: NonstandardPackService
   apiProbe: ApiProbeService
   installQueue: InstallQueue
+  deepSeekBalance: ReturnType<typeof createDeepSeekBalanceService>
+  dshUsageService: ReturnType<typeof createDshUsageService>
   profilePoolReady: Promise<void>
 }
 
@@ -204,6 +208,18 @@ function createServices(): Services {
   const apiProbe = createApiProbe({
     readSettings: () => settings.read(),
     fetchImpl: proxyAwareFetch,
+  })
+
+  // —— 轮椅模式三卡服务（PR #94 纯新增模块；fetch 走系统代理感知实现）——
+  const deepSeekBalance = createDeepSeekBalanceService({
+    fetchImpl: proxyAwareFetch,
+    readApiKey: async () => {
+      const current = await settings.read()
+      return readDeepSeekApiKey(current.dshHome).catch(() => null)
+    },
+  })
+  const dshUsageService = createDshUsageService({
+    readDshHome: async () => (await settings.read()).dshHome,
   })
 
   let applicationAddons: ApplicationAddonManager
@@ -716,6 +732,8 @@ function createServices(): Services {
     nonstandardPack,
     apiProbe,
     installQueue,
+    deepSeekBalance,
+    dshUsageService,
     profilePoolReady,
   }
 }
@@ -788,6 +806,7 @@ app.whenReady().then(async () => {
   registerIpcHandlers({
     ...services,
     launcherAssetsUserData: app.getPath('userData'),
+    newsCachePath: path.join(app.getPath('userData'), 'juya-news-cache.json'),
     getWindow,
     setWindowMode: (mode: WindowMode) => {
       mainWindowMode = mode

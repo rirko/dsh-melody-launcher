@@ -7,7 +7,7 @@ import type { AppSettings, NetworkSettings, PackLauncherConfig, UiTheme } from '
 
 export const LAUNCHER_CONFIG_FILENAME = 'launcher-config.yaml'
 
-const UI_THEMES = new Set<UiTheme>(['deepseek', 'night'])
+const UI_THEMES = new Set<string>(['forest', 'ocean', 'berry', 'graphite'])
 
 function validWebPort(value: unknown): value is number {
   return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 65535

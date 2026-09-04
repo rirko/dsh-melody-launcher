@@ -6,6 +6,7 @@ import { LauncherHome } from './components/LauncherHome'
 import { SideNavigation } from './components/SideNavigation'
 import { DSHCopilotPanel } from './components/DSHCopilotPanel'
 import { RuntimeDrawer } from './components/RuntimeDrawer'
+import { WheelchairMode } from './wheelchair/WheelchairMode'
 import { Toast } from './components/Toast'
 import { ConfirmDialog } from './components/dialogs/ConfirmDialog'
 import { CredentialDialog } from './components/dialogs/CredentialDialog'
@@ -64,6 +65,13 @@ function LauncherShell() {
 
   // 对话框开关是纯展示状态，不进 store。
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // 轮椅模式（PR #94 新首页）：覆盖层挂载在原版界面之上，原版实现零改动。
+  const [wheelchairMode, setWheelchairMode] = useState(() => {
+    try { return localStorage.getItem('dsh-launcher:ui-mode') === 'wheelchair' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('dsh-launcher:ui-mode', wheelchairMode ? 'wheelchair' : 'classic') } catch { /* 私有模式忽略 */ }
+  }, [wheelchairMode])
   const [credentialOpen, setCredentialOpen] = useState(false)
   const [githubAccountOpen, setGitHubAccountOpen] = useState(false)
   const [createPackOpen, setCreatePackOpen] = useState(false)
@@ -771,6 +779,41 @@ function LauncherShell() {
           onApply={() => { void store.applyLauncherUpdate() }}
           onClose={() => setUpdateOpen(false)}
         />
+      )}
+      {!wheelchairMode && (
+        <button
+          type="button"
+          onClick={() => setWheelchairMode(true)}
+          title="进入轮椅模式（PR #94 新首页）"
+          style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 40, padding: '6px 12px', borderRadius: 999, border: '1px solid rgba(120,140,125,0.35)', background: 'rgba(23,28,25,0.82)', color: '#d7e2d9', fontSize: 12, cursor: 'pointer' }}
+        >🦼 轮椅模式</button>
+      )}
+      {wheelchairMode && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: '#0f1411', overflow: 'auto' }}>
+          <WheelchairMode
+            runtime={store.runtime}
+            dshInstallation={store.dshInstallation}
+            dshUpdate={store.dshUpdate}
+            launcherUpdate={store.launcherUpdate}
+            installProgress={store.installProgress}
+            busy={runtimeBusy}
+            installingDsh={installingDsh}
+            activeRuntimeReplacement={store.activeRuntimeReplacement}
+            bundleCount={store.packs.length}
+            pluginCount={store.profile?.plugins.length ?? 0}
+            skillCount={store.installedSkills.length}
+            presetCount={store.installedPresets.length}
+            onToggleRuntime={() => { void toggleRuntime() }}
+            onUpdateDsh={() => { void store.updateDsh() }}
+            onOpenLauncherUpdate={() => setUpdateOpen(true)}
+            onOpenVersionPicker={() => { setWheelchairMode(false); navigation.showManager(); navigation.setView('packs') }}
+            onOpenSettings={() => { setWheelchairMode(false); setSettingsOpen(true) }}
+            onNavigateOriginal={view => { setWheelchairMode(false); navigation.showManager(); navigation.setView(view) }}
+            onOpenHarness={openHarness}
+            onOpenDeveloper={() => { setWheelchairMode(false); setCopilotOpen(true) }}
+            onExit={() => setWheelchairMode(false)}
+          />
+        </div>
       )}
       {store.toast && <Toast toast={store.toast} onClose={store.dismissToast} />}
     </>

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC, IPC_EVENTS } from '../src/constants'
+import { IPC, IPC_EVENTS, IPC_WHEELCHAIR } from '../src/constants'
 import type {
+  SkillInstallTarget,
   AiInstallEvent,
   AiSessionEvent,
   AppSettings,
@@ -31,6 +32,17 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
   return () => ipcRenderer.removeListener(channel, wrapped)
 }
 
+// —— PR #94 轮椅模式 API 增量（追加式合并）——
+const wheelchairApi = {
+  deepseekBalance: (force?: boolean) => ipcRenderer.invoke(IPC_WHEELCHAIR.deepseekBalance, force),
+  dshUsage: (force?: boolean) => ipcRenderer.invoke(IPC_WHEELCHAIR.dshUsage, force),
+  newsFeed: () => ipcRenderer.invoke(IPC_WHEELCHAIR.newsFeed),
+  skillMarketCatalog: (refresh?: boolean) => ipcRenderer.invoke(IPC_WHEELCHAIR.skillMarketCatalog, refresh),
+  skillMarketAnalyze: (repository: string, defaultBranch: string) => ipcRenderer.invoke(IPC_WHEELCHAIR.skillMarketAnalyze, { repository, defaultBranch }),
+  skillMarketInstall: (request: { repository: string; target: SkillInstallTarget }) => ipcRenderer.invoke(IPC_WHEELCHAIR.skillMarketInstall, request),
+  skillMarketInstallByName: (request: { sourceRepository: string; skillId: string }) => ipcRenderer.invoke(IPC_WHEELCHAIR.skillMarketInstallByName, request),
+  presetsBuiltin: () => ipcRenderer.invoke(IPC_WHEELCHAIR.presetsBuiltin),
+}
 const api: LauncherApi = {
   getSettings: () => ipcRenderer.invoke(IPC.settingsGet),
   saveSettings: (settings: AppSettings) => ipcRenderer.invoke(IPC.settingsSave, settings),
@@ -180,7 +192,14 @@ const api: LauncherApi = {
   onLauncherUpdateProgress: listener => subscribe<LauncherUpdateProgress>(IPC_EVENTS.launcherUpdateProgress, listener),
   onPluginTrialEvent: listener => subscribe<PluginTrialResult>(IPC_EVENTS.pluginTrialEvent, listener),
   onAiInstallEvent: listener => subscribe<AiInstallEvent>(IPC_EVENTS.aiInstallEvent, listener),
-  onAiSessionEvent: listener => subscribe<AiSessionEvent>(IPC_EVENTS.aiSessionEvent, listener),
+  onAiSessionEvent: listener => subscribe<AiSessionEvent>(IPC_EVENTS.aiSessionEvent, listener),  deepseekBalance: wheelchairApi.deepseekBalance,
+  dshUsage: wheelchairApi.dshUsage,
+  newsFeed: wheelchairApi.newsFeed,
+  skillMarketCatalog: wheelchairApi.skillMarketCatalog,
+  skillMarketAnalyze: wheelchairApi.skillMarketAnalyze,
+  skillMarketInstall: wheelchairApi.skillMarketInstall,
+  skillMarketInstallByName: wheelchairApi.skillMarketInstallByName,
+  presetsBuiltin: wheelchairApi.presetsBuiltin,
 }
 
 contextBridge.exposeInMainWorld('launcher', api)

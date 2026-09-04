@@ -413,7 +413,7 @@ function SettingsPluginsTab({
       </div>
       <div className={subView === 'market' ? undefined : 'view-hidden'}>
         <section className="settings-panel">
-          <DshMarketView embedded onProfileChanged={onProfileChanged} />
+          <DshMarketView onProfileChanged={onProfileChanged} />
         </section>
       </div>
     </div>

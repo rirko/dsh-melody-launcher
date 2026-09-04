@@ -182,3 +182,15 @@ export const IPC_EVENTS = {
   aiSessionEvent: 'ai-session:event',
   packProgress: 'packs:progress',
 } as const
+
+// —— PR #94 轮椅模式 IPC 通道增量（追加式合并）——
+export const IPC_WHEELCHAIR = {
+  deepseekBalance: 'deepseek:balance',
+  dshUsage: 'dsh:usage',
+  newsFeed: 'news:feed',
+  skillMarketCatalog: 'skill-market:catalog',
+  skillMarketAnalyze: 'skill-market:analyze',
+  skillMarketInstall: 'skill-market:install',
+  skillMarketInstallByName: 'skill-market:install-by-name',
+  presetsBuiltin: 'presets:builtin',
+} as const

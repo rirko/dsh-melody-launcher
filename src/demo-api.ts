@@ -1644,4 +1644,13 @@ export const demoApi: LauncherApi = {
     aiSessionEventListeners.add(listener)
     return () => aiSessionEventListeners.delete(listener)
   },
+  deepseekBalance: async () => ({ status: 'ok', balance: { isAvailable: true, infos: [{ currency: 'CNY', totalBalance: 42.5, grantedBalance: 12.5, toppedUpBalance: 30 }] } }),
+  dshUsage: async () => ({ status: 'ok', usage: { tokensToday: 128540, cacheHitRate: 0.62 } }),
+  newsFeed: async () => ({ status: 'ok', items: [{ title: '演示日报', link: 'https://example.com', pubDate: new Date().toISOString(), summary: '轮椅模式演示数据。', headlines: [{ text: '演示要闻', link: 'https://example.com' }] }] }),
+  skillMarketCatalog: async () => [],
+  skillMarketAnalyze: async () => ({ repository: 'demo/repo', defaultBranch: 'main', installability: 'ready' as const, summary: '演示', targets: [] }),
+  skillMarketInstall: async () => ({ installedSkill: { name: 'demo', description: '', path: '', format: 'bundle', enabled: true, modelInvocable: true, userInvocable: true }, installedSkills: [] }),
+  skillMarketInstallByName: async () => ({ installedSkill: { name: 'demo', description: '', path: '', format: 'bundle', enabled: true, modelInvocable: true, userInvocable: true }, installedSkills: [] }),
+  presetsBuiltin: async () => [],
 }
+// （PR #94 轮椅模式演示桩已并入上方字面量。）

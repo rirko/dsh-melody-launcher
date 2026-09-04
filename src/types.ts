@@ -1301,3 +1301,99 @@ declare global {
     launcher?: LauncherApi
   }
 }
+
+// ============================================================================
+// PR #94 轮椅模式类型增量（追加式合并：原版类型零改动，接口经声明合并扩展）
+// ============================================================================
+
+/** PR 首页顶栏的一级导航（轮椅模式内使用；tab 语义映射回原版视图）。 */
+export type HomeTab = 'start' | 'versions' | 'plugins' | 'skills' | 'presets' | 'packs'
+
+/** 日报当日页里解析出的一条要闻（真实原文链接）。 */
+export interface NewsHeadline {
+  text: string
+  link: string
+}
+
+export interface NewsItem {
+  title: string
+  link: string
+  pubDate: string
+  summary: string
+  /** 仅当日最新条目会尝试解析；页面结构变化时为空，渲染层回退摘要。 */
+  headlines?: NewsHeadline[]
+}
+
+export type NewsFeedResult = { status: 'ok'; items: NewsItem[] } | { status: 'error'; message: string }
+
+export interface DeepSeekBalanceInfo {
+  currency: string
+  totalBalance: number | null
+  grantedBalance: number | null
+  toppedUpBalance: number | null
+}
+
+export interface DeepSeekBalance {
+  isAvailable: boolean
+  infos: DeepSeekBalanceInfo[]
+}
+
+export type DeepSeekBalanceResult =
+  | { status: 'no-key' }
+  | { status: 'ok'; balance: DeepSeekBalance }
+  | { status: 'error'; message: string }
+
+/** DSH 本地会话日志聚合出的用量（今日 Token 与缓存命中率）。 */
+export interface DshUsage {
+  tokensToday: number
+  /** 0..1；本地暂无输入侧数据时为 null。 */
+  cacheHitRate: number | null
+}
+
+export type DshUsageResult =
+  | { status: 'ok'; usage: DshUsage }
+  | { status: 'no-data' }
+  | { status: 'error'; message: string }
+
+/** skills.sh 目录索引条目：只有名字与来源仓库，安装时再按仓库解析定位 target。 */
+export interface SkillsShSkill {
+  /** "owner/repo/skillId" 形式的唯一 id。 */
+  id: string
+  skillId: string
+  name: string
+  installs: number
+  /** 来源 GitHub 仓库 owner/repo。 */
+  source: string
+}
+
+/** DSH 安装包内置的 agent preset（只读展示，由 DSH 自身管理启停）。 */
+export interface BuiltinAgentPreset {
+  /** 目录名，如 standard / cordis / minimal / code。 */
+  name: string
+  /** preset.yml 里的展示名，如「标准模式」。 */
+  displayName: string
+  description: string
+  order: number | null
+}
+
+/** 整合包携带的可迁移启动器配置（launcher-config.yaml）；凭据与本体/DSH_HOME 路径一律不进。 */
+export interface PackLauncherConfig {
+  workspace?: string
+  launchArgs?: string[]
+  webPort?: number
+  openAfterLaunch?: boolean
+  uiTheme?: string
+  network?: NetworkSettings
+}
+
+/** 轮椅模式所需的渲染端 API 增量（声明合并进 LauncherApi）。 */
+export interface LauncherApi {
+  deepseekBalance(force?: boolean): Promise<DeepSeekBalanceResult>
+  dshUsage(force?: boolean): Promise<DshUsageResult>
+  newsFeed(): Promise<NewsFeedResult>
+  skillMarketAnalyze(repository: string, defaultBranch: string): Promise<SkillRepositoryAnalysis>
+  skillMarketInstall(request: { repository: string; target: SkillInstallTarget }): Promise<SkillInstallResult>
+  skillMarketCatalog(refresh?: boolean): Promise<SkillsShSkill[]>
+  skillMarketInstallByName(request: { sourceRepository: string; skillId: string }): Promise<SkillInstallResult>
+  presetsBuiltin(): Promise<BuiltinAgentPreset[]>
+}
