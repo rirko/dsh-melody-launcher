@@ -48,7 +48,7 @@ import { readPresetReceipts, recordPresetInstall } from './preset-receipts'
 import { readSkillReceipts, recordSkillInstall } from './skill-receipts'
 import { isSafePackageName, isSafeProfileName, readProfile } from './profile'
 import { withExecutableDirectoryOnPath } from './process'
-import { buildNetworkEnvironment } from './proxy'
+import { buildNetworkEnvironment, NPM_OFFICIAL_REGISTRY } from './proxy'
 import { analyzeSkillRepository, analyzeSkillRepositoryFromArchive } from './skill-catalog'
 import { SKILL_MARKET_CACHE_TTL_MS, createSkillMarketCacheStore, lookupSkillMarketCache } from './skill-market-cache'
 import { readInstalledSkills as readLocalSkills, toggleInstalledSkill } from './skill-format'
@@ -284,9 +284,11 @@ export function createInstaller(options: InstallerOptions): Installer {
 
   const checkForDshUpdate = async () => {
     const installation = await detectDsh()
-    return options.githubFetch
-      ? checkDshUpdate(installation, options.githubFetch)
-      : checkDshUpdate(installation)
+    const settings = await options.readSettings()
+    const network = buildNetworkEnvironment(settings)
+    const fetchImpl = options.githubFetch ?? fetch
+    // 版本真值在 npm registry：镜像优先，官方源兜底，GitHub 只作最后回退。
+    return checkDshUpdate(installation, fetchImpl, [network.npmRegistry, NPM_OFFICIAL_REGISTRY])
   }
 
   /** 仓库结构检测结果缓存 5 分钟，避免同一仓库反复触发 GitHub 请求。 */
