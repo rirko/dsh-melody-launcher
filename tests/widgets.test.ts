@@ -116,9 +116,23 @@ describe('lookupNewsCache', () => {
 
   it('TTL 内 fresh、超时 stale、无文件/坏结构 miss', () => {
     expect(lookupNewsCache(null, 0).status).toBe('miss')
-    expect(lookupNewsCache({ version: 1, fetchedAt: 1000, items }, 1000 + NEWS_CACHE_TTL_MS - 1).status).toBe('fresh')
-    expect(lookupNewsCache({ version: 1, fetchedAt: 1000, items }, 1000 + NEWS_CACHE_TTL_MS + 1).status).toBe('stale')
-    expect(lookupNewsCache({ version: 1, fetchedAt: 'x', items } as never, 0).status).toBe('miss')
-    expect(lookupNewsCache({ version: 1, fetchedAt: 0, items: 'no' } as never, 0).status).toBe('miss')
+    expect(lookupNewsCache({ version: 2, fetchedAt: 1000, items }, 1000 + NEWS_CACHE_TTL_MS - 1).status).toBe('fresh')
+    expect(lookupNewsCache({ version: 2, fetchedAt: 1000, items }, 1000 + NEWS_CACHE_TTL_MS + 1).status).toBe('stale')
+    expect(lookupNewsCache({ version: 2, fetchedAt: 'x', items } as never, 0).status).toBe('miss')
+    expect(lookupNewsCache({ version: 2, fetchedAt: 0, items: 'no' } as never, 0).status).toBe('miss')
+  })
+
+  it('旧 version 1 缓存（无 headlines 字段）视为 miss 强制重拉', () => {
+    expect(lookupNewsCache({ version: 1, fetchedAt: 1000, items } as never, 1000).status).toBe('miss')
+  })
+
+  it('headlines 字段透传并过滤非法项', () => {
+    const withHeadlines = {
+      version: 2 as const,
+      fetchedAt: 1000,
+      items: [{ ...items[0], headlines: [{ text: 'a', link: 'https://x' }, { text: 1 }, null] }],
+    }
+    const result = lookupNewsCache(withHeadlines as never, 1000)
+    expect(result.items[0]?.headlines).toEqual([{ text: 'a', link: 'https://x' }])
   })
 })

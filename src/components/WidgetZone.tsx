@@ -233,6 +233,13 @@ function shortDate(pubDate: string): string {
   return `${date.getMonth() + 1}/${date.getDate()}`
 }
 
+/** RSS 摘要是压平的全文（含"AI 早报 … 视频版 … 概览"头部噪声），回退展示时只留「要闻」之后的内容。 */
+function digestText(summary: string): string {
+  const cut = summary.indexOf('要闻')
+  const body = cut >= 0 ? summary.slice(cut + 2) : summary
+  return body.replace(/\s*↗\s*\d+/g, ' ↗').trim().slice(0, 160)
+}
+
 function NewsCard() {
   const api = useLauncherApi()
   const [result, setResult] = useState<NewsFeedResult | null>(null)
@@ -255,7 +262,7 @@ function NewsCard() {
     if (!today) body = <span className="widget-muted">今日暂无日报条目</span>
     else if (headlines.length === 0) body = (
       <div className="widget-inline-row">
-        <p className="widget-news-summary">{today.summary || today.title}</p>
+        <p className="widget-news-summary">{digestText(today.summary) || today.title}</p>
         <button type="button" className="settings-nav-link" onClick={() => void api.openExternal(today.link)}>阅读全文 ↗</button>
       </div>
     )
@@ -266,11 +273,13 @@ function NewsCard() {
           <small>{shortDate(today.pubDate) || today.title}</small>
         </div>
         <ul className="widget-news">
-          {headlines.slice(0, 5).map(headline => (
+          {headlines.slice(0, 5).map((headline, index) => (
             <li key={headline.link}>
               <button type="button" onClick={() => void api.openExternal(headline.link)} title={headline.text}>
-                <span className="widget-news-summary">{headline.text}</span>
+                <span className="widget-news-dot" aria-hidden="true" />
+                <span className="widget-news-text">{headline.text}</span>
                 <ExternalLink size={12} className="widget-news-ext" />
+                <span className="widget-news-ref">#{index + 1}</span>
               </button>
             </li>
           ))}

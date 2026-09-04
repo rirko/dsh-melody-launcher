@@ -11,7 +11,8 @@ const NEWS_MAX_ITEMS = 30
 import type { NewsFeedResult, NewsHeadline, NewsItem } from '../src/types'
 
 export interface NewsCacheFile {
-  version: 1
+  /** 2 = 条目带 headlines 字段；旧 version 1 缓存视为 miss 强制重拉。 */
+  version: 2
   fetchedAt: number
   items: NewsItem[]
 }
@@ -87,7 +88,7 @@ export function lookupNewsCache(
   now: number,
   ttlMs = NEWS_CACHE_TTL_MS,
 ): { status: 'fresh' | 'stale' | 'miss'; items: NewsItem[] } {
-  if (!file || typeof file !== 'object' || file.version !== 1 || typeof file.fetchedAt !== 'number' || !Array.isArray(file.items)) {
+  if (!file || typeof file !== 'object' || file.version !== 2 || typeof file.fetchedAt !== 'number' || !Array.isArray(file.items)) {
     return { status: 'miss', items: [] }
   }
   const items = file.items.filter(item => item && typeof item.title === 'string' && typeof item.link === 'string')
@@ -126,8 +127,12 @@ export function createNewsCacheStore(filePath: string) {
   }
 }
 
+// Cloudflare Pages 对无 UA / node UA 的请求可能直接拒绝，伪装成浏览器。
+const FEED_HEADERS = { accept: 'application/rss+xml, application/xml, text/xml', 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36' }
+const PAGE_HEADERS = { accept: 'text/html', 'user-agent': FEED_HEADERS['user-agent'] }
+
 export async function fetchNewsFeed(fetchImpl: typeof fetch, url = JUYA_NEWS_FEED_URL): Promise<NewsItem[]> {
-  const response = await fetchImpl(url, { headers: { accept: 'application/rss+xml, application/xml, text/xml' }, signal: AbortSignal.timeout(15_000) })
+  const response = await fetchImpl(url, { headers: FEED_HEADERS, signal: AbortSignal.timeout(15_000) })
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
   const items = parseRssFeed(await response.text())
   if (items.length === 0) throw new Error('订阅源没有可显示的条目')
@@ -135,7 +140,7 @@ export async function fetchNewsFeed(fetchImpl: typeof fetch, url = JUYA_NEWS_FEE
   if (latest?.link) {
     // 当日要闻的真实链接只在文章页里；抓不到不影响订阅源本身。
     try {
-      const page = await fetchImpl(latest.link, { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(15_000) })
+      const page = await fetchImpl(latest.link, { headers: PAGE_HEADERS, signal: AbortSignal.timeout(15_000) })
       if (page.ok) {
         const headlines = parseHeadlinesFromPage(await page.text())
         if (headlines.length > 0) items[0] = { ...latest, headlines }
