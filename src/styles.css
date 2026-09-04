@@ -1,7 +1,7 @@
 /* :root 即默认主题：DeepSeek 蓝。其余主题通过 data-theme 覆盖同名变量。 */
 :root {
   font-family: Inter, "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
-  color: #26313d;
+  color: var(--ink);
   background: transparent;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -32,6 +32,35 @@
   --danger-soft: #f9e9e8;
   --shadow: 0 14px 34px rgba(30, 45, 62, 0.14);
   --chrome-shadow: 0 5px 16px rgba(43, 66, 96, 0.09);
+}
+
+:root[data-theme='night'] {
+  --app-bg: #141a22;
+  --chrome: #1a222d;
+  --chrome-strong: #212b38;
+  --workspace-bg: #171e28;
+  --ink: #dce6f2;
+  --muted: #9fb0c2;
+  --quiet: #6e7f92;
+  --line: #2a3644;
+  --line-strong: #3b4a5c;
+  --surface: #1d2733;
+  --surface-soft: #18212c;
+  --surface-strong: #243141;
+  --accent: #5b9ee8;
+  --accent-hover: #78b1f2;
+  --accent-soft: #22344a;
+  --focus-ring: rgba(91, 158, 232, 0.5);
+  --scrollbar-thumb: rgba(91, 158, 232, 0.45);
+  --scrollbar-thumb-hover: rgba(120, 177, 242, 0.75);
+  --blue: #7fb2e8;
+  --blue-soft: #1e2c3e;
+  --amber: #d9a94f;
+  --amber-soft: #2d2717;
+  --danger: #e0797c;
+  --danger-soft: #332023;
+  --shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+  --chrome-shadow: 0 5px 16px rgba(0, 0, 0, 0.4);
 }
 
 :root[data-theme='ocean'] {
@@ -357,7 +386,7 @@ input:focus-visible {
 
 .topbar-tab.active {
   color: var(--accent);
-  background: #ffffff;
+  background: var(--surface);
 }
 
 .topbar-right {
@@ -388,7 +417,7 @@ input:focus-visible {
 .topbar-developer.active {
   color: var(--accent);
   border-color: #ffffff;
-  background: #ffffff;
+  background: var(--surface);
 }
 
 .topbar-window-button,
@@ -1494,7 +1523,7 @@ input:focus-visible {
 .credential-button.configured,
 .github-account-button.configured {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 25%, white);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--surface));
   background: var(--accent-soft);
 }
 
@@ -1526,12 +1555,12 @@ input:focus-visible {
 
 .launcher-update-button.ready {
   color: var(--accent-hover);
-  border-color: color-mix(in srgb, var(--accent) 25%, white);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--surface));
   background: var(--accent-soft);
 }
 
 .launcher-update-button.ready:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 14%, white);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
 }
 
 .github-account-button {
@@ -1568,7 +1597,7 @@ input:focus-visible {
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--muted);
-  background: #fff;
+  background: var(--surface);
   cursor: pointer;
 }
 
@@ -1621,7 +1650,7 @@ input:focus-visible {
 .secondary-button {
   color: #38424e;
   border-color: var(--line-strong);
-  background: #fff;
+  background: var(--surface);
 }
 
 .secondary-button:hover:not(:disabled) {
@@ -1630,14 +1659,14 @@ input:focus-visible {
 
 .secondary-button.accent {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 22%, white);
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--surface));
   background: var(--accent-soft);
 }
 
 .danger-button {
   color: var(--danger);
   border-color: #e4bcbc;
-  background: #fff;
+  background: var(--surface);
 }
 
 .danger-button:hover {
@@ -1759,8 +1788,8 @@ input:focus-visible {
 
 .side-navigation nav button.active {
   color: var(--accent-hover);
-  border-color: color-mix(in srgb, var(--accent) 25%, white);
-  background: #fff;
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--surface));
+  background: var(--surface);
   box-shadow: 0 1px 2px rgba(29, 42, 34, 0.05);
 }
 
@@ -1841,7 +1870,7 @@ input:focus-visible {
 
 .copilot-toggle.active {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 25%, white);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--surface));
   background: var(--accent-soft);
 }
 
@@ -1900,7 +1929,7 @@ input:focus-visible {
   border: 1px solid var(--line-strong);
   border-radius: 5px;
   color: var(--ink);
-  background: #fff;
+  background: var(--surface);
   font-size: 10px;
 }
 
@@ -1952,7 +1981,7 @@ input:focus-visible {
 }
 
 .copilot-session-item:hover { background: rgba(255, 255, 255, .65); }
-.copilot-session-item.active { border-color: color-mix(in srgb, var(--accent) 25%, white); background: #fff; }
+.copilot-session-item.active { border-color: color-mix(in srgb, var(--accent) 25%, var(--surface)); background: var(--surface); }
 .copilot-session-copy { min-width: 0; }
 .copilot-session-copy strong,
 .copilot-session-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2010,7 +2039,7 @@ input:focus-visible {
   padding: 8px 9px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface);
   font-size: var(--copilot-font);
 }
 .copilot-message.assistant {
@@ -2020,7 +2049,7 @@ input:focus-visible {
   background: transparent;
 }
 .copilot-message.assistant .copilot-message-role { margin-bottom: 3px; color: var(--accent); }
-.copilot-message.user { margin-left: 26px; border-color: color-mix(in srgb, var(--accent) 25%, white); background: var(--accent-soft); }
+.copilot-message.user { margin-left: 26px; border-color: color-mix(in srgb, var(--accent) 25%, var(--surface)); background: var(--accent-soft); }
 .copilot-message.tool { padding: 5px 8px; color: var(--muted); background: #f1f4f7; font-size: var(--copilot-font-small); }
 .copilot-message-role { display: block; margin-bottom: 4px; color: var(--muted); font-size: var(--copilot-font-small); font-weight: 700; }
 .copilot-message .ai-markdown { font-size: var(--copilot-font); line-height: 1.6; }
@@ -2066,18 +2095,18 @@ input:focus-visible {
   border: 1px solid var(--line-strong);
   border-radius: 5px;
   color: var(--ink);
-  background: #fff;
+  background: var(--surface);
   font-size: var(--copilot-font-small);
 }
 .copilot-model-bar select:disabled { color: var(--quiet); opacity: .6; cursor: default; }
 .copilot-input-wrap { position: relative; width: 100%; min-width: 0; }
-.copilot-composer textarea { display: block; width: 100%; min-width: 0; min-height: 58px; max-height: 120px; resize: vertical; padding: 8px 43px 8px 9px; border: 1px solid var(--line-strong); border-radius: 5px; background: #fff; font: inherit; font-size: var(--copilot-font); line-height: 1.55; }
+.copilot-composer textarea { display: block; width: 100%; min-width: 0; min-height: 58px; max-height: 120px; resize: vertical; padding: 8px 43px 8px 9px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface); font: inherit; font-size: var(--copilot-font); line-height: 1.55; }
 .copilot-composer-hint { margin-top: 4px; padding-left: 2px; color: var(--quiet); font-size: 9px; }
 .copilot-send-button { position: absolute; right: 6px; bottom: 6px; display: grid; width: 30px; height: 30px; padding: 0; place-items: center; border: 1px solid var(--line-strong); border-radius: 5px; color: #fff; background: var(--accent); cursor: pointer; }
 .copilot-send-button:hover:not(:disabled) { background: var(--accent-hover); }
 .copilot-send-button.stop { border-color: #e8cdca; background: var(--danger); }
 .copilot-send-button.stop:hover:not(:disabled) { background: #9c3030; }
-.copilot-send-button.pending { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 25%, white); background: var(--accent-soft); }
+.copilot-send-button.pending { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 25%, var(--surface)); background: var(--accent-soft); }
 .copilot-send-button:disabled { cursor: default; opacity: .45; }
 .copilot-footer { display: flex; min-height: 43px; flex: none; align-items: center; padding: 6px 10px; gap: 7px; border-top: 1px solid var(--line); }
 .copilot-footer button { min-height: 30px; padding: 0 8px; font-size: var(--copilot-font-small); }
@@ -2363,7 +2392,7 @@ input:focus-visible {
   border: 1px solid var(--line-strong);
   border-radius: 5px;
   color: var(--ink);
-  background: #fff;
+  background: var(--surface);
   font-size: 11px;
 }
 
@@ -2844,7 +2873,7 @@ input:focus-visible {
   border: 1px solid var(--line-strong);
   border-radius: 5px;
   color: var(--ink);
-  background: #fff;
+  background: var(--surface);
   font-size: 12px;
   font-weight: 650;
 }
@@ -2917,7 +2946,7 @@ input:focus-visible {
   justify-content: center;
   padding: 0 12px;
   gap: 6px;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--surface));
   border-radius: 5px;
   color: var(--accent);
   background: var(--accent-soft);
@@ -2928,7 +2957,7 @@ input:focus-visible {
 }
 
 .management-runtime-action:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 14%, white);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
 }
 
 .management-runtime-action.stop {
@@ -2960,7 +2989,7 @@ input:focus-visible {
   border: 0;
   border-radius: 0;
   color: var(--muted);
-  background: #fff;
+  background: var(--surface);
   font-size: 9px;
 }
 
@@ -3073,7 +3102,7 @@ input:focus-visible {
 
 .management-secondary-panel > .management-runtime-control {
   flex-basis: 56px;
-  border: 1px solid color-mix(in srgb, var(--accent) 20%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--surface));
   background: var(--accent-soft);
 }
 
@@ -3093,7 +3122,7 @@ input:focus-visible {
   height: 38px;
   padding: 0 10px;
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .management-secondary-panel > .management-search-control > .search-field.compact {
@@ -3157,14 +3186,14 @@ input:focus-visible {
   border: 1px solid var(--line);
   border-radius: 5px;
   color: var(--quiet);
-  background: #fff;
+  background: var(--surface);
   cursor: pointer;
   font-size: 9px;
   white-space: nowrap;
 }
 
 .plugin-status-filters label.selected {
-  border-color: color-mix(in srgb, var(--accent) 25%, white);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--surface));
   color: var(--accent-hover);
   background: var(--accent-soft);
 }
@@ -3231,7 +3260,7 @@ input:focus-visible {
 .resource-tabs button.active {
   border-bottom-color: var(--accent);
   color: var(--accent);
-  background: #fff;
+  background: var(--surface);
 }
 
 .resource-tabs button span {
@@ -3250,7 +3279,7 @@ input:focus-visible {
 
 .resource-tabs button.active span {
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 16%, white);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
 }
 
 .resource-tab-panel {
@@ -3281,7 +3310,7 @@ input:focus-visible {
   min-height: 170px;
   flex: 0 0 170px;
   margin: 0 8px;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--surface));
   border-radius: 7px;
   background: var(--accent-soft);
   overflow: hidden;
@@ -3480,12 +3509,12 @@ input:focus-visible {
   border-radius: 5px;
   outline: 0;
   color: var(--ink);
-  background: #fff;
+  background: var(--surface);
   font-size: 11px;
 }
 
 .environment-install-row input:focus {
-  border-color: color-mix(in srgb, var(--accent) 45%, white);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--surface));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
@@ -3521,7 +3550,7 @@ input:focus-visible {
 }
 
 .environment-version-row.selected {
-  border-color: color-mix(in srgb, var(--accent) 25%, white);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--surface));
   background: var(--accent-soft);
 }
 
@@ -3559,7 +3588,7 @@ input:focus-visible {
 .environment-select-button {
   height: 25px;
   padding: 0 8px;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--surface));
   border-radius: 4px;
   color: var(--accent);
   background: #f4fbf5;
@@ -3569,7 +3598,7 @@ input:focus-visible {
 }
 
 .environment-select-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 14%, white);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
 }
 
 .environment-remove-button {
@@ -3608,7 +3637,7 @@ input:focus-visible {
   justify-content: space-between;
   min-height: 32px;
   padding: 0 10px;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--surface));
   border-radius: 5px;
   color: var(--accent);
   background: rgba(255, 255, 255, 0.55);
@@ -3721,7 +3750,7 @@ input:focus-visible {
   padding: 2px 12px;
   gap: 10px;
   border-bottom: 1px solid #e9edf2;
-  background: #fff;
+  background: var(--surface);
 }
 
 .skill-row .switch {
@@ -3772,7 +3801,7 @@ input:focus-visible {
   padding: 7px 10px 7px 12px;
   gap: 8px;
   border-bottom: 1px solid #e9edf2;
-  background: #fff;
+  background: var(--surface);
 }
 
 .application-row.disabled {
@@ -3842,7 +3871,7 @@ input:focus-visible {
   width: 27px;
   height: 27px;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--blue) 35%, white);
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, var(--surface));
   border-radius: 6px;
   color: var(--blue);
   background: var(--blue-soft);
@@ -3904,11 +3933,11 @@ input:focus-visible {
   border: 1px solid var(--line-strong);
   border-radius: 6px;
   color: var(--muted);
-  background: #fff;
+  background: var(--surface);
 }
 
 .search-field:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 45%, white);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--surface));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
@@ -3980,7 +4009,7 @@ input:focus-visible {
   align-items: center;
   padding: 2px 8px;
   border-bottom: 1px solid #e9edf2;
-  background: #fff;
+  background: var(--surface);
   cursor: pointer;
 }
 
@@ -4105,7 +4134,7 @@ input:focus-visible {
   width: 34px;
   height: 34px;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--surface));
   border-radius: 6px;
   color: var(--accent);
   background: #eaf3ed;
@@ -4181,7 +4210,7 @@ input:focus-visible {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 2px rgba(23, 32, 25, 0.2);
   content: "";
   transition: transform 150ms ease;
@@ -4196,7 +4225,7 @@ input:focus-visible {
 }
 
 .switch.locked > span {
-  background: color-mix(in srgb, var(--accent) 55%, white);
+  background: color-mix(in srgb, var(--accent) 55%, var(--surface));
   cursor: not-allowed;
 }
 
@@ -4338,7 +4367,7 @@ input:focus-visible {
   border: 1px solid var(--line);
   border-radius: 7px;
   text-align: center;
-  background: #fff;
+  background: var(--surface);
 }
 
 .empty-icon {
@@ -4346,7 +4375,7 @@ input:focus-visible {
   width: 58px;
   height: 58px;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--surface));
   border-radius: 7px;
   color: var(--accent);
   background: var(--accent-soft);
@@ -4405,7 +4434,7 @@ input:focus-visible {
 
 .segmented-control button.active {
   color: var(--ink);
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 2px rgba(26, 38, 30, 0.09);
 }
 
@@ -4429,7 +4458,7 @@ input:focus-visible {
   margin-bottom: 12px;
   padding: 7px 10px;
   gap: 8px;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--surface));
   border-radius: 6px;
   color: var(--accent-hover);
   background: var(--accent-soft);
@@ -4548,7 +4577,7 @@ input:focus-visible {
   border: 1px solid var(--line-strong);
   border-radius: 6px;
   color: var(--muted);
-  background: #fff;
+  background: var(--surface);
   cursor: pointer;
 }
 
@@ -4565,7 +4594,7 @@ input:focus-visible {
 .repository-list {
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   overflow: hidden;
 }
 
@@ -4632,13 +4661,13 @@ input:focus-visible {
 
 .repo-icon.dsh-core-icon {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 25%, white);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--surface));
   background: var(--accent-soft);
 }
 
 .repo-icon.skill-icon {
   color: var(--blue);
-  border-color: color-mix(in srgb, var(--blue) 35%, white);
+  border-color: color-mix(in srgb, var(--blue) 35%, var(--surface));
   background: var(--blue-soft);
 }
 
@@ -4681,7 +4710,7 @@ input:focus-visible {
 .dsh-core-badge {
   flex: 0 0 auto;
   padding: 2px 6px;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--surface));
   border-radius: 4px;
   color: var(--accent);
   background: var(--accent-soft);
@@ -4715,13 +4744,13 @@ input:focus-visible {
 .repository-analysis-badge.choice,
 .repository-analysis-badge.plugin {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 25%, white);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--surface));
   background: var(--accent-soft);
 }
 
 .repository-analysis-badge.skill {
   color: var(--blue);
-  border-color: color-mix(in srgb, var(--blue) 35%, white);
+  border-color: color-mix(in srgb, var(--blue) 35%, var(--surface));
   background: var(--blue-soft);
 }
 
@@ -5042,7 +5071,7 @@ input:focus-visible {
   min-width: 88px;
   min-height: 32px;
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 25%, white);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--surface));
   background: var(--accent-soft);
   font-size: 11px;
 }
@@ -5091,7 +5120,7 @@ input:focus-visible {
 
 .trial-button.passed {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 25%, white);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--surface));
   background: var(--accent-soft);
 }
 
@@ -5275,7 +5304,7 @@ input:focus-visible {
 
 .runtime-band.downloading .runtime-status-icon {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 25%, white);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--surface));
   background: var(--accent-soft);
 }
 
@@ -5303,7 +5332,7 @@ input:focus-visible {
 
 .runtime-band.running .runtime-status-icon {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 25%, white);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--surface));
   background: var(--accent-soft);
 }
 
@@ -5386,7 +5415,7 @@ input:focus-visible {
   margin-top: 12px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .launch-facts > div {
@@ -5531,9 +5560,9 @@ input:focus-visible {
 .modal {
   width: min(560px, calc(100vw - 32px));
   max-height: calc(100vh - 44px);
-  border: 1px solid #d0d7e0;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: var(--shadow);
   overflow: hidden;
 }
@@ -5723,7 +5752,7 @@ input:focus-visible {
 
 .plugin-target-icon.skill-icon {
   color: var(--blue);
-  border-color: color-mix(in srgb, var(--blue) 35%, white);
+  border-color: color-mix(in srgb, var(--blue) 35%, var(--surface));
   background: var(--blue-soft);
 }
 
@@ -5926,7 +5955,7 @@ input:focus-visible {
   align-items: center;
   padding: 8px 9px;
   gap: 8px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .custom-api-item + .custom-api-item {
@@ -5938,7 +5967,7 @@ input:focus-visible {
   width: 32px;
   height: 32px;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--surface));
   border-radius: 6px;
   color: var(--accent);
   background: var(--accent-soft);
@@ -6051,7 +6080,7 @@ input:focus-visible {
   border-radius: 5px;
   outline: 0;
   color: var(--ink);
-  background: #fff;
+  background: var(--surface);
   font-family: Consolas, "Segoe UI", sans-serif;
   font-size: 11px;
 }
@@ -6072,7 +6101,7 @@ input:focus-visible {
 .custom-api-form-grid input:focus,
 .custom-api-form-grid select:focus,
 .custom-api-form-grid textarea:focus {
-  border-color: color-mix(in srgb, var(--accent) 45%, white);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--surface));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
@@ -6113,7 +6142,7 @@ input:focus-visible {
 
 .credential-summary.configured {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 25%, white);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--surface));
   background: var(--accent-soft);
 }
 
@@ -6154,12 +6183,12 @@ input:focus-visible {
   height: 38px;
   border: 1px solid var(--line-strong);
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface);
   overflow: hidden;
 }
 
 .secret-input:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 45%, white);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--surface));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
@@ -6213,7 +6242,7 @@ input:focus-visible {
   align-items: center;
   padding: 9px 11px;
   gap: 11px;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--surface));
   border-radius: 6px;
   color: var(--accent);
   background: var(--accent-soft);
@@ -6227,7 +6256,7 @@ input:focus-visible {
   place-items: center;
   border: 1px solid #d2ddd7;
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface);
   object-fit: cover;
 }
 
@@ -6390,7 +6419,7 @@ input:focus-visible {
   border: 1px solid #b9c4cf;
   border-radius: 5px;
   color: var(--ink);
-  background: #fff;
+  background: var(--surface);
   cursor: pointer;
 }
 
@@ -6488,6 +6517,10 @@ input:focus-visible {
 .theme-swatch.deepseek i:nth-child(1) { background: #cfe2f4; }
 .theme-swatch.deepseek i:nth-child(2) { background: #7fb0e0; }
 .theme-swatch.deepseek i:nth-child(3) { background: #2b7cd8; }
+.theme-swatch.night i:nth-child(1) { background: #22344a; }
+.theme-swatch.night i:nth-child(2) { background: #3f6f9e; }
+.theme-swatch.night i:nth-child(3) { background: #5b9ee8; }
+
 .theme-swatch.ocean i:nth-child(1) { background: #dce9f0; }
 .theme-swatch.ocean i:nth-child(2) { background: #8db5c8; }
 .theme-swatch.ocean i:nth-child(3) { background: #276f91; }
@@ -6528,7 +6561,7 @@ input:focus-visible {
   border: 1px solid var(--line-strong);
   border-radius: 5px;
   color: var(--ink);
-  background: #fff;
+  background: var(--surface);
   font-family: Consolas, "Segoe UI", sans-serif;
   font-size: 11px;
 }
@@ -6698,7 +6731,7 @@ input:focus-visible {
   align-items: center;
   padding: 8px 8px 8px 12px;
   gap: 8px;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--surface));
   border-radius: 7px;
   color: var(--accent-hover);
   background: #f3faf6;
@@ -7413,7 +7446,7 @@ input:focus-visible {
 .dsh-market-search { display: flex; height: 34px; align-items: center; padding: 0 11px; gap: 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--muted); }
 .dsh-market-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 11px; }
 .dsh-market-toolbar select { height: 34px; min-width: 0; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); font-size: 11px; }
-.dsh-market-progress { display: flex; min-height: 34px; align-items: center; margin-bottom: 10px; padding: 0 11px; gap: 7px; border: 1px solid color-mix(in srgb, var(--accent) 22%, white); border-radius: 8px; color: var(--accent); background: var(--accent-soft); font-size: 11px; }
+.dsh-market-progress { display: flex; min-height: 34px; align-items: center; margin-bottom: 10px; padding: 0 11px; gap: 7px; border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--surface)); border-radius: 8px; color: var(--accent); background: var(--accent-soft); font-size: 11px; }
 .dsh-market-progress-track { flex: 1; min-width: 110px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .dsh-market-progress-track.determinate span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 180ms ease; }
 .dsh-market-progress-track.indeterminate span { display: block; width: 38%; height: 100%; border-radius: inherit; background: var(--accent); animation: install-progress-slide 1.25s ease-in-out infinite; }
@@ -7499,7 +7532,7 @@ input:focus-visible {
 
 .ai-phase-badge.done {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 22%, white);
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--surface));
   background: var(--accent-soft);
 }
 
@@ -7617,7 +7650,7 @@ input:focus-visible {
 
 .ai-markdown blockquote {
   padding: 2px 9px;
-  border-left: 3px solid color-mix(in srgb, var(--accent) 25%, white);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 25%, var(--surface));
   color: var(--muted);
 }
 
@@ -7837,7 +7870,7 @@ input:focus-visible {
 .recommended-dialog-close:hover {
   color: var(--ink);
   border-color: var(--line-strong);
-  background: #fff;
+  background: var(--surface);
 }
 .recommended-dialog-hero {
   display: flex;

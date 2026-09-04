@@ -48,7 +48,7 @@ export function defaultSettings(input: DefaultSettingsInput): AppSettings {
   }
 }
 
-const UI_THEMES = new Set<UiTheme>(['deepseek', 'ocean', 'berry', 'graphite'])
+const UI_THEMES = new Set<UiTheme>(['deepseek', 'night', 'ocean', 'berry', 'graphite'])
 
 function validUiTheme(value: unknown): value is UiTheme {
   return typeof value === 'string' && UI_THEMES.has(value as UiTheme)

@@ -20,6 +20,7 @@ interface SettingsDialogProps {
 
 const UI_THEMES: Array<{ id: UiTheme; label: string }> = [
   { id: 'deepseek', label: '晴空蓝' },
+  { id: 'night', label: '夜间' },
   { id: 'ocean', label: '海湾' },
   { id: 'berry', label: '莓果' },
   { id: 'graphite', label: '石墨' },
