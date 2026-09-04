@@ -1,7 +1,9 @@
 export type ViewName = 'plugins' | 'discover' | 'dsh-market' | 'environment' | 'packs' | 'github'
 export type RuntimeDrawerMode = 'hidden' | 'half' | 'expanded'
 export type WindowMode = 'launcher' | 'manager'
-export type UiTheme = 'forest' | 'ocean' | 'berry' | 'graphite'
+/** 一级导航 tab：启动页 + 五个 C 端面板（原二级设置页拍平）。 */
+export type HomeTab = 'start' | 'versions' | 'plugins' | 'skills' | 'presets' | 'packs'
+export type UiTheme = 'deepseek' | 'night'
 
 export interface AppSettings {
   dshInstallPath: string
@@ -412,6 +414,63 @@ export interface SkillRepositoryAnalysis {
   targets: SkillInstallTarget[]
 }
 
+/** 日报当日页里解析出的一条要闻（真实原文链接）。 */
+export interface NewsHeadline {
+  text: string
+  link: string
+}
+
+export interface NewsItem {
+  title: string
+  link: string
+  pubDate: string
+  summary: string
+  /** 仅当日最新条目会尝试解析；页面结构变化时为空，渲染层回退摘要。 */
+  headlines?: NewsHeadline[]
+}
+
+export type NewsFeedResult = { status: 'ok'; items: NewsItem[] } | { status: 'error'; message: string }
+
+export interface DeepSeekBalanceInfo {
+  currency: string
+  totalBalance: number | null
+  grantedBalance: number | null
+  toppedUpBalance: number | null
+}
+
+export interface DeepSeekBalance {
+  isAvailable: boolean
+  infos: DeepSeekBalanceInfo[]
+}
+
+export type DeepSeekBalanceResult =
+  | { status: 'no-key' }
+  | { status: 'ok'; balance: DeepSeekBalance }
+  | { status: 'error'; message: string }
+
+/** DSH 本地会话日志聚合出的用量（今日 Token 与缓存命中率）。 */
+export interface DshUsage {
+  tokensToday: number
+  /** 0..1；本地暂无输入侧数据时为 null。 */
+  cacheHitRate: number | null
+}
+
+export type DshUsageResult =
+  | { status: 'ok'; usage: DshUsage }
+  | { status: 'no-data' }
+  | { status: 'error'; message: string }
+
+/** skills.sh 目录索引条目：只有名字与来源仓库，安装时再按仓库解析定位 target。 */
+export interface SkillsShSkill {
+  /** "owner/repo/skillId" 形式的唯一 id。 */
+  id: string
+  skillId: string
+  name: string
+  installs: number
+  /** 来源 GitHub 仓库 owner/repo。 */
+  source: string
+}
+
 export interface InstalledSkill {
   name: string
   description: string
@@ -536,6 +595,16 @@ export interface InstalledPreset {
   repository?: string
   sourcePath?: string
   revision?: string
+}
+
+/** DSH 安装包内置的 agent preset（只读展示，由 DSH 自身管理启停）。 */
+export interface BuiltinAgentPreset {
+  /** 目录名，如 standard / cordis / minimal / code。 */
+  name: string
+  /** preset.yml 里的展示名，如「标准模式」。 */
+  displayName: string
+  description: string
+  order: number | null
 }
 
 export interface PresetInstallRequest {
@@ -905,6 +974,16 @@ export interface PackManifest {
   applications?: PackApplicationEntry[]
 }
 
+/** 整合包携带的可迁移启动器配置（launcher-config.yaml）；凭据与本体/DSH_HOME 路径一律不进。 */
+export interface PackLauncherConfig {
+  workspace?: string
+  launchArgs?: string[]
+  webPort?: number
+  openAfterLaunch?: boolean
+  uiTheme?: UiTheme
+  network?: NetworkSettings
+}
+
 export interface PackAnalysisItem {
   packageName: string
   available: boolean          // 能否安装
@@ -1217,6 +1296,19 @@ export interface LauncherApi {
   trialPlugin(packageName: string, profileName?: string): Promise<PluginTrialResult>
   readPluginTrials(): Promise<PluginTrialResult[]>
   installSkill(request: SkillInstallRequest): Promise<SkillInstallResult>
+  /** C 端技能市场：归档式检测（绕开 api.github.com 限流）与免重析安装。 */
+  skillMarketAnalyze(repository: string, defaultBranch: string): Promise<SkillRepositoryAnalysis>
+  skillMarketInstall(request: { repository: string; target: SkillInstallTarget }): Promise<SkillInstallResult>
+  /** skills.sh 目录索引（主进程聚合 + 磁盘缓存 24h），按安装量降序。 */
+  skillMarketCatalog(refresh?: boolean): Promise<SkillsShSkill[]>
+  /** 首页小部件：DeepSeek 官方余额（主进程缓存 5 分钟，force 强刷）。 */
+  deepseekBalance(force?: boolean): Promise<DeepSeekBalanceResult>
+  /** 首页小部件：juya AI 日报 RSS（主进程磁盘缓存 + SWR）。 */
+  newsFeed(): Promise<NewsFeedResult>
+  /** 首页小部件：DSH 本地会话日志聚合的今日 Token 与缓存命中率（60s 缓存）。 */
+  dshUsage(force?: boolean): Promise<DshUsageResult>
+  /** 索引条目安装：主进程按来源仓库解析归档定位 target 后落盘。 */
+  skillMarketInstallByName(request: { sourceRepository: string; skillId: string }): Promise<SkillInstallResult>
   readInstalledSkills(): Promise<InstalledSkill[]>
   toggleSkill(name: string, enabled: boolean): Promise<InstalledSkill[]>
   installApplication(request: ApplicationInstallRequest): Promise<ApplicationInstallResult>
@@ -1225,6 +1317,8 @@ export interface LauncherApi {
   uninstallApplication(id: string): Promise<InstalledApplicationAddon[]>
   installPreset(request: PresetInstallRequest): Promise<PresetInstallResult>
   readInstalledPresets(): Promise<InstalledPreset[]>
+  /** 当前 DSH 版本内置的 agent preset（standard/cordis/minimal/code…）。 */
+  presetsBuiltin(): Promise<BuiltinAgentPreset[]>
   togglePreset(name: string, enabled: boolean): Promise<InstalledPreset[]>
   uninstallPreset(name: string): Promise<InstalledPreset[]>
   getRuntimeState(): Promise<RuntimeState>

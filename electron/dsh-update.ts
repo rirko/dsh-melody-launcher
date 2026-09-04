@@ -109,7 +109,23 @@ function decodeContent(content: string): string {
   return Buffer.from(content.replace(/\s/g, ''), 'base64').toString('utf8')
 }
 
-async function readRemoteDshVersion(fetchImpl: typeof fetch): Promise<string> {
+/**
+ * npm registry 的 dist-tag/latest。DSH 本体经 npm 分发，registry 才是版本真值；
+ * GitHub contents 接口在仓库不可达/镜像限流时会 404，只作最后回退。
+ */
+async function readRemoteDshVersionFromRegistry(fetchImpl: typeof fetch, registry: string): Promise<string> {
+  const base = registry.replace(/\/+$/, '')
+  const response = await fetchImpl(`${base}/${DSH_PACKAGE_NAME.replace('/', '%2F')}/latest`, {
+    headers: { accept: 'application/vnd.npm.install-v1+json, application/json' },
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!response.ok) throw new Error(`npm 镜像返回 ${response.status}。`)
+  const body = await response.json() as { version?: unknown }
+  if (typeof body?.version !== 'string' || !body.version.trim()) throw new Error('npm 镜像没有返回可用的版本号。')
+  return body.version.trim()
+}
+
+async function readRemoteDshVersionFromGitHub(fetchImpl: typeof fetch): Promise<string> {
   const repository = await requestJson<GitHubRepositoryResponse>(
     repositoryApiUrl(''),
     fetchImpl,
@@ -140,14 +156,36 @@ async function readRemoteDshVersion(fetchImpl: typeof fetch): Promise<string> {
   throw lastError instanceof Error ? lastError : new Error('未找到 DSH 版本清单。')
 }
 
+/** 镜像优先逐个试 registry，全部失败才回退 GitHub；两边都失败时抛最后一次的错误。 */
+async function readRemoteDshVersion(fetchImpl: typeof fetch, registryCandidates: string[]): Promise<string> {
+  const seen = new Set<string>()
+  let lastError: unknown = null
+  for (const candidate of registryCandidates) {
+    const registry = candidate.trim().replace(/\/+$/, '')
+    if (!registry || seen.has(registry)) continue
+    seen.add(registry)
+    try {
+      return await readRemoteDshVersionFromRegistry(fetchImpl, registry)
+    } catch (error) {
+      lastError = error
+    }
+  }
+  try {
+    return await readRemoteDshVersionFromGitHub(fetchImpl)
+  } catch (error) {
+    throw error instanceof Error ? error : lastError
+  }
+}
+
 /**
- * Compare the installed DSH package with the version in the official GitHub
- * repository. A failed check is reported as an error state and never blocks
- * launcher startup.
+ * Compare the installed DSH package with the published npm version
+ * (mirror-first, official registry, GitHub contents as last resort).
+ * A failed check is reported as an error state and never blocks launcher startup.
  */
 export async function checkDshUpdate(
   installation: DshInstallationStatus,
   fetchImpl: typeof fetch = fetch,
+  registryCandidates: string[] = [],
 ): Promise<DshUpdateStatus> {
   const localVersion = installation.version?.trim() || null
   if (!installation.installed || !localVersion) {
@@ -155,7 +193,7 @@ export async function checkDshUpdate(
   }
 
   try {
-    const remoteVersion = await readRemoteDshVersion(fetchImpl)
+    const remoteVersion = await readRemoteDshVersion(fetchImpl, registryCandidates)
     const newer = compareVersions(localVersion, remoteVersion) > 0
     return newer
       ? status('update-available', localVersion, remoteVersion, `发现 DSH 新版本 ${remoteVersion}。`)

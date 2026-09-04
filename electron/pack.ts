@@ -38,7 +38,8 @@ import type {
   SkillInstallTarget,
 } from '../src/types'
 import { assertMeaningfulPackName, assertPackDshVersion, buildManifestFromReceipts, isValidPackDshVersion, normalizePackDshVersion, packProfileName, parsePackManifest } from './pack-manifest'
-import { extractPackBodiesFromPath, extractPresetBodiesFromPath, findManifestInArchiveFromPath, inspectPackZipFromPath } from './pack-zip'
+import { extractPackBodiesFromPath, extractPresetBodiesFromPath, findLauncherConfigInArchiveFromPath, findManifestInArchiveFromPath, inspectPackZipFromPath } from './pack-zip'
+import { packLauncherConfig, parseLauncherConfig } from './pack-launcher-config'
 import { validateFullArchive } from './profile-repository-import'
 import { cleanPackNameHint, extractRawPluginBodiesFromPath, extractRawPresetSourcesFromPath, extractRawSkillSourcesFromPath, scanRawPackZipFromPath, type ExtractByteBudget } from './pack-scan'
 import { buildPackExportToFile } from './pack-export'
@@ -1254,6 +1255,20 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         }
         await upsertPackRecord(options.registryPath, record)
         await writeRecordManifest(record, manifest)
+        // 携带 launcher-config.yaml 时，把可迁移的启动器配置并入当前设置（不含凭据/路径/Profile）。
+        try {
+          const launcherConfigText = await findLauncherConfigInArchiveFromPath(filePath)
+          if (launcherConfigText) {
+            const parsedConfig = parseLauncherConfig(launcherConfigText)
+            if (Object.keys(parsedConfig).length > 0) {
+              const currentSettings = await options.readSettings()
+              await options.saveSettings({ ...currentSettings, ...parsedConfig })
+            }
+          }
+        } catch (error) {
+          // 配置损坏不影响主导入，仅记录不中断。
+          log('error', `整合包配置解析失败，已忽略：${asErrorMessage(error)}`)
+        }
         const extraParts: string[] = []
         if (installedPresetNames.length > 0) extraParts.push(`${installedPresetNames.length} 个预设`)
         if (installedSkillNames.length > 0) extraParts.push(`${installedSkillNames.length} 个技能`)
@@ -1389,7 +1404,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
           // entries remain reinstallable from the registry and therefore do
           // not inflate the lightweight archive.
           : manifest.plugins.filter(entry => entry.source === 'local' || (!entry.repository && entry.source !== 'npm')).map(entry => entry.packageName)
-        const { missing } = await buildPackExportToFile(packProfileDir, manifest, bodyNames, zipPath, presetDirs)
+        const { missing } = await buildPackExportToFile(packProfileDir, manifest, bodyNames, zipPath, presetDirs, packLauncherConfig(settings))
         if (missing.length > 0) {
           const message = `导出 Profile「${packId}」失败：以下插件缺少本地本体（${missing.join('、')}），无法生成${exportMode === 'full' ? '全量' : '离线'}包。`
           log('error', message)

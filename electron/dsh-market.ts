@@ -26,6 +26,32 @@ const GITHUB_REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const CORE = new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless'])
 const MARKET_COMMAND_IDLE_TIMEOUT_MS = 5 * 60 * 1000
 
+/** DSH Market 目录磁盘缓存：TTL 30 分钟 + stale-while-revalidate（对齐技能市场索引的机制）。 */
+export const DSH_MARKET_CACHE_TTL_MS = 30 * 60_000
+
+export interface DshMarketCacheFile {
+  version: 1
+  fetchedAt: number
+  validator: string | null
+  registry: Registry
+}
+
+export function lookupDshMarketCache(
+  file: DshMarketCacheFile | null,
+  now: number,
+  ttlMs = DSH_MARKET_CACHE_TTL_MS,
+): { status: 'fresh' | 'stale' | 'miss'; registry: Registry | null; validator: string | null } {
+  if (!file || typeof file !== 'object' || file.version !== 1 || typeof file.fetchedAt !== 'number'
+    || !file.registry || typeof file.registry !== 'object' || !Array.isArray(file.registry.plugins)) {
+    return { status: 'miss', registry: null, validator: null }
+  }
+  return {
+    status: now - file.fetchedAt <= ttlMs ? 'fresh' : 'stale',
+    registry: file.registry,
+    validator: typeof file.validator === 'string' ? file.validator : null,
+  }
+}
+
 /** 单次 dsh-market 插件操作的整体上限：防止 GitHub 卡死时无限占用 Profile 锁、界面永远转圈。 */
 const DSH_MARKET_COMMAND_TIMEOUT_MS = 30 * 60_000
 
@@ -190,7 +216,24 @@ export function createDshMarketService(options: DshMarketOptions) {
   const fetchImpl = options.fetchImpl ?? fetch
   const execute = options.runCommand ?? runCommand
   let catalogCache: Registry | null = null
+  let catalogFetchedAt = 0
   let catalogValidator: string | null = null
+  let diskChecked = false
+  const readDiskCache = async (): Promise<DshMarketCacheFile | null> => {
+    if (!options.cachePath) return null
+    try { return JSON.parse(await readFile(options.cachePath, 'utf8')) as DshMarketCacheFile } catch { return null }
+  }
+  const writeDiskCache = async (registry: Registry, validator: string | null) => {
+    if (!options.cachePath) return
+    try {
+      await mkdir(path.dirname(options.cachePath), { recursive: true })
+      const temporaryPath = `${options.cachePath}.dsh-launcher.tmp`
+      await writeFile(temporaryPath, JSON.stringify({ version: 1, fetchedAt: Date.now(), validator, registry } satisfies DshMarketCacheFile), 'utf8')
+      await rename(temporaryPath, options.cachePath)
+    } catch {
+      // 磁盘缓存只是加速器，写失败不影响本次返回。
+    }
+  }
   let registryLoading: Promise<Registry> | null = null
   let updatesCache: { at: number; data: Record<string, DshMarketUpdateStatus> } | null = null
   let active = false
@@ -216,7 +259,9 @@ export function createDshMarketService(options: DshMarketOptions) {
           if (!response.ok) throw new Error(`HTTP ${response.status}`)
           const data = normalizeRegistry(await response.json() as Registry)
           catalogCache = data
+          catalogFetchedAt = Date.now()
           catalogValidator = response.headers.get('etag')
+          void writeDiskCache(data, catalogValidator)
           return data
         } catch (error) { last = error }
       }
@@ -229,6 +274,29 @@ export function createDshMarketService(options: DshMarketOptions) {
     } finally {
       if (registryLoading === request) registryLoading = null
     }
+  }
+
+  /** 冷启动优先吃磁盘缓存：fresh 直接用、stale 先回旧数据并后台刷新、miss 才拉网。 */
+  async function ensureRegistry(): Promise<Registry> {
+    if (!diskChecked) {
+      diskChecked = true
+      if (!catalogCache) {
+        const disk = await readDiskCache()
+        const lookup = lookupDshMarketCache(disk, Date.now())
+        if (lookup.status !== 'miss' && lookup.registry && disk) {
+          catalogCache = normalizeRegistry(lookup.registry)
+          catalogFetchedAt = disk.fetchedAt
+          catalogValidator = lookup.validator
+          if (lookup.status === 'stale') void loadRegistry().catch(() => undefined)
+        }
+      }
+    }
+    if (catalogCache && Date.now() - catalogFetchedAt <= DSH_MARKET_CACHE_TTL_MS) return catalogCache
+    if (catalogCache) {
+      void loadRegistry().catch(() => undefined)
+      return catalogCache
+    }
+    return loadRegistry()
   }
 
   async function readInstalled(settings: AppSettings): Promise<{ map: Record<string, string>; records: InstalledRecord[] }> {
@@ -662,7 +730,7 @@ export function createDshMarketService(options: DshMarketOptions) {
     toggle: async (name: string, enabled: boolean) => {
       const settings = await options.readSettings()
       const installed = await readInstalled(settings)
-      const entry = (await loadRegistry()).plugins!.find(item => item.name === name || item.npm === name)
+      const entry = (await ensureRegistry()).plugins!.find(item => item.name === name || item.npm === name)
       if (!entry) throw new Error('插件不在 dsh-market 精选目录中。')
       const alias = findDshMarketInstalledAlias(entry, installed.map, npmAliasByName.get(entry.name))
       if (!alias) throw new Error('插件尚未安装。')

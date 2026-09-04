@@ -8,7 +8,7 @@ import type { ApiProbeService } from './api-probe'
 import type { ApplicationAddonManager } from './application-addons'
 import type { RecommendedWebUiService } from './recommended-web-ui'
 import { isWindowMode } from './app-window'
-import { clearDeepSeekApiKey, getDeepSeekCredentialStatus, setDeepSeekApiKey } from './credentials'
+import { clearDeepSeekApiKey, getDeepSeekCredentialStatus, readDeepSeekApiKey, setDeepSeekApiKey } from './credentials'
 import { listCustomApiProviders, removeCustomApiProvider, saveCustomApiProvider } from './custom-api'
 import { listCopilotModels } from './copilot-api'
 import { searchCatalogRepositories, type DiscoverySort } from './discovery'
@@ -716,6 +716,134 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
       throw new Error('预设名称无效。')
     }
     return installer.uninstallPreset(payload.name)
+  })
+  ipcMain.handle(IPC.presetsBuiltin, async () => {
+    const current = await settings.read()
+    // 优先读当前选中版本的安装包；旧版布局回落到安装根目录。
+    const roots: string[] = []
+    if (current.dshVersion) roots.push(path.join(dshVersionRoot(current.dshInstallPath, current.dshVersion), 'node_modules', '@deepseek-ai', 'dsh'))
+    roots.push(path.join(current.dshInstallPath, 'node_modules', '@deepseek-ai', 'dsh'))
+    for (const root of roots) {
+      const presets = await readBuiltinAgentPresets(root)
+      if (presets.length > 0) return presets
+    }
+    return []
+  })
+  ipcMain.handle(IPC.skillMarketAnalyze, async (_event, payload: { repository: string; defaultBranch: string }) => {
+    if (!payload || typeof payload.repository !== 'string' || !isSafeRepositoryName(payload.repository)
+      || typeof payload.defaultBranch !== 'string' || !payload.defaultBranch.trim()) {
+      throw new Error('技能市场仓库参数无效。')
+    }
+    return installer.analyzeSkillArchive(payload.repository, payload.defaultBranch.trim())
+  })
+  ipcMain.handle(IPC.skillMarketInstall, async (_event, payload: { repository: string; target: SkillInstallTarget }) => {
+    assertProfileMutationAvailable()
+    if (!payload || typeof payload.repository !== 'string' || !isSafeRepositoryName(payload.repository)) {
+      throw new Error('GitHub 仓库名称无效。')
+    }
+    const target = payload.target
+    if (!target || typeof target !== 'object' || typeof target.name !== 'string' || typeof target.id !== 'string'
+      || typeof target.sourcePath !== 'string' || typeof target.revision !== 'string'
+      || (target.format !== 'bundle' && target.format !== 'flat')) {
+      throw new Error('Skill 安装目标无效。')
+    }
+    return installer.installSkillFromMarket({ repository: payload.repository, target })
+  })
+
+  // skills.sh 目录索引：fresh 直接回；stale 先回旧数据并后台刷新；miss 现场拉取。
+  const skillsShIndexStore = createSkillsShIndexStore(skillsShIndexPath)
+  let skillsShRefreshing = false
+  const persistSkillsShIndex = async (skills: Awaited<ReturnType<typeof fetchSkillsShIndex>>) => {
+    // 质量闸门：残缺结果（多半是批量查询失败）不写盘，避免把小目录钉住 24 小时。
+    if (shouldPersistSkillsShIndex(skills.length)) await skillsShIndexStore.write({ version: 1, fetchedAt: Date.now(), skills })
+    else console.warn(`[skills-sh] 聚合结果仅 ${skills.length} 条，低于持久化门槛，本次不写缓存`)
+  }
+  const refreshSkillsShIndex = () => {
+    if (skillsShRefreshing) return
+    skillsShRefreshing = true
+    void fetchSkillsShIndex(githubAuth.fetch)
+      .then(skills => persistSkillsShIndex(skills))
+      .catch((cause: unknown) => console.error('[skills-sh] background refresh failed', cause))
+      .finally(() => { skillsShRefreshing = false })
+  }
+  ipcMain.handle(IPC.skillMarketCatalog, async (_event, payload?: { refresh?: boolean }) => {
+    if (payload?.refresh) {
+      const skills = await fetchSkillsShIndex(githubAuth.fetch)
+      await persistSkillsShIndex(skills)
+      return skills
+    }
+    const lookup = lookupSkillsShIndexCache(await skillsShIndexStore.read(), Date.now())
+    if (lookup.status === 'fresh') return lookup.skills
+    if (lookup.status === 'stale') {
+      refreshSkillsShIndex()
+      return lookup.skills
+    }
+    const skills = await fetchSkillsShIndex(githubAuth.fetch)
+    await persistSkillsShIndex(skills)
+    return skills
+  })
+  ipcMain.handle(IPC.skillMarketInstallByName, async (_event, payload: { sourceRepository: string; skillId: string }) => {
+    assertProfileMutationAvailable()
+    if (!payload || typeof payload.sourceRepository !== 'string' || !isSafeRepositoryName(payload.sourceRepository)
+      || typeof payload.skillId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(payload.skillId)) {
+      throw new Error('skills.sh 安装参数无效。')
+    }
+    // 索引条目不知道默认分支：main/master 逐个尝试归档分析，命中 target 即停。
+    let analysis: Awaited<ReturnType<Installer['analyzeSkillArchive']>> | null = null
+    for (const branch of ['main', 'master']) {
+      try {
+        const candidate = await installer.analyzeSkillArchive(payload.sourceRepository, branch)
+        if (candidate.targets.length > 0) { analysis = candidate; break }
+        analysis ??= candidate
+      } catch {
+        // 分支不存在或仓库过大：换下一个分支。
+      }
+    }
+    const target = analysis ? matchSkillsShTarget(analysis.targets, payload.skillId) : null
+    if (!target) throw new Error(`来源仓库 ${payload.sourceRepository} 中找不到技能「${payload.skillId}」，可能仓库结构已变化。`)
+    return installer.installSkillFromMarket({ repository: payload.sourceRepository, target })
+  })
+
+  // 首页小部件：DeepSeek 余额（key 只留在主进程，5 分钟内存缓存）。
+  const deepSeekBalance = createDeepSeekBalanceService({
+    fetchImpl: githubAuth.fetch,
+    readApiKey: async () => {
+      try { return await readDeepSeekApiKey((await settings.read()).dshHome) } catch { return null }
+    },
+  })
+  ipcMain.handle(IPC.deepseekBalance, (_event, force?: boolean) => deepSeekBalance.get(force === true))
+
+  // 首页小部件：DSH 本地会话日志用量（今日 Token / 缓存命中率），纯磁盘读取 + 60s 缓存。
+  const dshUsageService = createDshUsageService({
+    readDshHome: async () => (await settings.read()).dshHome,
+  })
+  ipcMain.handle(IPC.dshUsage, (_event, force?: boolean) => dshUsageService.get(force === true))
+
+  // 首页小部件：juya AI 日报 RSS，磁盘缓存 + stale-while-revalidate。
+  const newsStore = createNewsCacheStore(newsCachePath)
+  let newsRefreshing = false
+  const refreshNews = () => {
+    if (newsRefreshing) return
+    newsRefreshing = true
+    void fetchNewsFeed(githubAuth.fetch)
+      .then(items => newsStore.write({ version: 2, fetchedAt: Date.now(), items }))
+      .catch((cause: unknown) => console.error('[juya-news] background refresh failed', cause))
+      .finally(() => { newsRefreshing = false })
+  }
+  ipcMain.handle(IPC.newsFeed, async () => {
+    const lookup = lookupNewsCache(await newsStore.read(), Date.now())
+    if (lookup.status === 'fresh') return { status: 'ok' as const, items: lookup.items }
+    if (lookup.status === 'stale') {
+      refreshNews()
+      return { status: 'ok' as const, items: lookup.items }
+    }
+    try {
+      const items = await fetchNewsFeed(githubAuth.fetch, JUYA_NEWS_FEED_URL)
+      await newsStore.write({ version: 2, fetchedAt: Date.now(), items })
+      return { status: 'ok' as const, items }
+    } catch (cause) {
+      return { status: 'error' as const, message: cause instanceof Error ? cause.message : '订阅源读取失败' }
+    }
   })
 
   // 下载队列管理：列表 / 暂停 / 继续 / 取消排队项 / 清除已完成。

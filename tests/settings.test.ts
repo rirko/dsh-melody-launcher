@@ -40,7 +40,7 @@ describe('defaultSettings', () => {
     expect(settings.dshHome).toBe('/home/tester/.dsh')
     expect(settings.launchExecutable).toBe('npx')
     expect(settings.webPort).toBe(3080)
-    expect(settings.uiTheme).toBe('forest')
+    expect(settings.uiTheme).toBe('deepseek')
     expect(settings.aiDeveloperMode).toBe(false)
     expect(settings.aiPrompt).toBe('')
   })
@@ -115,8 +115,10 @@ describe('validateSettings', () => {
   })
 
   it('accepts known UI themes and falls back for invalid values', () => {
-    expect(validateSettings({ ...baseSettings, uiTheme: 'ocean' }).uiTheme).toBe('ocean')
-    expect(validateSettings({ ...baseSettings, uiTheme: 'neon' as never }).uiTheme).toBe('forest')
+    expect(validateSettings({ ...baseSettings, uiTheme: 'night' }).uiTheme).toBe('night')
+    expect(validateSettings({ ...baseSettings, uiTheme: 'neon' as never }).uiTheme).toBe('deepseek')
+    expect(validateSettings({ ...baseSettings, uiTheme: 'forest' as never }).uiTheme).toBe('deepseek')
+    expect(validateSettings({ ...baseSettings, uiTheme: 'deepseek' }).uiTheme).toBe('deepseek')
   })
 })
 
@@ -154,12 +156,12 @@ describe('mergeStoredSettings', () => {
     const merged = mergeStoredSettings(baseSettings, { profileName: 'web' })
     expect(merged.aiDeveloperMode).toBe(false)
     expect(merged.aiPrompt).toBe('')
-    expect(merged.uiTheme).toBe('forest')
+    expect(merged.uiTheme).toBe('deepseek')
   })
 
   it('keeps a supported stored theme and discards an unknown one', () => {
-    expect(mergeStoredSettings(baseSettings, { uiTheme: 'berry' }).uiTheme).toBe('berry')
-    expect(mergeStoredSettings(baseSettings, { uiTheme: 'neon' as never }).uiTheme).toBe('forest')
+    expect(mergeStoredSettings(baseSettings, { uiTheme: 'ocean' as never }).uiTheme).toBe('deepseek')
+    expect(mergeStoredSettings(baseSettings, { uiTheme: 'neon' as never }).uiTheme).toBe('deepseek')
   })
 
   it('migrates legacy settings with automatic runtime version selection', () => {
