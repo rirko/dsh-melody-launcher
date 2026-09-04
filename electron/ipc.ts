@@ -44,6 +44,7 @@ import { readBuiltinAgentPresets } from './preset-install'
 import { writeProfileMetadata } from './profile-service'
 import { createSkillsShIndexStore, fetchSkillsShIndex, lookupSkillsShIndexCache, matchSkillsShTarget, shouldPersistSkillsShIndex } from './skills-sh'
 import { createDeepSeekBalanceService } from './deepseek-balance'
+import { createDshUsageService } from './dsh-usage'
 import { createNewsCacheStore, fetchNewsFeed, JUYA_NEWS_FEED_URL, lookupNewsCache } from './juya-news'
 import { readPluginReceipts } from './plugin-receipts'
 import { analyzeProfileRepository, applyReceiptMatches, applySelectedMatches, loadProfileRepositoryManifest, manifestText, readProfileRepositoryArchive, validateFullArchive } from './profile-repository-import'
@@ -752,6 +753,12 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     },
   })
   ipcMain.handle(IPC.deepseekBalance, (_event, force?: boolean) => deepSeekBalance.get(force === true))
+
+  // 首页小部件：DSH 本地会话日志用量（今日 Token / 缓存命中率），纯磁盘读取 + 60s 缓存。
+  const dshUsageService = createDshUsageService({
+    readDshHome: async () => (await settings.read()).dshHome,
+  })
+  ipcMain.handle(IPC.dshUsage, (_event, force?: boolean) => dshUsageService.get(force === true))
 
   // 首页小部件：juya AI 日报 RSS，磁盘缓存 + stale-while-revalidate。
   const newsStore = createNewsCacheStore(newsCachePath)

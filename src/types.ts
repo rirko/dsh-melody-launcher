@@ -405,6 +405,18 @@ export type DeepSeekBalanceResult =
   | { status: 'ok'; balance: DeepSeekBalance }
   | { status: 'error'; message: string }
 
+/** DSH 本地会话日志聚合出的用量（今日 Token 与缓存命中率）。 */
+export interface DshUsage {
+  tokensToday: number
+  /** 0..1；本地暂无输入侧数据时为 null。 */
+  cacheHitRate: number | null
+}
+
+export type DshUsageResult =
+  | { status: 'ok'; usage: DshUsage }
+  | { status: 'no-data' }
+  | { status: 'error'; message: string }
+
 /** skills.sh 目录索引条目：只有名字与来源仓库，安装时再按仓库解析定位 target。 */
 export interface SkillsShSkill {
   /** "owner/repo/skillId" 形式的唯一 id。 */
@@ -1133,6 +1145,8 @@ export interface LauncherApi {
   deepseekBalance(force?: boolean): Promise<DeepSeekBalanceResult>
   /** 首页小部件：juya AI 日报 RSS（主进程磁盘缓存 + SWR）。 */
   newsFeed(): Promise<NewsFeedResult>
+  /** 首页小部件：DSH 本地会话日志聚合的今日 Token 与缓存命中率（60s 缓存）。 */
+  dshUsage(force?: boolean): Promise<DshUsageResult>
   /** 索引条目安装：主进程按来源仓库解析归档定位 target 后落盘。 */
   skillMarketInstallByName(request: { sourceRepository: string; skillId: string }): Promise<SkillInstallResult>
   readInstalledSkills(): Promise<InstalledSkill[]>

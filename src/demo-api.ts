@@ -1226,6 +1226,10 @@ export const demoApi: LauncherApi = {
     installProgressListeners.forEach(listener => listener({ repository, kind: 'skill', phase: 'complete', percent: 100, message: `${target.name} 已安装` }))
     return { installedSkill, installedSkills: demoInstalledSkills }
   },
+  dshUsage: async () => {
+    await wait(250)
+    return { status: 'ok' as const, usage: { tokensToday: 1_284_532, cacheHitRate: 0.935 } }
+  },
   deepseekBalance: async (force?: boolean) => {
     await wait(force ? 600 : 200)
     return {

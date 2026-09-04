@@ -2,7 +2,14 @@ import { Box, ChevronLeft, ChevronRight, Cpu, Layers, Newspaper, Puzzle, Refresh
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useLauncherApi } from '../api/client'
 import { DEEPSEEK_PRICING, periodPrice, pricingPeriod, type PricingPeriod } from '../lib/deepseek-pricing'
-import type { DeepSeekBalanceResult, DshUpdateStatus, HomeTab, LauncherUpdateStatus, NewsFeedResult } from '../types'
+import type { DeepSeekBalanceResult, DshUpdateStatus, DshUsageResult, HomeTab, LauncherUpdateStatus, NewsFeedResult } from '../types'
+
+/** Token 数智能缩写：1284532 → 1.28M，8421 → 8.4K。 */
+export function formatTokens(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
+  return String(Math.round(value))
+}
 
 /**
  * 首页小部件区：一块区域、多张卡片轮播（左右箭头 + 圆点切换）。
@@ -166,12 +173,19 @@ function KeyEntryForm({ onSaved, onCancel }: { onSaved: () => void; onCancel?: (
 function BalanceCard() {
   const api = useLauncherApi()
   const [result, setResult] = useState<DeepSeekBalanceResult | null>(null)
+  const [usage, setUsage] = useState<DshUsageResult | null>(null)
   const [editing, setEditing] = useState(false)
   const [period, setPeriod] = useState<PricingPeriod>(() => pricingPeriod(new Date()))
   const load = useCallback((force?: boolean) => {
     void api.deepseekBalance(force).then(setResult).catch((cause: unknown) => setResult({ status: 'error', message: cause instanceof Error ? cause.message : '查询失败' }))
   }, [api])
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    let alive = true
+    void api.dshUsage().then(next => { if (alive) setUsage(next) }).catch(() => { if (alive) setUsage({ status: 'no-data' }) })
+    return () => { alive = false }
+  }, [api])
+  const usageView = usage?.status === 'ok' ? usage.usage : null
   useEffect(() => {
     const timer = setInterval(() => setPeriod(pricingPeriod(new Date())), 60_000)
     return () => clearInterval(timer)
@@ -208,13 +222,13 @@ function BalanceCard() {
           </div>
         </div>
         <div className="widget-bubble-row">
-          <div className="widget-bubble widget-bubble-sub" title="接入本地会话日志后显示">
+          <div className="widget-bubble widget-bubble-sub" title="数据来自 DSH 本地会话日志">
             <span>今日使用 Token</span>
-            <strong>--</strong>
+            <strong>{usageView ? formatTokens(usageView.tokensToday) : '--'}</strong>
           </div>
-          <div className="widget-bubble widget-bubble-sub" title="接入本地会话日志后显示">
+          <div className="widget-bubble widget-bubble-sub" title="数据来自 DSH 本地会话日志">
             <span>缓存命中率</span>
-            <strong>--</strong>
+            <strong>{usageView && usageView.cacheHitRate !== null ? `${(usageView.cacheHitRate * 100).toFixed(1)}%` : '--'}</strong>
           </div>
         </div>
       </div>
