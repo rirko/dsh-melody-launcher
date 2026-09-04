@@ -165,21 +165,26 @@ function NewsCard() {
 
   let body: ReactNode
   if (!result) body = <span className="widget-muted">正在读取 AI 日报…</span>
-  else if (result.status === 'error') body = <span className="widget-bad">{result.message}</span>
+  else if (result.status === 'error') body = (
+    <div className="widget-inline-row">
+      <span className="widget-bad">订阅源读取失败 · {result.message}</span>
+      <button type="button" className="settings-nav-link" onClick={() => { setResult(null); load() }}>重试</button>
+    </div>
+  )
   else body = (
     <ul className="widget-news">
       {result.items.slice(0, 6).map(item => (
         <li key={item.link}>
-          <button type="button" onClick={() => void api.openExternal(item.link)} title={item.summary || item.title}>
-            {shortDate(item.pubDate) && <span className="widget-news-date">{shortDate(item.pubDate)}</span>}
-            <span className="widget-news-title">{item.title}</span>
+          <button type="button" onClick={() => void api.openExternal(item.link)} title={item.title}>
+            <span className="widget-news-date">{shortDate(item.pubDate) || item.title}</span>
+            <span className="widget-news-summary">{item.summary || item.title}</span>
           </button>
         </li>
       ))}
     </ul>
   )
   return (
-    <WidgetCard icon={<Newspaper size={15} />} title="AI 日报 · juya">
+    <WidgetCard icon={<Newspaper size={15} />} title="AI 日报 · 橘鸦">
       {body}
     </WidgetCard>
   )

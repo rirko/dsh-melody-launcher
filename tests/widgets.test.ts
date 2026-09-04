@@ -59,6 +59,21 @@ describe('parseRssFeed', () => {
     expect(items[1]?.summary).toBe('plain & simple')
   })
 
+  it('橘鸦早报形态：title 即日期、description 为当日摘要', () => {
+    const items = parseRssFeed(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <item>
+    <title><![CDATA[2026-09-04]]></title>
+    <link>https://daily.juya.uk/2026-09-04</link>
+    <pubDate>Fri, 04 Sep 2026 02:21:37 GMT</pubDate>
+    <description><![CDATA[<p>OpenAI 发布 …；Anthropic 更新 …</p>]]></description>
+  </item>
+</channel></rss>`)
+    expect(items).toHaveLength(1)
+    expect(items[0]?.title).toBe('2026-09-04')
+    expect(items[0]?.summary).toBe('OpenAI 发布 …；Anthropic 更新 …')
+  })
+
   it('非 RSS 内容返回空表而不是抛错', () => {
     expect(parseRssFeed('<html>404 not found</html>')).toEqual([])
     expect(parseRssFeed('')).toEqual([])

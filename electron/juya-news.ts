@@ -1,10 +1,10 @@
-// 「具身智能/聚娃 AI 日报」RSS 文字新闻卡：轻量正则解析 RSS 2.0 + 磁盘缓存（SWR），
+// 「橘鸦 AI 早报」（daily.juya.uk）RSS 文字新闻卡：轻量正则解析 RSS 2.0 + 磁盘缓存（SWR），
 // 与 skills.sh 索引同款机制：fresh 秒回、stale 先回旧数据后台刷新、miss 才拉网。
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-export const JUYA_NEWS_FEED_URL = 'https://imjuya.github.io/juya-ai-daily/rss.xml'
+export const JUYA_NEWS_FEED_URL = 'https://daily.juya.uk/rss.xml'
 export const NEWS_CACHE_TTL_MS = 6 * 60 * 60 * 1000
 const NEWS_MAX_ITEMS = 30
 

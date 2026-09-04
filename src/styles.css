@@ -642,7 +642,7 @@ input:focus-visible {
 .widget-news button {
   display: flex;
   width: 100%;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 8px;
   padding: 5px 6px;
   border: 0;
@@ -655,13 +655,17 @@ input:focus-visible {
 }
 
 .widget-news button:hover { color: var(--accent); background: var(--accent-soft); }
-.widget-news-date { flex: none; width: 34px; color: var(--quiet); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+.widget-news-date { flex: none; width: 34px; color: var(--quiet); font-size: 9.5px; font-weight: 650; line-height: 1.55; font-variant-numeric: tabular-nums; }
 
-.widget-news-title {
+.widget-news-summary {
+  display: -webkit-box;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.55;
 }
+
+.widget-inline-row { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 
 .widget-nav {
   display: flex;
