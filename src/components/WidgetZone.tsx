@@ -37,40 +37,56 @@ function WidgetCard({ icon, title, actions, children }: { icon: ReactNode; title
   )
 }
 
+interface UpdateTileInfo {
+  title: string
+  sub: string
+  good?: boolean
+  action?: ReactNode
+}
+
 function UpdateCard({ dshUpdate, launcherUpdate, busy, onUpdateDsh, onOpenLauncherUpdate }: Pick<WidgetZoneProps, 'dshUpdate' | 'launcherUpdate' | 'busy' | 'onUpdateDsh' | 'onOpenLauncherUpdate'>) {
-  const dshLine = (() => {
-    if (!dshUpdate) return <span className="widget-muted">版本检查将在启动后自动进行</span>
-    if (dshUpdate.state === 'update-available') {
-      return (
-        <>
-          <span><strong>DSH {dshUpdate.remoteVersion}</strong><small>本地 {dshUpdate.localVersion ?? '未知'}</small></span>
-          <button type="button" className="primary-command" disabled={busy} onClick={onUpdateDsh}>更新</button>
-        </>
-      )
+  const dsh: UpdateTileInfo = (() => {
+    if (!dshUpdate) return { title: '待检查', sub: '启动 DSH 后自动检查版本' }
+    if (dshUpdate.state === 'update-available') return {
+      title: `DSH ${dshUpdate.remoteVersion}`,
+      sub: `本地 ${dshUpdate.localVersion ?? '未知'} · 可更新`,
+      action: <button type="button" className="primary-command" disabled={busy} onClick={onUpdateDsh}>更新</button>,
     }
-    if (dshUpdate.state === 'up-to-date') return <span className="widget-good">DSH {dshUpdate.localVersion} 已是最新 ✓</span>
-    if (dshUpdate.state === 'not-installed') return <span className="widget-muted">本地尚未安装 DSH，点下方「启动」按钮完成部署</span>
-    return <span className="widget-muted">{dshUpdate.message || '暂时无法检查 DSH 更新'}</span>
+    if (dshUpdate.state === 'up-to-date') return { title: `DSH ${dshUpdate.localVersion}`, sub: '已是最新 ✓', good: true }
+    if (dshUpdate.state === 'not-installed') return { title: '未安装', sub: '点下方「启动」按钮完成部署' }
+    return { title: '暂无法检查', sub: dshUpdate.message || '网络恢复后自动重试' }
   })()
-  const launcherLine = (() => {
-    if (!launcherUpdate) return <span className="widget-muted">启动器版本未知</span>
-    if (launcherUpdate.state === 'update-available' || launcherUpdate.state === 'downloaded') {
-      return (
-        <>
-          <span><strong>启动器 v{launcherUpdate.remoteVersion}</strong><small>{launcherUpdate.state === 'downloaded' ? '下载完成，可立即应用' : '发现新版本'}</small></span>
-          <button type="button" className="secondary-button" onClick={onOpenLauncherUpdate}>{launcherUpdate.state === 'downloaded' ? '立即更新' : '查看'}</button>
-        </>
-      )
+  const launcher: UpdateTileInfo = (() => {
+    if (!launcherUpdate) return { title: '待检查', sub: '启动器版本检查进行中' }
+    if (launcherUpdate.state === 'update-available') return {
+      title: `v${launcherUpdate.remoteVersion}`, sub: '发现新版本',
+      action: <button type="button" className="secondary-button" onClick={onOpenLauncherUpdate}>查看</button>,
     }
-    if (launcherUpdate.state === 'downloading' || launcherUpdate.state === 'applying') return <span className="widget-muted">{launcherUpdate.state === 'downloading' ? '正在下载启动器更新…' : '正在应用更新…'}</span>
-    if (launcherUpdate.state === 'up-to-date') return <span className="widget-good">启动器已是最新 ✓</span>
-    return <span className="widget-muted">{launcherUpdate.message || '启动器暂无更新'}</span>
+    if (launcherUpdate.state === 'downloaded') return {
+      title: `v${launcherUpdate.remoteVersion}`, sub: '下载完成，可立即应用',
+      action: <button type="button" className="primary-command" onClick={onOpenLauncherUpdate}>立即更新</button>,
+    }
+    if (launcherUpdate.state === 'downloading' || launcherUpdate.state === 'applying') return { title: '更新中', sub: launcherUpdate.state === 'downloading' ? '正在下载启动器更新…' : '正在应用更新…' }
+    if (launcherUpdate.state === 'up-to-date') return { title: '已是最新', sub: '当前版本无需更新', good: true }
+    return { title: '暂无法检查', sub: launcherUpdate.message || '网络恢复后自动重试' }
   })()
+  const tiles: Array<{ label: string; info: UpdateTileInfo }> = [
+    { label: 'DSH 本体', info: dsh },
+    { label: '启动器', info: launcher },
+  ]
   return (
     <WidgetCard icon={<RefreshCw size={15} />} title="版本更新">
-      <div className="widget-rows">
-        <div className="widget-row">{dshLine}</div>
-        <div className="widget-row">{launcherLine}</div>
+      <div className="widget-update-tiles">
+        {tiles.map(tile => (
+          <div key={tile.label} className="widget-update-tile">
+            <div className="widget-update-tile-info">
+              <span>{tile.label}</span>
+              <strong>{tile.info.title}</strong>
+              <small className={tile.info.good ? 'widget-good' : undefined}>{tile.info.sub}</small>
+            </div>
+            {tile.info.action}
+          </div>
+        ))}
       </div>
     </WidgetCard>
   )
@@ -187,9 +203,8 @@ function BalanceCard() {
             {!result.balance.isAvailable && <em className="widget-bad">余额不足，API 已不可调用</em>}
           </div>
           <div className={`widget-bubble widget-bubble-period ${period}`}>
-            <span>{period === 'peak' ? '峰段 · 原价' : '谷段 · 半价'}</span>
-            <strong>{period === 'peak' ? '9–12 / 14–18' : '现在调用更划算'}</strong>
-            <small>工作日峰段（北京时间）</small>
+            <span>计费时段</span>
+            <strong>{period === 'peak' ? '峰段 · 原价' : '谷段 · 半价'}</strong>
           </div>
         </div>
         {info && (info.grantedBalance !== null || info.toppedUpBalance !== null) && (
@@ -218,10 +233,8 @@ function BalanceCard() {
     >
       {body}
       <div className="widget-pricing">
-        {DEEPSEEK_PRICING.map(row => (
-          <span key={row.model}>{row.model.replace('deepseek-', '')} 命中{periodPrice(row.hit, period)} / 未命中{periodPrice(row.miss, period)} / 输出{periodPrice(row.output, period)}</span>
-        ))}
-        <span className="widget-muted">元/百万 tokens · 峰段为工作日 9–12、14–18（北京时间）</span>
+        <span>{DEEPSEEK_PRICING.map(row => `${row.model.replace('deepseek-v4-', '')} ${periodPrice(row.hit, period)} / ${periodPrice(row.miss, period)} / ${periodPrice(row.output, period)}`).join('　·　')}（命中/未命中/输出）</span>
+        <span className="widget-muted">元/百万 tokens · 峰段 9–12、14–18（北京时间，工作日）</span>
       </div>
     </WidgetCard>
   )
