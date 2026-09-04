@@ -1,4 +1,4 @@
-import { Box, ChevronLeft, ChevronRight, Cpu, Layers, Newspaper, Puzzle, RefreshCw, Sparkles, Wand2, Wallet } from 'lucide-react'
+import { Box, ChevronLeft, ChevronRight, Cpu, ExternalLink, Layers, Newspaper, Puzzle, RefreshCw, Sparkles, Wand2, Wallet } from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useLauncherApi } from '../api/client'
 import { DEEPSEEK_PRICING, periodPrice, pricingPeriod, type PricingPeriod } from '../lib/deepseek-pricing'
@@ -6,7 +6,7 @@ import type { DeepSeekBalanceResult, DshUpdateStatus, HomeTab, LauncherUpdateSta
 
 /**
  * 首页小部件区：一块区域、多张卡片轮播（左右箭头 + 圆点切换）。
- * 一期四张卡：版本更新 / 本地环境 / DeepSeek 余额 / AI 日报（RSS 纯文字）。
+ * 一期四张卡：AI 日报（今日要闻，默认首卡）/ 版本更新 / 本地环境 / DeepSeek 余额。
  * 所有卡片保持挂载，切卡只切可见性，网络状态不丢。
  */
 
@@ -238,20 +238,37 @@ function NewsCard() {
       <button type="button" className="settings-nav-link" onClick={() => { setResult(null); load() }}>重试</button>
     </div>
   )
-  else body = (
-    <ul className="widget-news">
-      {result.items.slice(0, 6).map(item => (
-        <li key={item.link}>
-          <button type="button" onClick={() => void api.openExternal(item.link)} title={item.title}>
-            <span className="widget-news-date">{shortDate(item.pubDate) || item.title}</span>
-            <span className="widget-news-summary">{item.summary || item.title}</span>
-          </button>
-        </li>
-      ))}
-    </ul>
-  )
+  else {
+    const today = result.items[0]
+    const headlines = today?.headlines ?? []
+    if (!today) body = <span className="widget-muted">今日暂无日报条目</span>
+    else if (headlines.length === 0) body = (
+      <div className="widget-inline-row">
+        <p className="widget-news-summary">{today.summary || today.title}</p>
+        <button type="button" className="settings-nav-link" onClick={() => void api.openExternal(today.link)}>阅读全文 ↗</button>
+      </div>
+    )
+    else body = (
+      <div className="widget-news-wrap">
+        <div className="widget-news-head">
+          <span>今日要闻</span>
+          <small>{shortDate(today.pubDate) || today.title}</small>
+        </div>
+        <ul className="widget-news">
+          {headlines.slice(0, 5).map(headline => (
+            <li key={headline.link}>
+              <button type="button" onClick={() => void api.openExternal(headline.link)} title={headline.text}>
+                <span className="widget-news-summary">{headline.text}</span>
+                <ExternalLink size={12} className="widget-news-ext" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
   return (
-    <WidgetCard icon={<Newspaper size={15} />} title="AI 日报 · 橘鸦">
+    <WidgetCard icon={<Newspaper size={15} />} title="AI 日报">
       {body}
     </WidgetCard>
   )
@@ -260,10 +277,10 @@ function NewsCard() {
 export function WidgetZone({ dshUpdate, launcherUpdate, busy, dshVersion, bundleCount, pluginCount, skillCount, presetCount, onUpdateDsh, onOpenLauncherUpdate, onNavigateTab }: WidgetZoneProps) {
   const [index, setIndex] = useState(0)
   const cards: Array<{ key: string; node: ReactNode }> = [
+    { key: 'news', node: <NewsCard /> },
     { key: 'update', node: <UpdateCard dshUpdate={dshUpdate} launcherUpdate={launcherUpdate} busy={busy} onUpdateDsh={onUpdateDsh} onOpenLauncherUpdate={onOpenLauncherUpdate} /> },
     { key: 'env', node: <EnvironmentCard dshVersion={dshVersion} bundleCount={bundleCount} pluginCount={pluginCount} skillCount={skillCount} presetCount={presetCount} onNavigateTab={onNavigateTab} /> },
     { key: 'balance', node: <BalanceCard /> },
-    { key: 'news', node: <NewsCard /> },
   ]
   const count = cards.length
   return (

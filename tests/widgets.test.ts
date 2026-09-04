@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseDeepSeekBalance } from '../electron/deepseek-balance'
-import { NEWS_CACHE_TTL_MS, lookupNewsCache, parseRssFeed } from '../electron/juya-news'
+import { NEWS_CACHE_TTL_MS, lookupNewsCache, parseHeadlinesFromPage, parseRssFeed } from '../electron/juya-news'
 
 describe('parseDeepSeekBalance', () => {
   it('解析现行官方格式（字符串金额转数字，赠金/充值分列）', () => {
@@ -77,6 +77,37 @@ describe('parseRssFeed', () => {
   it('非 RSS 内容返回空表而不是抛错', () => {
     expect(parseRssFeed('<html>404 not found</html>')).toEqual([])
     expect(parseRssFeed('')).toEqual([])
+  })
+})
+
+describe('parseHeadlinesFromPage', () => {
+  const ISSUE_PAGE = `<html><body>
+<p>视频版：<a href="https://www.bilibili.com/video/BV1">哔哩哔哩</a> ｜ <a href="https://www.youtube.com/watch?v=1">YouTube</a></p>
+<h2>概览</h2>
+<h3>要闻</h3>
+<ul><li>OpenAI 发布 GPT-6 Astra <a href="https://openai.com/index/gpt-6-astra/" rel="noopener">↗</a> <code>#1</code></li>
+<li>英伟达宣布以约129亿美元收购Hugging Face <a href="https://blogs.nvidia.com/blog/nvidia-to-acquire-hugging-face/" rel="noopener">↗</a> <code>#3</code></li>
+<li>相对链接条目 <a href="/local/path">↗</a> <code>#9</code></li></ul>
+<h3>开发生态</h3>
+<ul><li>不该出现在要闻里 <a href="https://example.com/dev">↗</a> <code>#6</code></li></ul>
+</body></html>`
+
+  it('只取「要闻」小节，剥 ↗ 与编号、过滤相对链接', () => {
+    const headlines = parseHeadlinesFromPage(ISSUE_PAGE)
+    expect(headlines).toEqual([
+      { text: 'OpenAI 发布 GPT-6 Astra', link: 'https://openai.com/index/gpt-6-astra/' },
+      { text: '英伟达宣布以约129亿美元收购Hugging Face', link: 'https://blogs.nvidia.com/blog/nvidia-to-acquire-hugging-face/' },
+    ])
+  })
+
+  it('无「要闻」小节时全文提取，上限截断', () => {
+    const many = `<ul>${Array.from({ length: 10 }, (_, i) => `<li>标题条目${i} <a href="https://e.com/${i}">↗</a></li>`).join('')}</ul>`
+    expect(parseHeadlinesFromPage(many, 6)).toHaveLength(6)
+  })
+
+  it('空页/无链接返回空表', () => {
+    expect(parseHeadlinesFromPage('<html>no items</html>')).toEqual([])
+    expect(parseHeadlinesFromPage('')).toEqual([])
   })
 })
 

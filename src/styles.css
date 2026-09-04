@@ -591,7 +591,7 @@ input:focus-visible {
 
 .widget-card {
   display: flex;
-  min-height: 264px;
+  height: 282px;
   flex-direction: column;
   padding: 16px 18px;
   border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--line));
@@ -622,10 +622,12 @@ input:focus-visible {
 
 .widget-card-body {
   display: flex;
+  min-height: 0;
   flex: 1;
   flex-direction: column;
   gap: 10px;
   padding-top: 12px;
+  overflow: hidden;
 }
 
 .widget-rows { display: flex; margin: auto 0; flex-direction: column; gap: 14px; }
@@ -781,6 +783,22 @@ input:focus-visible {
 }
 
 .widget-inline-row { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.widget-inline-row p { margin: 0; }
+
+.widget-news-wrap { display: flex; min-height: 0; flex-direction: column; gap: 4px; }
+
+.widget-news-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 6px;
+  color: var(--quiet);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.widget-news-ext { margin-left: auto; flex: none; align-self: center; color: var(--quiet); }
+.widget-news button:hover .widget-news-ext { color: var(--accent); }
 
 .widget-nav {
   display: flex;

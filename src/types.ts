@@ -371,11 +371,19 @@ export interface SkillRepositoryAnalysis {
   targets: SkillInstallTarget[]
 }
 
+/** 日报当日页里解析出的一条要闻（真实原文链接）。 */
+export interface NewsHeadline {
+  text: string
+  link: string
+}
+
 export interface NewsItem {
   title: string
   link: string
   pubDate: string
   summary: string
+  /** 仅当日最新条目会尝试解析；页面结构变化时为空，渲染层回退摘要。 */
+  headlines?: NewsHeadline[]
 }
 
 export type NewsFeedResult = { status: 'ok'; items: NewsItem[] } | { status: 'error'; message: string }

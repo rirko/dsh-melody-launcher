@@ -8,7 +8,7 @@ export const JUYA_NEWS_FEED_URL = 'https://daily.juya.uk/rss.xml'
 export const NEWS_CACHE_TTL_MS = 6 * 60 * 60 * 1000
 const NEWS_MAX_ITEMS = 30
 
-import type { NewsFeedResult, NewsItem } from '../src/types'
+import type { NewsFeedResult, NewsHeadline, NewsItem } from '../src/types'
 
 export interface NewsCacheFile {
   version: 1
@@ -51,6 +51,37 @@ export function parseRssFeed(xml: string): NewsItem[] {
   return items
 }
 
+/**
+ * 当日文章页的「要闻」小节：`<h3>要闻</h3><ul><li>标题 <a href="真实链接">↗</a> <code>#N</code></li>…`。
+ * RSS 的 description 是压平的纯文本（链接只剩 ↗ 编号），真实链接只在文章页里。
+ */
+export function parseHeadlinesFromPage(html: string, maxItems = 6): NewsHeadline[] {
+  const section = /<h[23][^>]*>\s*要闻\s*<\/h[23]>/i.exec(html)
+  const start = section ? section.index + section[0].length : 0
+  const nextHeading = section ? html.slice(start).search(/<h[23][^>]*>/i) : -1
+  const scope = section ? html.slice(start, nextHeading >= 0 ? start + nextHeading : undefined) : html
+  const headlines: NewsHeadline[] = []
+  const seen = new Set<string>()
+  for (const block of scope.match(/<li[^>]*>[\s\S]*?<\/li>/gi) ?? []) {
+    const href = /<a[^>]*href="([^"]+)"/i.exec(block)?.[1] ?? ''
+    if (!/^https?:\/\//i.test(href) || seen.has(href)) continue
+    const text = decodeEntities(
+      block
+        .replace(/<a[\s\S]*?<\/a>/gi, '')
+        .replace(/<code[\s\S]*?<\/code>/gi, '')
+        .replace(/<[^>]+>/g, '')
+        .replace(/[↗→]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
+    if (text.length < 4 || text.length > 160) continue
+    seen.add(href)
+    headlines.push({ text, link: href })
+    if (headlines.length >= maxItems) break
+  }
+  return headlines
+}
+
 export function lookupNewsCache(
   file: NewsCacheFile | null,
   now: number,
@@ -60,12 +91,18 @@ export function lookupNewsCache(
     return { status: 'miss', items: [] }
   }
   const items = file.items.filter(item => item && typeof item.title === 'string' && typeof item.link === 'string')
-    .map(item => ({
-      title: item.title,
-      link: item.link,
-      pubDate: typeof item.pubDate === 'string' ? item.pubDate : '',
-      summary: typeof item.summary === 'string' ? item.summary : '',
-    }))
+    .map(item => {
+      const headlines = Array.isArray(item.headlines)
+        ? item.headlines.filter((h): h is NewsHeadline => Boolean(h) && typeof h.text === 'string' && typeof h.link === 'string').slice(0, 10)
+        : undefined
+      return {
+        title: item.title,
+        link: item.link,
+        pubDate: typeof item.pubDate === 'string' ? item.pubDate : '',
+        summary: typeof item.summary === 'string' ? item.summary : '',
+        ...(headlines && headlines.length > 0 ? { headlines } : {}),
+      }
+    })
   return { status: now - file.fetchedAt <= ttlMs ? 'fresh' : 'stale', items }
 }
 
@@ -94,5 +131,18 @@ export async function fetchNewsFeed(fetchImpl: typeof fetch, url = JUYA_NEWS_FEE
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
   const items = parseRssFeed(await response.text())
   if (items.length === 0) throw new Error('订阅源没有可显示的条目')
+  const latest = items[0]
+  if (latest?.link) {
+    // 当日要闻的真实链接只在文章页里；抓不到不影响订阅源本身。
+    try {
+      const page = await fetchImpl(latest.link, { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(15_000) })
+      if (page.ok) {
+        const headlines = parseHeadlinesFromPage(await page.text())
+        if (headlines.length > 0) items[0] = { ...latest, headlines }
+      }
+    } catch {
+      // 忽略：渲染层会回退到当日摘要。
+    }
+  }
   return items
 }

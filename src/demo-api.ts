@@ -1241,7 +1241,19 @@ export const demoApi: LauncherApi = {
     return {
       status: 'ok' as const,
       items: [
-        { title: 'DeepSeek 发布新一代推理模型，缓存命中率提升至 82%', link: 'https://example.com/1', pubDate: 'Thu, 03 Sep 2026 08:00:00 GMT', summary: '新模型在长上下文场景下的前缀缓存复用率显著提高，API 价格不变。' },
+        {
+          title: '2026-09-04',
+          link: 'https://daily.juya.uk/issues/2026-09-04/',
+          pubDate: 'Fri, 04 Sep 2026 02:21:37 GMT',
+          summary: 'AI 早报 2026-09-04：OpenAI 发布 GPT-6 Astra；英伟达宣布收购 Hugging Face；智谱 GLM 夜间畅用活动上线。',
+          headlines: [
+            { text: 'OpenAI 发布 GPT-6 Astra', link: 'https://openai.com/index/gpt-6-astra/' },
+            { text: 'OpenAI Astra 访问补偿政策：按天发放 banked reset', link: 'https://x.com/thsottiaux/status/2095651088502591861' },
+            { text: '英伟达宣布以约129亿美元收购Hugging Face', link: 'https://blogs.nvidia.com/blog/nvidia-to-acquire-hugging-face/' },
+            { text: '智谱 GLM Coding Plan 推出夜间畅用活动', link: 'https://example.com/glm-night' },
+            { text: 'Qoder 国际版宣布 Efficient 模型层级即日起对所有订阅用户免费', link: 'https://example.com/qoder-efficient' },
+          ],
+        },
         { title: 'OpenAI 推出 Agent 编排框架，支持跨会话记忆', link: 'https://example.com/2', pubDate: 'Thu, 03 Sep 2026 07:40:00 GMT', summary: '框架主打多智能体协作与工具调用的持久化状态管理。' },
         { title: 'Anthropic 公布 Claude 技能生态年度报告', link: 'https://example.com/3', pubDate: 'Thu, 03 Sep 2026 07:20:00 GMT', summary: '社区技能仓库数量同比增长 4 倍，文档处理类下载量居首。' },
         { title: '具身智能大模型首次在真实工厂完成 72 小时连续作业', link: 'https://example.com/4', pubDate: 'Wed, 02 Sep 2026 09:00:00 GMT', summary: '端到端视觉-动作模型在分拣产线上验证了长时程稳定性。' },
