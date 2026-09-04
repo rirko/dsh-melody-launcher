@@ -30,14 +30,19 @@ import {
 import { runCommand, type CommandResult, type OutputLevel } from './command'
 import { withExecutableDirectoryOnPath } from './process'
 import { compareVersions } from './dsh-update'
+import { buildNetworkEnvironment, DEFAULT_NPM_REGISTRY, NPM_OFFICIAL_REGISTRY } from './proxy'
 import {
   DSH_SUBPROCESS_LOCAL_PACKAGE,
   ensureDshScriptPolicy,
   hasDshScriptPackage,
 } from './dsh-script-policy'
 
-const DSH_REGISTRY_URL = 'https://registry.npmjs.org/@deepseek-ai%2fdsh'
 const VERSION_LIMIT_PER_CHANNEL = 12
+
+/** DSH 版本列表的 registry 候选：用户镜像 → npmmirror → 官方源（大陆直连 npmjs 常失败）。 */
+export function dshRegistryCandidates(npmRegistry?: string | null): string[] {
+  return [...new Set([npmRegistry?.trim() ?? '', DEFAULT_NPM_REGISTRY, NPM_OFFICIAL_REGISTRY].filter(Boolean))]
+}
 
 /**
  * DSH 是一棵很大的依赖树。安装时显式固定网络行为和锁文件行为，
@@ -208,12 +213,25 @@ interface DshRegistryResponse {
   time?: Record<string, unknown>
 }
 
-export async function listAvailableDshVersions(fetchImpl: typeof fetch = fetch): Promise<RuntimeVersionCandidate[]> {
-  const response = await fetchImpl(DSH_REGISTRY_URL, {
-    headers: { Accept: 'application/json', 'User-Agent': 'DSH-Launcher' },
-  })
-  if (!response.ok) throw new Error(`读取 DSH npm 版本列表失败（HTTP ${response.status}）。`)
-  const data = await response.json() as DshRegistryResponse
+export async function listAvailableDshVersions(fetchImpl: typeof fetch = fetch, registryCandidates: string[] = dshRegistryCandidates()): Promise<RuntimeVersionCandidate[]> {
+  let lastError: unknown = null
+  for (const registry of registryCandidates) {
+    try {
+      const base = registry.replace(/\/+$/, '')
+      const response = await fetchImpl(`${base}/${DSH_PACKAGE_NAME.replace('/', '%2F')}`, {
+        headers: { Accept: 'application/json', 'User-Agent': 'DSH-Launcher' },
+        signal: AbortSignal.timeout(15_000),
+      })
+      if (!response.ok) throw new Error(`读取 DSH npm 版本列表失败（HTTP ${response.status}）。`)
+      return candidatesFromPackument(await response.json() as DshRegistryResponse)
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('读取 DSH npm 版本列表失败。')
+}
+
+function candidatesFromPackument(data: DshRegistryResponse): RuntimeVersionCandidate[] {
   const versions = Object.keys(data.versions ?? {}).filter(validVersion)
   const tags = Object.entries(data['dist-tags'] ?? {})
     .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && validVersion(entry[1]))
@@ -419,7 +437,7 @@ export function createRuntimeVersionService(options: RuntimeVersionServiceOption
     const settings = await options.readSettings()
     if (refresh || Date.now() - availableAt > 5 * 60_000 || dshAvailable.length === 0 || nodeAvailable.length === 0) {
       const [dshResult, nodeResult] = await Promise.allSettled([
-        listAvailableDshVersions(options.githubFetch),
+        listAvailableDshVersions(options.githubFetch, dshRegistryCandidates(buildNetworkEnvironment(settings).npmRegistry)),
         import('./node-runtime').then(module => module.listAvailableNodeVersions()),
       ])
       if (dshResult.status === 'fulfilled') dshAvailable = dshResult.value

@@ -36,7 +36,7 @@ import {
   isDshRepository,
   packageManagerProgress,
 } from './dsh-install'
-import { dshVersionRoot, findManagedDshVersions, listAvailableDshVersions, normalizeDshVersion } from './runtime-versions'
+import { dshRegistryCandidates, dshVersionRoot, findManagedDshVersions, listAvailableDshVersions, normalizeDshVersion } from './runtime-versions'
 import { checkDshUpdate } from './dsh-update'
 import { resolveNodeExecutable, type NodeRuntime, type NodeRuntimeProgress, type PnpmRuntime } from './node-runtime'
 import { approveAllIgnoredBuilds, denyBuildKeys } from './plugin-install'
@@ -687,7 +687,7 @@ export function createInstaller(options: InstallerOptions): Installer {
     const settings = await options.readSettings()
     let selectedVersion: string | null = null
     try {
-      const available = await listAvailableDshVersions(options.githubFetch)
+      const available = await listAvailableDshVersions(options.githubFetch, dshRegistryCandidates(buildNetworkEnvironment(settings).npmRegistry))
       selectedVersion = selectedVersion
         ?? available.find(candidate => candidate.label === 'latest')?.version
         ?? available.find(candidate => !candidate.prerelease)?.version
