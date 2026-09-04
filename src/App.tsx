@@ -428,7 +428,7 @@ function LauncherShell() {
             <main className="workspace">
               <div className="workspace-content">
               {visitedViews.current.has('plugins') && (
-                <div className={navigation.view === 'plugins' ? undefined : 'view-hidden'}>
+                <div className={navigation.view === 'plugins' ? 'view-pane' : 'view-pane view-hidden'}>
                 <PluginsView
                   profile={profile}
                   profileName={settings.profileName}
@@ -466,7 +466,7 @@ function LauncherShell() {
                 />
                 </div>
               )}
-              {discoverVisited.current && <div className={navigation.view === 'discover' ? undefined : 'view-hidden'}>
+              {discoverVisited.current && <div className={navigation.view === 'discover' ? 'view-pane' : 'view-pane view-hidden'}>
                 <DiscoverView
                   profile={profile}
                   analyses={repositoryAnalyses}
@@ -517,12 +517,12 @@ function LauncherShell() {
                 />
               </div>}
               {visitedViews.current.has('dsh-market') && (
-                <div className={navigation.view === 'dsh-market' ? undefined : 'view-hidden'}>
+                <div className={navigation.view === 'dsh-market' ? 'view-pane' : 'view-pane view-hidden'}>
                   <DshMarketView onProfileChanged={store.refreshProfile} />
                 </div>
               )}
               {visitedViews.current.has('environment') && (
-                <div className={navigation.view === 'environment' ? undefined : 'view-hidden'}>
+                <div className={navigation.view === 'environment' ? 'view-pane' : 'view-pane view-hidden'}>
                 <RuntimeEnvironmentView
                   state={store.runtimeEnvironment}
                   busy={profileMutationLocked || Boolean(store.busy)}
@@ -539,7 +539,7 @@ function LauncherShell() {
                 </div>
               )}
               {visitedViews.current.has('packs') && (
-                <div className={navigation.view === 'packs' ? undefined : 'view-hidden'}>
+                <div className={navigation.view === 'packs' ? 'view-pane' : 'view-pane view-hidden'}>
                 <PacksView
                   packs={store.packs}
                   profiles={store.profiles}
@@ -576,7 +576,7 @@ function LauncherShell() {
                 </div>
               )}
               {visitedViews.current.has('github') && (
-                <div className={navigation.view === 'github' ? undefined : 'view-hidden'}>
+                <div className={navigation.view === 'github' ? 'view-pane' : 'view-pane view-hidden'}>
                 <GitHubView
                   authStatus={store.githubAuthStatus}
                   onLogin={() => setGitHubAccountOpen(true)}

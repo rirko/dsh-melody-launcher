@@ -40,6 +40,11 @@
   --topbar-hover-bg: rgba(255, 255, 255, 0.14);
   --topbar-hover-strong-bg: rgba(255, 255, 255, 0.16);
   --topbar-border: rgba(255, 255, 255, 0.35);
+  --ease-out: cubic-bezier(.23, 1, .32, 1);
+  --ease-spring: cubic-bezier(.32, .72, 0, 1);
+  --dur-fast: 160ms;
+  --dur-base: 220ms;
+  --dur-slow: 300ms;
 }
 
 :root[data-theme='night'] {
@@ -423,8 +428,42 @@ input:focus-visible {
   }
 }
 
+/* ===== macOS 式交互动效 ===== */
+.home-tab-pane,
+.view-pane {
+  transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+
+@starting-style {
+  .home-tab-pane,
+  .view-pane {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes backdrop-in { from { opacity: 0; } }
+@keyframes modal-in { from { opacity: 0; transform: scale(.96); } }
+@keyframes widget-slide-in { from { opacity: 0; transform: translateX(12px); } }
+@keyframes toast-in { from { opacity: 0; transform: translateX(16px); } }
+@keyframes app-in { from { opacity: 0; transform: scale(.985); } }
+
+/* 顶栏按钮按压触感 */
+.topbar-tab,
+.topbar-developer,
+.topbar-open-web {
+  transition: transform var(--dur-fast) var(--ease-out), background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.topbar-tab:active,
+.topbar-developer:active,
+.topbar-open-web:active {
+  transform: scale(.97);
+}
+
 /* ===== 应用根布局：顶栏常驻 + 内容区换页 ===== */
 .app-root {
+  animation: app-in var(--dur-slow) var(--ease-out) both;
   display: flex;
   width: 100%;
   height: 100%;
@@ -592,7 +631,7 @@ input:focus-visible {
 }
 
 .widget-pane {
-  animation: launcher-rise 220ms cubic-bezier(.22,.61,.36,1) both;
+  animation: widget-slide-in var(--dur-base) var(--ease-out) both;
 }
 
 .widget-card {
@@ -648,6 +687,7 @@ input:focus-visible {
   border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--line));
   border-radius: 12px;
   background: var(--surface-soft);
+  transition: transform var(--dur-fast) var(--ease-out), border-color 150ms ease;
 }
 
 .widget-update-tile-info {
@@ -706,6 +746,12 @@ input:focus-visible {
   .widget-tile:hover {
     border-color: var(--accent);
     background: var(--accent-soft);
+    transform: translateY(-1px);
+  }
+
+  .widget-update-tile:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
   }
 }
 
@@ -5482,6 +5528,7 @@ input:focus-visible {
 }
 
 .modal-backdrop {
+  animation: backdrop-in var(--dur-fast) var(--ease-out) both;
   position: fixed;
   z-index: 100;
   inset: 0;
@@ -5492,6 +5539,7 @@ input:focus-visible {
 }
 
 .modal {
+  animation: modal-in var(--dur-base) var(--ease-out) both;
   width: min(560px, calc(100vw - 32px));
   max-height: calc(100vh - 44px);
   border: 1px solid var(--line);
@@ -6662,6 +6710,7 @@ input:focus-visible {
   background: color-mix(in srgb, var(--accent) 12%, var(--surface));
   box-shadow: var(--shadow);
   font-size: 11px;
+  animation: toast-in var(--dur-base) var(--ease-spring) both;
 }
 
 .toast.error {
@@ -8367,12 +8416,6 @@ input:focus-visible {
   white-space: nowrap;
 }
 
-/* 呼吸脉冲：启动页运行中状态点 */
-@keyframes status-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); }
-  50% { box-shadow: 0 0 0 5px transparent; }
-}
-
 /* 尊重系统「减少动态效果」：全部新动画降级为静态 */
 @media (prefers-reduced-motion: reduce) {
   .skeleton-line::after,
@@ -8387,7 +8430,24 @@ input:focus-visible {
 
   .home-brand,
   .home-actions,
-  .widget-pane {
+  .widget-pane,
+  .modal-backdrop,
+  .modal,
+  .toast,
+  .app-root {
     animation: none;
+  }
+
+  .home-tab-pane,
+  .view-pane {
+    transition: opacity var(--dur-fast) ease;
+  }
+
+  .topbar-tab:active,
+  .topbar-developer:active,
+  .topbar-open-web:active,
+  .widget-tile:hover,
+  .widget-update-tile:hover {
+    transform: none;
   }
 }
