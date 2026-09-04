@@ -11,6 +11,15 @@
   justify-content: center;
   pointer-events: none;
   will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* 翻转进行中给封面加投影，增强「一页翻过」的立体感。 */
+.mode-flip-cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  box-shadow: 0 0 60px rgba(10, 30, 40, 0.45);
 }
 
 .mode-flip-cover .mode-flip-logo {
@@ -21,11 +30,12 @@
   opacity: 0.9;
 }
 
-.mode-flip-cover.enter {
+/* JSX 生成的类名是 mode-flip-enter / mode-flip-exit。 */
+.mode-flip-cover.mode-flip-enter {
   animation: modeFlipDown 0.68s ease-in-out forwards;
 }
 
-.mode-flip-cover.exit {
+.mode-flip-cover.mode-flip-exit {
   animation: modeFlipUp 0.68s ease-in-out forwards;
 }
 
