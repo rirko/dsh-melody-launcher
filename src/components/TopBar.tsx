@@ -1,8 +1,8 @@
-import { Minus, Settings, Wrench, X } from 'lucide-react'
+import { Minus, Wrench, X } from 'lucide-react'
 import type { HomeTab } from '../types'
 
 /**
- * 全局顶栏（PCL2 式）：品牌 logo + 一级导航 tab + 启动器设置 + 开发人员选项 + 窗口键。
+ * 全局顶栏（PCL2 式）：DML 文字标记 + 一级导航 tab + 开发人员选项 + 窗口键。
  * 整条可拖拽；按钮区 no-drag。管理界面激活时 tab 全部落空、开发人员选项高亮。
  */
 
@@ -19,16 +19,15 @@ interface TopBarProps {
   activeTab: HomeTab | null
   developerActive: boolean
   onSelectTab: (tab: HomeTab) => void
-  onOpenSettings: () => void
   onOpenDeveloper: () => void
   onMinimize: () => void
   onClose: () => void
 }
 
-export function TopBar({ activeTab, developerActive, onSelectTab, onOpenSettings, onOpenDeveloper, onMinimize, onClose }: TopBarProps) {
+export function TopBar({ activeTab, developerActive, onSelectTab, onOpenDeveloper, onMinimize, onClose }: TopBarProps) {
   return (
     <header className="topbar">
-      <img className="topbar-mark" src="/launcher-logo.png" alt="" aria-hidden="true" draggable={false} />
+      <span className="topbar-mark" aria-hidden="true">DML</span>
       <nav className="topbar-tabs" aria-label="一级导航">
         {HOME_TABS.map(tab => (
           <button
@@ -42,9 +41,6 @@ export function TopBar({ activeTab, developerActive, onSelectTab, onOpenSettings
         ))}
       </nav>
       <div className="topbar-right">
-        <button type="button" className="topbar-settings" onClick={onOpenSettings} title="启动器设置" aria-label="启动器设置">
-          <Settings size={16} />
-        </button>
         <button type="button" className={`topbar-developer ${developerActive ? 'active' : ''}`} onClick={onOpenDeveloper} title="资源市场 / GitHub / 运行环境">
           <Wrench size={14} /><span>开发人员选项</span>
         </button>

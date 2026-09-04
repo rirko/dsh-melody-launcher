@@ -1,4 +1,4 @@
-import { CircleStop, Download, ExternalLink, LoaderCircle, Package, Play } from 'lucide-react'
+import { CircleStop, Download, ExternalLink, LoaderCircle, Package, Play, Settings } from 'lucide-react'
 import packageMetadata from '../../package.json'
 import { WidgetZone } from './WidgetZone'
 import type { DshInstallationStatus, DshUpdateStatus, HomeTab, InstallProgress, InstalledApplicationAddon, LauncherUpdateStatus, RuntimeState } from '../types'
@@ -28,6 +28,7 @@ interface LauncherHomeProps {
   onUpdateDsh: () => void
   onOpenLauncherUpdate: () => void
   onNavigateTab: (tab: HomeTab) => void
+  onOpenSettings: () => void
 }
 
 export function LauncherHome({
@@ -49,6 +50,7 @@ export function LauncherHome({
   onUpdateDsh,
   onOpenLauncherUpdate,
   onNavigateTab,
+  onOpenSettings,
 }: LauncherHomeProps) {
   const needsInstallation = !dshInstallation.installed && !activeRuntimeReplacement
 
@@ -61,10 +63,15 @@ export function LauncherHome({
             <strong>DSH</strong>
             <span>Melody Launcher</span>
           </h1>
-          <p className="home-brand-tagline">DeepSeek Harness 桌面启动器</p>
+          <p className="home-brand-tagline">DeepSeek Harness 启动器</p>
         </div>
         <div className="home-brand-meta">
-          <span className="home-brand-version">v{packageMetadata.version}</span>
+          <div className="home-brand-meta-row">
+            <span className="home-brand-version">v{packageMetadata.version}</span>
+            <button type="button" className="home-brand-settings" onClick={onOpenSettings} title="启动器设置">
+              <Settings size={13} /><span>设置</span>
+            </button>
+          </div>
           <span className="home-brand-qq">官方用户QQ群：625155044</span>
         </div>
       </section>
