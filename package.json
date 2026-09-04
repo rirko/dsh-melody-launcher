@@ -33,7 +33,7 @@
     "@xmldom/xmldom": "^0.8.14",
     "adm-zip": "^0.6.0",
     "koffi": "^3.1.5",
-    "lucide-react": "^1.31.0",
+    "lucide-react": "^1.39.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",
