@@ -17,11 +17,8 @@ interface SettingsDialogProps {
 }
 
 const UI_THEMES: Array<{ id: UiTheme; label: string }> = [
-  { id: 'deepseek', label: '晴空蓝' },
+  { id: 'deepseek', label: '日间' },
   { id: 'night', label: '夜间' },
-  { id: 'ocean', label: '海湾' },
-  { id: 'berry', label: '莓果' },
-  { id: 'graphite', label: '石墨' },
 ]
 
 function SettingsGroup({ icon, title, desc, children }: { icon: ReactNode; title: string; desc?: string; children: ReactNode }) {

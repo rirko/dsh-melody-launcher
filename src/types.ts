@@ -3,7 +3,7 @@ export type RuntimeDrawerMode = 'hidden' | 'half' | 'expanded'
 export type WindowMode = 'launcher' | 'manager'
 /** 一级导航 tab：启动页 + 五个 C 端面板（原二级设置页拍平）。 */
 export type HomeTab = 'start' | 'versions' | 'plugins' | 'skills' | 'presets' | 'packs'
-export type UiTheme = 'deepseek' | 'night' | 'ocean' | 'berry' | 'graphite'
+export type UiTheme = 'deepseek' | 'night'
 
 export interface AppSettings {
   dshInstallPath: string
