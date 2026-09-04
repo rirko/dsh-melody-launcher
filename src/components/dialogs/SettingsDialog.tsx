@@ -1,4 +1,4 @@
-import { Check, Download, Folder, Gamepad2, Globe, Info, LoaderCircle, Palette, Rocket, Wrench, X } from 'lucide-react'
+import { Check, Folder, Gamepad2, Globe, Info, LoaderCircle, Palette, Rocket, Wrench, X } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import packageMetadata from '../../../package.json'
 import { useLauncherApi } from '../../api/client'
@@ -14,8 +14,6 @@ interface SettingsDialogProps {
   busy: boolean
   onClose: () => void
   onSave: (settings: AppSettings) => void
-  /** 一键下载并启用官方推荐整合包（DSH Web UI）。 */
-  onDownloadRecommendedWebUi?: () => void
 }
 
 const UI_THEMES: Array<{ id: UiTheme; label: string }> = [
@@ -35,7 +33,7 @@ function SettingsGroup({ icon, title, desc, children }: { icon: ReactNode; title
   )
 }
 
-export function SettingsDialog({ settings, busy, onClose, onSave, onDownloadRecommendedWebUi }: SettingsDialogProps) {
+export function SettingsDialog({ settings, busy, onClose, onSave }: SettingsDialogProps) {
   const api = useLauncherApi()
   const [draft, setDraft] = useState(settings)
   // 参数在界面上是一整行文本，保存时才切成数组。
@@ -80,11 +78,6 @@ export function SettingsDialog({ settings, busy, onClose, onSave, onDownloadReco
             <label className="form-field"><span>GitHub 镜像</span><input value={draft.network?.githubMirror ?? ''} placeholder="可选，留空不启用；如 https://gh-proxy.com" onChange={event => setDraft({ ...draft, network: { ...draft.network, githubMirror: event.target.value } })} /></label>
             <p className="settings-group-note">直连 GitHub 不稳时，可配置代理或 GitHub 镜像后重试 DSH Market 安装；npm 安装始终优先镜像。</p>
           </SettingsGroup>
-          {onDownloadRecommendedWebUi && (
-            <SettingsGroup icon={<Download size={16} />} title="官方推荐" desc="一键安装官方推荐的「DSH Web UI」全家桶整合包，获得更佳使用体验。">
-              <div className="recommended-action-row"><button type="button" className="primary-command" disabled={busy} onClick={onDownloadRecommendedWebUi}><Download size={16} />下载官方推荐整合包 DSH Web UI</button><small>可能与您已安装的其它插件冲突，建议首次尝试只启用这一个插件（可在启动项管理中调整）。</small></div>
-            </SettingsGroup>
-          )}
           <SettingsGroup icon={<Info size={16} />} title="关于">
             <div className="settings-about-rows">
               <div><span>启动器版本</span><strong>v{packageMetadata.version}</strong></div>
