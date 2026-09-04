@@ -32,35 +32,51 @@
   --danger-soft: #f9e9e8;
   --shadow: 0 14px 34px rgba(30, 45, 62, 0.14);
   --chrome-shadow: 0 5px 16px rgba(43, 66, 96, 0.09);
+  --topbar-bg: var(--accent);
+  --topbar-ink: #ffffff;
+  --topbar-ink-dim: rgba(255, 255, 255, 0.88);
+  --topbar-active-bg: var(--surface);
+  --topbar-active-ink: var(--accent);
+  --topbar-hover-bg: rgba(255, 255, 255, 0.14);
+  --topbar-hover-strong-bg: rgba(255, 255, 255, 0.16);
+  --topbar-border: rgba(255, 255, 255, 0.35);
 }
 
 :root[data-theme='night'] {
-  --app-bg: #0f141b;
-  --chrome: #151c26;
-  --chrome-strong: #1c2531;
-  --workspace-bg: #121a24;
-  --ink: #e9eef5;
-  --muted: #a8b3c2;
-  --quiet: #77828f;
-  --line: #2b3644;
-  --line-strong: #3d4a5c;
-  --surface: #1b2430;
-  --surface-soft: #222d3b;
-  --surface-strong: #2a3646;
-  --accent: #58a3ea;
-  --accent-hover: #74b4ef;
-  --accent-soft: #21344e;
-  --focus-ring: rgba(88, 163, 234, 0.45);
-  --scrollbar-thumb: rgba(88, 163, 234, 0.38);
-  --scrollbar-thumb-hover: rgba(116, 180, 239, 0.7);
-  --blue: #86b9e9;
-  --blue-soft: #1d2b3f;
-  --amber: #dca84f;
+  --app-bg: #0d1117;
+  --chrome: #161d26;
+  --chrome-strong: #1d2631;
+  --workspace-bg: #0f141a;
+  --ink: #e6edf3;
+  --muted: #9baab9;
+  --quiet: #6e7f91;
+  --line: #2d3742;
+  --line-strong: #404b57;
+  --surface: #171e26;
+  --surface-soft: #1d2630;
+  --surface-strong: #242f3b;
+  --accent: #4d9fea;
+  --accent-hover: #6fb0f2;
+  --accent-soft: #1a2c42;
+  --focus-ring: rgba(77, 159, 234, 0.45);
+  --scrollbar-thumb: rgba(77, 159, 234, 0.38);
+  --scrollbar-thumb-hover: rgba(111, 176, 242, 0.7);
+  --blue: #79b8ff;
+  --blue-soft: #1a2739;
+  --amber: #e3b341;
   --amber-soft: #2f2818;
-  --danger: #e77a7e;
-  --danger-soft: #342124;
-  --shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
-  --chrome-shadow: 0 5px 16px rgba(0, 0, 0, 0.4);
+  --danger: #f0827d;
+  --danger-soft: #3a2426;
+  --shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
+  --chrome-shadow: 0 5px 16px rgba(0, 0, 0, 0.45);
+  --topbar-bg: #151b23;
+  --topbar-ink: #e6edf3;
+  --topbar-ink-dim: rgba(230, 237, 243, 0.72);
+  --topbar-active-bg: rgba(77, 159, 234, 0.2);
+  --topbar-active-ink: #7cb8f5;
+  --topbar-hover-bg: rgba(255, 255, 255, 0.07);
+  --topbar-hover-strong-bg: rgba(255, 255, 255, 0.1);
+  --topbar-border: rgba(255, 255, 255, 0.14);
 }
 
 /* 主题精简为日间/夜间两款；ocean/berry/graphite 已移除，旧存档值自动回退日间。 */
@@ -286,8 +302,8 @@ input:focus-visible {
   align-items: center;
   padding-left: 16px;
   gap: 12px;
-  color: #ffffff;
-  background: var(--accent);
+  color: var(--topbar-ink);
+  background: var(--topbar-bg);
   -webkit-app-region: drag;
 }
 
@@ -311,7 +327,7 @@ input:focus-visible {
   padding: 7px 18px;
   border: 0;
   border-radius: 8px;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--topbar-ink-dim);
   background: transparent;
   font-size: 13px;
   font-weight: 650;
@@ -320,8 +336,8 @@ input:focus-visible {
 }
 
 .topbar-tab.active {
-  color: var(--accent);
-  background: var(--surface);
+  color: var(--topbar-active-ink);
+  background: var(--topbar-active-bg);
 }
 
 .topbar-right {
@@ -340,9 +356,9 @@ input:focus-visible {
   margin-right: 8px;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--topbar-border);
   border-radius: 8px;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--topbar-ink);
   background: transparent;
   cursor: pointer;
   transition: background 150ms ease;
@@ -350,7 +366,7 @@ input:focus-visible {
 
 @media (hover: hover) and (pointer: fine) {
   .topbar-open-web:hover {
-    background: rgba(255, 255, 255, 0.16);
+    background: var(--topbar-hover-strong-bg);
   }
 }
 
@@ -360,9 +376,9 @@ input:focus-visible {
   padding: 7px 13px;
   align-items: center;
   gap: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--topbar-border);
   border-radius: 8px;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--topbar-ink);
   background: transparent;
   font-size: 12.5px;
   font-weight: 650;
@@ -371,9 +387,9 @@ input:focus-visible {
 }
 
 .topbar-developer.active {
-  color: var(--accent);
-  border-color: #ffffff;
-  background: var(--surface);
+  color: var(--topbar-active-ink);
+  border-color: var(--topbar-active-bg);
+  background: var(--topbar-active-bg);
 }
 
 .topbar-window-button,
@@ -384,7 +400,7 @@ input:focus-visible {
   padding: 0;
   place-items: center;
   border: 0;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--topbar-ink-dim);
   background: transparent;
   cursor: pointer;
 }
@@ -392,17 +408,17 @@ input:focus-visible {
 @media (hover: hover) and (pointer: fine) {
   .topbar-tab:hover:not(.active),
   .topbar-developer:hover:not(.active) {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.14);
+    color: var(--topbar-ink);
+    background: var(--topbar-hover-bg);
   }
 
   .topbar-window-button:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.16);
+    color: var(--topbar-ink);
+    background: var(--topbar-hover-strong-bg);
   }
 
   .topbar-window-close:hover {
-    color: #fff;
+    color: var(--topbar-ink);
     background: #c93636;
   }
 }
@@ -6435,9 +6451,9 @@ input:focus-visible {
 .theme-swatch.deepseek i:nth-child(1) { background: #cfe2f4; }
 .theme-swatch.deepseek i:nth-child(2) { background: #7fb0e0; }
 .theme-swatch.deepseek i:nth-child(3) { background: #2b7cd8; }
-.theme-swatch.night i:nth-child(1) { background: #21344e; }
-.theme-swatch.night i:nth-child(2) { background: #3d6a9e; }
-.theme-swatch.night i:nth-child(3) { background: #58a3ea; }
+.theme-swatch.night i:nth-child(1) { background: #151b23; }
+.theme-swatch.night i:nth-child(2) { background: #1d2630; }
+.theme-swatch.night i:nth-child(3) { background: #4d9fea; }
 
 
 .form-section p {
