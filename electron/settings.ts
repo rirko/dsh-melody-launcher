@@ -41,7 +41,7 @@ export function defaultSettings(input: DefaultSettingsInput): AppSettings {
     launchArgs: ['--yes', DSH_PACKAGE_NAME, 'web'],
     webPort: 3080,
     openAfterLaunch: true,
-    uiTheme: 'deepseek',
+    uiTheme: 'forest',
     aiDeveloperMode: false,
     aiPrompt: '',
     recommendedWebUiPrompted: false,
@@ -50,7 +50,7 @@ export function defaultSettings(input: DefaultSettingsInput): AppSettings {
   }
 }
 
-const UI_THEMES = new Set<UiTheme>(['deepseek', 'night'])
+const UI_THEMES = new Set<UiTheme>(['forest', 'ocean', 'berry', 'graphite'])
 
 function validUiTheme(value: unknown): value is UiTheme {
   return typeof value === 'string' && UI_THEMES.has(value as UiTheme)
@@ -146,7 +146,7 @@ export function validateSettings(input: AppSettings): AppSettings {
     launchArgs: input.launchArgs,
     webPort: input.webPort,
     openAfterLaunch: Boolean(input.openAfterLaunch),
-    uiTheme: validUiTheme(input.uiTheme) ? input.uiTheme : 'deepseek',
+    uiTheme: validUiTheme(input.uiTheme) ? input.uiTheme : 'forest',
     aiDeveloperMode: Boolean(input.aiDeveloperMode),
     aiPrompt: typeof input.aiPrompt === 'string' ? input.aiPrompt.slice(0, 20_000) : '',
     network: validNetworkSettings(input.network),
@@ -175,7 +175,7 @@ export function mergeStoredSettings(defaults: AppSettings, stored: Partial<AppSe
       ? stored.launchArgs.filter(value => typeof value === 'string')
       : defaults.launchArgs,
     webPort: storedPort,
-    uiTheme: validUiTheme(stored.uiTheme) ? stored.uiTheme : defaults.uiTheme ?? 'deepseek',
+    uiTheme: validUiTheme(stored.uiTheme) ? stored.uiTheme : defaults.uiTheme ?? 'forest',
     aiDeveloperMode: Boolean(stored.aiDeveloperMode),
     aiPrompt: typeof stored.aiPrompt === 'string' ? stored.aiPrompt.slice(0, 20_000) : '',
     network: validNetworkSettings(stored.network) ?? defaults.network,

@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { LauncherApiProvider, resolveLauncherApi, useLauncherApi } from './api/client'
 import { AppHeader } from './components/AppHeader'
 import { LauncherHome } from './components/LauncherHome'
-import { TopBar } from './components/TopBar'
 import { SideNavigation } from './components/SideNavigation'
 import { DSHCopilotPanel } from './components/DSHCopilotPanel'
 import { RuntimeDrawer } from './components/RuntimeDrawer'
@@ -15,6 +14,7 @@ import { CreatePackDialog } from './components/dialogs/CreatePackDialog'
 import { PackInstallDialog } from './components/dialogs/PackInstallDialog'
 import { ProfileRepositoryImportDialog } from './components/dialogs/ProfileRepositoryImportDialog'
 import { SettingsDialog } from './components/dialogs/SettingsDialog'
+import { RecommendedWebUiDialog } from './components/dialogs/RecommendedWebUiDialog'
 import { UpdateDialog } from './components/dialogs/UpdateDialog'
 import { DSH_REPOSITORY } from './constants'
 import { useAiInstall } from './hooks/use-ai-install'
@@ -32,10 +32,6 @@ import { PluginsView } from './views/PluginsView'
 import { GitHubView } from './views/GitHubView'
 import { DshMarketView } from './views/DshMarketView'
 import { RuntimeEnvironmentView } from './views/RuntimeEnvironmentView'
-import { SettingsPanels } from './views/SettingsView'
-
-/** 一级导航顺序（keep-mounted 渲染顺序）。 */
-const HOME_TAB_ORDER: HomeTab[] = ['start', 'versions', 'plugins', 'skills', 'presets', 'packs']
 
 /**
  * 应用根。
@@ -106,17 +102,16 @@ function LauncherShell() {
     }
   })
   const [confirmingRemoval, setConfirmingRemoval] = useState<ManagedPlugin | null>(null)
+  const [recommendedPrompt, setRecommendedPrompt] = useState<'new' | 'existing' | null>(null)
+  const recommendedChoiceRef = useRef<((accept: boolean) => void) | null>(null)
   const managerVisited = useRef(false)
   const discoverVisited = useRef(false)
-  // keep-mounted 集合：访问过的一级 tab / 管理视图保持挂载，切换只切可见性。
-  const visitedTabs = useRef(new Set<HomeTab>(['start']))
-  const visitedViews = useRef(new Set<ViewName>(['plugins']))
   const previousManagerViewRef = useRef(navigation.view)
   // 仓库结构检测结果由各视图发起，App 统一持有，避免切页后丢失。
   const [repositoryAnalyses, setRepositoryAnalyses] = useState<Record<string, CatalogRepositoryAnalysis>>({})
 
   useEffect(() => {
-    document.documentElement.dataset.theme = store.settings?.uiTheme ?? 'deepseek'
+    document.documentElement.dataset.theme = store.settings?.uiTheme ?? 'forest'
   }, [store.settings?.uiTheme])
 
   // 自定义主界面插图经 launcher-asset:// 协议注入 CSS 变量；置空回落内置默认图。
@@ -217,6 +212,33 @@ function LauncherShell() {
   }
 
   const toggleRuntime = async () => {
+    const needsInstallation = !store.runtime.running && !store.dshInstallation.installed && !store.activeRuntimeReplacement
+    if (!settings.recommendedWebUiPrompted) {
+      const recommended = await store.readRecommendedWebUi()
+      const kind: 'new' | 'existing' | null = needsInstallation
+        ? 'new'
+        : store.runtime.running ? null : 'existing'
+      if (!recommended.installed && kind && !store.busy) {
+        const accept = await new Promise<boolean>(resolve => {
+          recommendedChoiceRef.current = resolve
+          setRecommendedPrompt(kind)
+        })
+        setRecommendedPrompt(null)
+        recommendedChoiceRef.current = null
+        await store.markRecommendedWebUiPrompted()
+        if (!accept) {
+          if (kind === 'new') return
+        } else if (kind === 'new') {
+          // 新用户：先安装 DSH，再安装官方推荐整合包，本次不自动启动。
+          await store.toggleRuntime()
+          await store.installRecommendedWebUi({ suspendOthers: false })
+          return
+        } else {
+          // 老用户：先安装并启用推荐整合包（临时停用其它插件），随后照常启动。
+          await store.installRecommendedWebUi({ suspendOthers: true })
+        }
+      }
+    }
     if (await store.toggleRuntime() === 'started') revealRuntimeDrawer()
   }
 
@@ -226,6 +248,7 @@ function LauncherShell() {
 
   const closeWindow = () => void api.closeWindow()
   const minimizeWindow = () => void api.minimizeWindow()
+  const toggleMaximizeWindow = () => void api.toggleMaximizeWindow()
 
   const openApiConfig = () => {
     setCredentialOpen(true)
@@ -316,91 +339,44 @@ function LauncherShell() {
 
   const { settings, profile } = store
   if (navigation.surface === 'manager') managerVisited.current = true
-  if (navigation.surface === 'manager') visitedViews.current.add(navigation.view)
   if (navigation.surface === 'manager' && navigation.view === 'discover') discoverVisited.current = true
-  // 一级 tab keep-mounted：访问过的面板保持挂载、只切隐藏，来回切换不重建、不重新拉数据。
-  visitedTabs.current.add(navigation.homeTab)
 
   return (
-    <div className="app-root">
-      <TopBar
-        activeTab={navigation.surface === 'launcher' ? navigation.homeTab : null}
-        developerActive={navigation.surface === 'manager'}
-        openWebVisible={store.runtime.running && Boolean(store.runtime.url)}
-        onSelectTab={navigation.goHome}
-        onOpenHarness={openHarness}
-        onOpenDeveloper={navigation.showManager}
-        onMinimize={minimizeWindow}
-        onClose={closeWindow}
-      />
-      <div className="app-content">
+    <>
       <div
         className={`surface-stage surface-${navigation.surface}${navigation.transitionPhase === 'idle' ? '' : ` is-${navigation.transitionPhase}`}`}
         aria-busy={navigation.transitionPhase !== 'idle'}
       >
         <div className={`surface-host launcher-surface-host ${navigation.surface === 'launcher' ? '' : 'view-hidden'}`}>
-          {HOME_TAB_ORDER.filter(tab => visitedTabs.current.has(tab)).map(tab => (
-            <div key={tab} className={`home-tab-pane ${navigation.homeTab === tab ? '' : 'view-hidden'}`}>
-              {tab === 'start' ? (
-                <LauncherHome
-                  runtime={store.runtime}
-                  dshInstallation={store.dshInstallation}
-                  dshUpdate={store.dshUpdate}
-                  launcherUpdate={store.launcherUpdate}
-                  installProgress={store.installProgress?.repository === DSH_REPOSITORY ? store.installProgress : null}
-                  busy={runtimeBusy}
-                  installingDsh={installingDsh}
-                  activeRuntimeReplacement={store.activeRuntimeReplacement}
-                  bundleCount={profile.activeBundles.length}
-                  pluginCount={profile.dependencyCount}
-                  skillCount={store.installedSkills.length}
-                  presetCount={store.installedPresets.length}
-                  onToggleRuntime={toggleRuntime}
-                  onVersionSelect={() => navigation.goHome('packs')}
-                  onUpdateDsh={() => { void store.updateDsh() }}
-                  onOpenLauncherUpdate={() => setUpdateOpen(true)}
-                  onNavigateTab={navigation.goHome}
-                  onOpenSettings={() => setSettingsOpen(true)}
-                />
-              ) : (
-                <SettingsPanels
-                  tab={tab}
-                  settings={settings}
-                  profile={profile}
-                  dshInstallation={store.dshInstallation}
-                  runtimeEnvironment={store.runtimeEnvironment}
-                  installedSkills={store.installedSkills}
-                  installedPresets={store.installedPresets}
-                  packs={store.packs}
-                  busy={store.busy}
-                  profileMutationLocked={profileMutationLocked}
-                  installProgress={store.installProgress}
-                  onRefresh={() => {
-                    void store.refreshProfile()
-                    void store.refreshSecondaryResources()
-                    void store.refreshPacks()
-                    void store.refreshRuntimeEnvironment(true)
-                  }}
-                  onImportPack={() => void handlePackImport()}
-                  onInstallDshVersion={store.installDshVersion}
-                  onSelectDshVersion={store.selectDshVersion}
-                  onRemoveDshVersion={store.removeDshVersion}
-                  onTogglePlugin={store.togglePlugin}
-                  onToggleSkill={store.toggleSkill}
-                  onTogglePreset={store.togglePreset}
-                  onSkillInstalled={store.applyCatalogSkillInstall}
-                  onProfileChanged={() => { void store.refreshProfile() }}
-                  onActivatePack={store.activatePack}
-                  onDeactivatePack={store.deactivatePack}
-                  onRemovePack={store.removePack}
-                  onExportPack={store.exportPack}
-                  onOpenDshFolder={() => void api.openDshFolder()}
-                  onOpenPluginFolder={packageName => { void api.openProfilePluginFolder(packageName) }}
-                  onOpenPath={targetPath => { void api.openPath(targetPath) }}
-                />
-              )}
-            </div>
-          ))}
+          <LauncherHome
+            settings={settings}
+            profile={profile}
+            runtime={store.runtime}
+            dshInstallation={store.dshInstallation}
+            dshUpdate={store.dshUpdate}
+            installProgress={store.installProgress?.repository === DSH_REPOSITORY ? store.installProgress : null}
+            busy={runtimeBusy}
+            packs={store.packs}
+            profiles={store.profiles}
+            activePackId={settings.activePackId}
+            profileSwitcherDisabled={profileSwitcherLocked}
+            installingDsh={installingDsh}
+            onCredential={openApiConfig}
+            githubAuthStatus={store.githubAuthStatus}
+            activeRuntimeReplacement={store.activeRuntimeReplacement}
+            onGitHubAccount={() => setGitHubAccountOpen(true)}
+            onManage={navigation.showManager}
+            onPackChange={packId => {
+              void (packId ? store.activatePack(packId) : store.deactivatePack())
+            }}
+            onProfileChange={profileName => { void store.switchProfile(profileName) }}
+            onToggleRuntime={toggleRuntime}
+            onUpdateDsh={() => { void store.updateDsh() }}
+            onOpenHarness={openHarness}
+            onMinimize={minimizeWindow}
+            onToggleMaximize={toggleMaximizeWindow}
+            onClose={closeWindow}
+          />
         </div>
         {managerVisited.current && (
           <div className={`surface-host manager-surface-host ${navigation.surface === 'manager' ? '' : 'view-hidden'}`}>
@@ -435,6 +411,9 @@ function LauncherShell() {
             }}
             onProfileChange={profileName => { void store.switchProfile(profileName) }}
             onOpenProfileDirectory={() => { void api.openPath(profile.profileDir) }}
+            onMinimize={minimizeWindow}
+            onToggleMaximize={toggleMaximizeWindow}
+            onClose={closeWindow}
           />
           <div className={`app-body ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${copilotOpen ? 'copilot-open' : ''} ${copilotResizing ? 'copilot-resizing' : ''}`} style={{ '--copilot-width': `${copilotWidth}px` } as CSSProperties}>
             <SideNavigation
@@ -467,8 +446,7 @@ function LauncherShell() {
             />
             <main className="workspace">
               <div className="workspace-content">
-              {visitedViews.current.has('plugins') && (
-                <div className={navigation.view === 'plugins' ? 'view-pane' : 'view-pane view-hidden'}>
+              {navigation.view === 'plugins' && (
                 <PluginsView
                   profile={profile}
                   profileName={settings.profileName}
@@ -495,6 +473,7 @@ function LauncherShell() {
                   onBrowse={() => navigation.setView('discover')}
                   onOpenRepository={url => void api.openExternal(url)}
                   onOpenPluginFolder={packageName => { void api.openProfilePluginFolder(packageName) }}
+                  onInstallRecommendedWebUi={() => { void store.installRecommendedWebUi({ suspendOthers: false }) }}
                   onToggleRuntime={toggleRuntime}
                   onOpenHarness={openHarness}
                   onOpenRuntimeSettings={() => changeRuntimeDrawerMode('expanded')}
@@ -504,9 +483,8 @@ function LauncherShell() {
                   aiActive={ai.active}
                   aiSubject={ai.status.subject}
                 />
-                </div>
               )}
-              {discoverVisited.current && <div className={navigation.view === 'discover' ? 'view-pane' : 'view-pane view-hidden'}>
+              {discoverVisited.current && <div className={navigation.view === 'discover' ? undefined : 'view-hidden'}>
                 <DiscoverView
                   profile={profile}
                   analyses={repositoryAnalyses}
@@ -563,13 +541,8 @@ function LauncherShell() {
                   aiActive={ai.active}
                 />
               </div>}
-              {visitedViews.current.has('dsh-market') && (
-                <div className={navigation.view === 'dsh-market' ? 'view-pane' : 'view-pane view-hidden'}>
-                  <DshMarketView onProfileChanged={store.refreshProfile} />
-                </div>
-              )}
-              {visitedViews.current.has('environment') && (
-                <div className={navigation.view === 'environment' ? 'view-pane' : 'view-pane view-hidden'}>
+              {navigation.view === 'dsh-market' && <DshMarketView onProfileChanged={store.refreshProfile} />}
+              {navigation.view === 'environment' && (
                 <RuntimeEnvironmentView
                   state={store.runtimeEnvironment}
                   busy={profileMutationLocked || Boolean(store.busy)}
@@ -583,10 +556,8 @@ function LauncherShell() {
                   onOpenDshFolder={() => { void api.openDshFolder() }}
                   onOpenNodeFolder={() => { void api.openNodeFolder() }}
                 />
-                </div>
               )}
-              {visitedViews.current.has('packs') && (
-                <div className={navigation.view === 'packs' ? 'view-pane' : 'view-pane view-hidden'}>
+              {navigation.view === 'packs' && (
                 <PacksView
                   packs={store.packs}
                   profiles={store.profiles}
@@ -620,17 +591,14 @@ function LauncherShell() {
                   installedSkills={store.installedSkills}
                   installedApplications={store.installedApplications}
                 />
-                </div>
               )}
-              {visitedViews.current.has('github') && (
-                <div className={navigation.view === 'github' ? 'view-pane' : 'view-pane view-hidden'}>
+              {navigation.view === 'github' && (
                 <GitHubView
                   authStatus={store.githubAuthStatus}
                   onLogin={() => setGitHubAccountOpen(true)}
                   onOpen={url => void api.openExternal(url)}
                   onError={showError}
                 />
-                </div>
               )}
               </div>
               <RuntimeDrawer
@@ -682,9 +650,13 @@ function LauncherShell() {
             </div>
           </div>
           </div>
+          <button className="icon-button manager-back" type="button" title="返回启动页" aria-label="返回启动页" onClick={navigation.showLauncher}>
+            <svg className="manager-corner-mark" viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+              <path d="M36 0V29.5A6.5 6.5 0 0 1 29.5 36H0Z" />
+            </svg>
+          </button>
           </div>
         )}
-      </div>
       </div>
 
       {settingsOpen && (
@@ -693,6 +665,7 @@ function LauncherShell() {
           busy={store.busy === BUSY.settings || profileMutationLocked}
           onClose={() => setSettingsOpen(false)}
           onSave={async next => { if (await store.saveSettings(next)) setSettingsOpen(false) }}
+          onDownloadRecommendedWebUi={() => { void store.installRecommendedWebUi({ suspendOthers: false }) }}
         />
       )}
       {credentialOpen && (
@@ -726,6 +699,13 @@ function LauncherShell() {
             setConfirmingRemoval(null)
             void store.uninstallPlugin(plugin)
           }}
+        />
+      )}
+      {recommendedPrompt && (
+        <RecommendedWebUiDialog
+          kind={recommendedPrompt}
+          onDownload={() => recommendedChoiceRef.current?.(true)}
+          onDismiss={() => recommendedChoiceRef.current?.(false)}
         />
       )}
       {createPackOpen && packInstall.phase === 'idle' && (
@@ -793,6 +773,6 @@ function LauncherShell() {
         />
       )}
       {store.toast && <Toast toast={store.toast} onClose={store.dismissToast} />}
-    </div>
+    </>
   )
 }

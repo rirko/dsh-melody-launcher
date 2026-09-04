@@ -36,7 +36,7 @@ import {
   isDshRepository,
   packageManagerProgress,
 } from './dsh-install'
-import { dshRegistryCandidates, dshVersionRoot, findManagedDshVersions, listAvailableDshVersions, normalizeDshVersion } from './runtime-versions'
+import { dshVersionRoot, findManagedDshVersions, listAvailableDshVersions, normalizeDshVersion } from './runtime-versions'
 import { checkDshUpdate } from './dsh-update'
 import { resolveNodeExecutable, type NodeRuntime, type NodeRuntimeProgress, type PnpmRuntime } from './node-runtime'
 import { approveAllIgnoredBuilds, denyBuildKeys } from './plugin-install'
@@ -171,8 +171,6 @@ export interface InstallerOptions {
   resolveGitExecutable?: (environment: NodeJS.ProcessEnv) => string | null
   /** 所有 GitHub HTTP 请求统一从这里注入认证。 */
   githubFetch?: typeof fetch
-  /** 技能市场磁盘缓存路径（userData/skill-market-cache.json）；缺省只保留内存缓存。 */
-  skillMarketCachePath?: string
 }
 
 export interface Installer {
@@ -220,9 +218,6 @@ export interface Installer {
   ): Promise<CatalogRepositoryAnalysis>
   /** 安装一个 Skill。 */
   installSkill(request: SkillInstallRequest): Promise<SkillInstallResult>
-  /** C 端技能市场：归档式检测（绕开 api.github.com 限流）与免重析安装。 */
-  analyzeSkillArchive(fullName: string, defaultBranch: string): Promise<SkillRepositoryAnalysis>
-  installSkillFromMarket(request: { repository: string; target: SkillInstallTarget }): Promise<SkillInstallResult>
   /** 按固定 pin 安装一个 Skill（整合包清单导入用，不重新分析 HEAD）。 */
   installSkillPinned(request: { repository: string; target: SkillInstallTarget }): Promise<InstalledSkill>
   /** 读取已安装的 Skill 列表。 */
@@ -335,11 +330,9 @@ export function createInstaller(options: InstallerOptions): Installer {
 
   const checkForDshUpdate = async () => {
     const installation = await detectDsh()
-    const settings = await options.readSettings()
-    const network = buildNetworkEnvironment(settings)
-    const fetchImpl = options.githubFetch ?? fetch
-    // 版本真值在 npm registry：镜像优先，官方源兜底，GitHub 只作最后回退。
-    return checkDshUpdate(installation, fetchImpl, [network.npmRegistry, NPM_OFFICIAL_REGISTRY])
+    return options.githubFetch
+      ? checkDshUpdate(installation, options.githubFetch)
+      : checkDshUpdate(installation)
   }
 
   /** 仓库结构检测结果缓存 5 分钟，避免同一仓库反复触发 GitHub 请求。 */
@@ -368,51 +361,6 @@ export function createInstaller(options: InstallerOptions): Installer {
       : await analyzeSkillRepository(fullName, defaultBranch)
     skillAnalysisCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, analysis })
     return analysis
-  }
-
-  /** C 端技能市场专用：codeload 归档 + 本地扫描，内存 5 分钟 + 磁盘 24 小时（过期先回旧、后台刷新）。 */
-  const skillMarketCache = options.skillMarketCachePath ? createSkillMarketCacheStore(options.skillMarketCachePath) : null
-  const archiveAnalysisFromTargets = (repository: string, defaultBranch: string, targets: SkillRepositoryAnalysis['targets']): SkillRepositoryAnalysis => ({
-    repository,
-    defaultBranch,
-    installability: targets.length === 1 ? 'ready' : targets.length > 1 ? 'choice' : 'invalid',
-    summary: '',
-    targets,
-  })
-  const analyzeSkillArchive = async (fullName: string, defaultBranch: string, bypassCache = false): Promise<SkillRepositoryAnalysis> => {
-    const cacheKey = `${fullName.toLowerCase()}#${defaultBranch}`
-    const cached = skillAnalysisCache.get(cacheKey)
-    if (!bypassCache && cached && cached.expiresAt > Date.now()) return cached.analysis
-
-    const fetchAnalysis = async (): Promise<SkillRepositoryAnalysis> => {
-      const settings = await options.readSettings()
-      const analysis = await analyzeSkillRepositoryFromArchive(fullName, defaultBranch, {
-        fetchImpl: options.githubFetch,
-        mirror: settings.network?.githubMirror,
-      })
-      skillAnalysisCache.set(cacheKey, { expiresAt: Date.now() + 5 * 60_000, analysis })
-      await skillMarketCache?.write({ repository: fullName, branch: defaultBranch, fetchedAt: Date.now(), targets: analysis.targets }).catch(() => undefined)
-      return analysis
-    }
-
-    if (!bypassCache && skillMarketCache) {
-      try {
-        const disk = lookupSkillMarketCache(await skillMarketCache.read(), fullName, defaultBranch)
-        if (disk.state === 'fresh') {
-          const analysis = archiveAnalysisFromTargets(fullName, defaultBranch, disk.entry.targets)
-          skillAnalysisCache.set(cacheKey, { expiresAt: disk.entry.fetchedAt + SKILL_MARKET_CACHE_TTL_MS, analysis })
-          return analysis
-        }
-        if (disk.state === 'stale') {
-          // 过期条目先原样返回保证秒开，同时后台刷新写回两级缓存。
-          void fetchAnalysis().catch(() => undefined)
-          return archiveAnalysisFromTargets(fullName, defaultBranch, disk.entry.targets)
-        }
-      } catch {
-        // 磁盘缓存损坏时直接走网络重建。
-      }
-    }
-    return fetchAnalysis()
   }
 
   const analyzeApplication = async (
@@ -899,7 +847,7 @@ export function createInstaller(options: InstallerOptions): Installer {
     const settings = await options.readSettings()
     let selectedVersion: string | null = null
     try {
-      const available = await listAvailableDshVersions(options.githubFetch, dshRegistryCandidates(buildNetworkEnvironment(settings).npmRegistry))
+      const available = await listAvailableDshVersions(options.githubFetch)
       selectedVersion = selectedVersion
         ?? available.find(candidate => candidate.label === 'latest')?.version
         ?? available.find(candidate => !candidate.prerelease)?.version
@@ -1273,8 +1221,6 @@ export function createInstaller(options: InstallerOptions): Installer {
 
     analyzeSkill,
 
-    analyzeSkillArchive,
-
     analyzeApplication,
 
     analyzeCatalogRepository,
@@ -1610,44 +1556,6 @@ export function createInstaller(options: InstallerOptions): Installer {
       } catch (error) {
         emit({
           repository: request.repository,
-          kind: 'skill',
-          phase: 'error',
-          percent: currentPercent(0),
-          message: error instanceof Error ? error.message : 'Skill 安装失败',
-        })
-        throw error
-      } finally {
-        active = null
-      }
-    },
-
-    /** C 端技能市场安装：直接吃市场分析出的 target，不再走 API 重析（无令牌时 API 会 403）。 */
-    async installSkillFromMarket({ repository, target }: { repository: string; target: SkillInstallTarget }): Promise<SkillInstallResult> {
-      if (active) throw new Error(`正在安装 ${active.repository}，请等待当前任务完成。`)
-      emit({ repository, kind: 'skill', phase: 'preparing', percent: 5, message: '正在确认 Skill 格式' })
-      try {
-        const settings = await options.readSettings()
-        const onProgress = (progress: { percent: number; message: string; downloadedBytes?: number; totalBytes?: number }) =>
-          emit({ repository, kind: 'skill', phase: 'downloading', ...progress })
-        const installedSkill = options.githubFetch
-          ? await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, repository, target, onProgress, options.githubFetch)
-          : await installSkillFromRepository(options.skillSourceRoot, settings.dshHome, repository, target, onProgress)
-        await recordSkillInstall(options.skillReceiptsPath, {
-          name: target.name,
-          format: target.format,
-          repository,
-          sourcePath: target.sourcePath,
-          revision: target.revision,
-          installedAt: new Date().toISOString(),
-        })
-        const installedSkills = await readLocalSkills(settings.dshHome)
-        const verified = installedSkills.find(skill => skill.name === target.name)
-        if (!verified) throw new Error('文件已写入，但 DSH 没有把它识别为有效 Skill。')
-        emit({ repository, kind: 'skill', phase: 'complete', percent: 100, message: `${target.name} 已安装` })
-        return { installedSkill, installedSkills }
-      } catch (error) {
-        emit({
-          repository,
           kind: 'skill',
           phase: 'error',
           percent: currentPercent(0),

@@ -42,7 +42,6 @@ import type {
   RuntimeOutput,
   RuntimeState,
   SkillRepositoryAnalysis,
-  SkillsShSkill,
 } from './types'
 import { DSH_REPOSITORY } from './constants'
 import { parseGitHubImportUrl } from './lib/github-import'
@@ -57,7 +56,7 @@ let demoSettings: AppSettings = {
   launchArgs: ['--yes', '@deepseek-ai/dsh', 'web'],
   webPort: 3080,
   openAfterLaunch: true,
-  uiTheme: 'deepseek',
+  uiTheme: 'forest',
   dshVersion: null,
   nodeVersion: null,
 }
@@ -636,42 +635,6 @@ function demoCatalogAnalysis(fullName: string, defaultBranch: string): CatalogRe
   }
 }
 
-/** 浏览器演示用的 skills.sh 索引切片（安装量为虚构值），供截图与离线体验。 */
-const DEMO_SKILLS_SH_INDEX: SkillsShSkill[] = [
-  { id: 'anthropics/skills/pdf', skillId: 'pdf', name: 'pdf', installs: 189038, source: 'anthropics/skills' },
-  { id: 'anthropics/skills/docx', skillId: 'docx', name: 'docx', installs: 96420, source: 'anthropics/skills' },
-  { id: 'anthropics/skills/xlsx', skillId: 'xlsx', name: 'xlsx', installs: 88210, source: 'anthropics/skills' },
-  { id: 'anthropics/skills/pptx', skillId: 'pptx', name: 'pptx', installs: 71550, source: 'anthropics/skills' },
-  { id: 'obra/superpowers/brainstorming', skillId: 'brainstorming', name: 'brainstorming', installs: 64300, source: 'obra/superpowers' },
-  { id: 'anthropics/skills/skill-creator', skillId: 'skill-creator', name: 'skill-creator', installs: 58970, source: 'anthropics/skills' },
-  { id: 'vercel-labs/skills/find-skills', skillId: 'find-skills', name: 'find-skills', installs: 52140, source: 'vercel-labs/skills' },
-  { id: 'obra/superpowers/writing-plans', skillId: 'writing-plans', name: 'writing-plans', installs: 47820, source: 'obra/superpowers' },
-  { id: 'obra/superpowers/test-driven-development', skillId: 'test-driven-development', name: 'test-driven-development', installs: 44100, source: 'obra/superpowers' },
-  { id: 'anthropics/skills/frontend-design', skillId: 'frontend-design', name: 'frontend-design', installs: 41260, source: 'anthropics/skills' },
-  { id: 'anthropics/skills/webapp-testing', skillId: 'webapp-testing', name: 'webapp-testing', installs: 38710, source: 'anthropics/skills' },
-  { id: 'obra/superpowers/systematic-debugging', skillId: 'systematic-debugging', name: 'systematic-debugging', installs: 35280, source: 'obra/superpowers' },
-  { id: 'anthropics/skills/mcp-builder', skillId: 'mcp-builder', name: 'mcp-builder', installs: 33900, source: 'anthropics/skills' },
-  { id: 'anthropics/skills/canvas-design', skillId: 'canvas-design', name: 'canvas-design', installs: 31450, source: 'anthropics/skills' },
-  { id: 'mattpocock/skills/tdd', skillId: 'tdd', name: 'tdd', installs: 28760, source: 'mattpocock/skills' },
-  { id: 'mattpocock/skills/grill-me', skillId: 'grill-me', name: 'grill-me', installs: 26310, source: 'mattpocock/skills' },
-  { id: 'anthropics/skills/brand-guidelines', skillId: 'brand-guidelines', name: 'brand-guidelines', installs: 24050, source: 'anthropics/skills' },
-  { id: 'anthropics/skills/internal-comms', skillId: 'internal-comms', name: 'internal-comms', installs: 21870, source: 'anthropics/skills' },
-  { id: 'anthropics/skills/doc-coauthoring', skillId: 'doc-coauthoring', name: 'doc-coauthoring', installs: 19940, source: 'anthropics/skills' },
-  { id: 'anthropics/skills/theme-factory', skillId: 'theme-factory', name: 'theme-factory', installs: 18320, source: 'anthropics/skills' },
-  { id: 'anthropics/skills/algorithmic-art', skillId: 'algorithmic-art', name: 'algorithmic-art', installs: 16480, source: 'anthropics/skills' },
-  { id: 'anthropics/skills/slack-gif-creator', skillId: 'slack-gif-creator', name: 'slack-gif-creator', installs: 14930, source: 'anthropics/skills' },
-  { id: 'obra/superpowers/executing-plans', skillId: 'executing-plans', name: 'executing-plans', installs: 13260, source: 'obra/superpowers' },
-  { id: 'obra/superpowers/requesting-code-review', skillId: 'requesting-code-review', name: 'requesting-code-review', installs: 11840, source: 'obra/superpowers' },
-  { id: 'vercel-labs/json-render/react-pdf', skillId: 'react-pdf', name: 'react-pdf', installs: 10250, source: 'vercel-labs/json-render' },
-  { id: 'firebase/agent-skills/firebase-security-rules', skillId: 'firebase-security-rules', name: 'firebase-security-rules', installs: 9310, source: 'firebase/agent-skills' },
-  { id: 'firebase/agent-skills/firebase-firestore', skillId: 'firebase-firestore', name: 'firebase-firestore', installs: 8720, source: 'firebase/agent-skills' },
-  { id: 'anthropics/skills/web-artifacts-builder', skillId: 'web-artifacts-builder', name: 'web-artifacts-builder', installs: 7940, source: 'anthropics/skills' },
-  { id: 'shadcn/ui/shadcn', skillId: 'shadcn', name: 'shadcn', installs: 6850, source: 'shadcn/ui' },
-  { id: 'emilkowalski/skills/motion', skillId: 'motion', name: 'motion', installs: 5230, source: 'emilkowalski/skills' },
-  { id: 'anthropics/skills/claude-api', skillId: 'claude-api', name: 'claude-api', installs: 4680, source: 'anthropics/skills' },
-  { id: 'coreyhaines31/marketingskills/seo-audit', skillId: 'seo-audit', name: 'seo-audit', installs: 3120, source: 'coreyhaines31/marketingskills' },
-]
-
 export const demoApi: LauncherApi = {
   getSettings: async () => demoSettings,
   saveSettings: async settings => (demoSettings = settings),
@@ -1220,102 +1183,6 @@ export const demoApi: LauncherApi = {
   toggleSkill: async (name, enabled) => {
     demoInstalledSkills = demoInstalledSkills.map(skill => skill.name === name ? { ...skill, enabled } : skill)
     return demoInstalledSkills
-  },
-  presetsBuiltin: async () => ([
-    { name: 'standard', displayName: '标准模式', description: '功能完整的编码 Agent，支持文件编辑、Shell、检索、Skills、计划与子代理。', order: 1 },
-    { name: 'code', displayName: 'PTC 模式', description: '具备标准模式全部能力，并通过 Code Mode SDK 呈现工具。', order: 2 },
-    { name: 'minimal', displayName: '极简模式', description: '仅提供持久 bash 与 str_replace_editor 的双工具编码 Agent。', order: 3 },
-    { name: 'cordis', displayName: '创造模式', description: '用于创建自定义 Agent preset，提供运行时检查与创作指导。', order: 4 },
-  ]),
-  skillMarketAnalyze: async (repository, defaultBranch) => ({
-    repository,
-    defaultBranch,
-    installability: 'choice',
-    summary: '演示数据：4 个技能。',
-    targets: [
-      { id: 'pdf:skills/pdf/SKILL.md', name: 'pdf', description: 'Use this skill whenever the user wants to do anything with PDF files.', sourcePath: 'skills/pdf/SKILL.md', format: 'bundle', revision: defaultBranch, modelInvocable: true, userInvocable: true },
-      { id: 'canvas-design:skills/canvas-design/SKILL.md', name: 'canvas-design', description: 'Create beautiful visual art in .png and .pdf documents.', sourcePath: 'skills/canvas-design/SKILL.md', format: 'bundle', revision: defaultBranch, modelInvocable: true, userInvocable: true },
-      { id: 'mcp-builder:skills/mcp-builder/SKILL.md', name: 'mcp-builder', description: 'Guide for creating high-quality MCP servers.', sourcePath: 'skills/mcp-builder/SKILL.md', format: 'bundle', revision: defaultBranch, modelInvocable: true, userInvocable: true },
-      { id: 'quick-ref:quick-ref.md', name: 'quick-ref', description: '单文件速查技能示例。', sourcePath: 'quick-ref.md', format: 'flat', revision: defaultBranch, modelInvocable: true, userInvocable: true },
-    ],
-  }),
-  skillMarketInstall: async ({ repository, target }) => {
-    installProgressListeners.forEach(listener => listener({ repository, kind: 'skill', phase: 'downloading', percent: 42, message: `正在下载 Skill ${target.name}` }))
-    await wait(500)
-    const installedSkill: InstalledSkill = {
-      name: target.name,
-      description: target.description,
-      path: `${demoSettings.dshHome}\\skills\\${target.name}`,
-      format: target.format,
-      enabled: true,
-      modelInvocable: target.modelInvocable,
-      userInvocable: target.userInvocable,
-    }
-    demoInstalledSkills = [...demoInstalledSkills.filter(skill => skill.name !== target.name), installedSkill]
-    installProgressListeners.forEach(listener => listener({ repository, kind: 'skill', phase: 'complete', percent: 100, message: `${target.name} 已安装` }))
-    return { installedSkill, installedSkills: demoInstalledSkills }
-  },
-  dshUsage: async () => {
-    await wait(250)
-    return { status: 'ok' as const, usage: { tokensToday: 1_284_532, cacheHitRate: 0.935 } }
-  },
-  deepseekBalance: async (force?: boolean) => {
-    await wait(force ? 600 : 200)
-    return {
-      status: 'ok' as const,
-      balance: {
-        isAvailable: true,
-        infos: [{ currency: 'CNY', totalBalance: 118.5, grantedBalance: 0.5, toppedUpBalance: 118 }],
-      },
-    }
-  },
-  newsFeed: async () => {
-    await wait(300)
-    return {
-      status: 'ok' as const,
-      items: [
-        {
-          title: '2026-09-04',
-          link: 'https://daily.juya.uk/issues/2026-09-04/',
-          pubDate: 'Fri, 04 Sep 2026 02:21:37 GMT',
-          summary: 'AI 早报 2026-09-04：OpenAI 发布 GPT-6 Astra；英伟达宣布收购 Hugging Face；智谱 GLM 夜间畅用活动上线。',
-          headlines: [
-            { text: 'OpenAI 发布 GPT-6 Astra', link: 'https://openai.com/index/gpt-6-astra/' },
-            { text: 'OpenAI Astra 访问补偿政策：按天发放 banked reset', link: 'https://x.com/thsottiaux/status/2095651088502591861' },
-            { text: '英伟达宣布以约129亿美元收购Hugging Face', link: 'https://blogs.nvidia.com/blog/nvidia-to-acquire-hugging-face/' },
-            { text: '智谱 GLM Coding Plan 推出夜间畅用活动', link: 'https://example.com/glm-night' },
-            { text: 'Qoder 国际版宣布 Efficient 模型层级即日起对所有订阅用户免费', link: 'https://example.com/qoder-efficient' },
-          ],
-        },
-        { title: 'OpenAI 推出 Agent 编排框架，支持跨会话记忆', link: 'https://example.com/2', pubDate: 'Thu, 03 Sep 2026 07:40:00 GMT', summary: '框架主打多智能体协作与工具调用的持久化状态管理。' },
-        { title: 'Anthropic 公布 Claude 技能生态年度报告', link: 'https://example.com/3', pubDate: 'Thu, 03 Sep 2026 07:20:00 GMT', summary: '社区技能仓库数量同比增长 4 倍，文档处理类下载量居首。' },
-        { title: '具身智能大模型首次在真实工厂完成 72 小时连续作业', link: 'https://example.com/4', pubDate: 'Wed, 02 Sep 2026 09:00:00 GMT', summary: '端到端视觉-动作模型在分拣产线上验证了长时程稳定性。' },
-        { title: '开源社区发布本地推理套件 v3，全面支持投机解码', link: 'https://example.com/5', pubDate: 'Wed, 02 Sep 2026 08:30:00 GMT', summary: '新版推理引擎在消费级显卡上吞吐提升 60%。' },
-        { title: '谷歌公开 Gemini 多模态检索新基准', link: 'https://example.com/6', pubDate: 'Wed, 02 Sep 2026 08:00:00 GMT', summary: '基准覆盖图文、视频与 3D 场景的统一嵌入评测。' },
-        { title: 'DeepSeek 高峰时段计费规则微调，夜间折扣维持', link: 'https://example.com/7', pubDate: 'Tue, 01 Sep 2026 10:00:00 GMT', summary: '工作日高峰定义不变，缓存命中价继续维持一折。' },
-        { title: 'Meta 开源 4000 亿参数多语言模型', link: 'https://example.com/8', pubDate: 'Tue, 01 Sep 2026 09:00:00 GMT', summary: '权重与训练代码同步释出，支持商用许可。' },
-      ],
-    }
-  },
-  skillMarketCatalog: async () => {
-    await wait(400)
-    return DEMO_SKILLS_SH_INDEX
-  },
-  skillMarketInstallByName: async ({ sourceRepository, skillId }) => {
-    installProgressListeners.forEach(listener => listener({ repository: sourceRepository, kind: 'skill', phase: 'downloading', percent: 42, message: `正在解析来源仓库并安装 ${skillId}` }))
-    await wait(500)
-    const installedSkill: InstalledSkill = {
-      name: skillId,
-      description: `来自 ${sourceRepository}（演示数据）`,
-      path: `${demoSettings.dshHome}\\skills\\${skillId}`,
-      format: 'bundle',
-      enabled: true,
-      modelInvocable: true,
-      userInvocable: true,
-    }
-    demoInstalledSkills = [...demoInstalledSkills.filter(skill => skill.name !== skillId), installedSkill]
-    installProgressListeners.forEach(listener => listener({ repository: sourceRepository, kind: 'skill', phase: 'complete', percent: 100, message: `${skillId} 已安装` }))
-    return { installedSkill, installedSkills: demoInstalledSkills }
   },
   installApplication: async request => {
     const analysis = demoApplicationAnalysis(request.repository, request.defaultBranch)

@@ -3,33 +3,25 @@ import { useState } from 'react'
 import { useLauncherApi } from '../../api/client'
 import type { AppSettings, UiTheme } from '../../types'
 
-/**
- * 启动器设置：按 C 端实际需要分组——外观 / 启动 / 网络 / 官方推荐 / 关于；
- * 启动命令、Profile、端口、Copilot 提示词等开发者向字段收进默认折叠的「高级设置」。
- */
+/** 启动器设置：DSH_HOME、Profile、启动命令与工作目录。 */
 
 interface SettingsDialogProps {
   settings: AppSettings
   busy: boolean
   onClose: () => void
   onSave: (settings: AppSettings) => void
+  /** 一键下载并启用官方推荐整合包（DSH Web UI）。 */
+  onDownloadRecommendedWebUi?: () => void
 }
 
 const UI_THEMES: Array<{ id: UiTheme; label: string }> = [
-  { id: 'deepseek', label: '日间' },
-  { id: 'night', label: '夜间' },
+  { id: 'forest', label: '松林' },
+  { id: 'ocean', label: '海湾' },
+  { id: 'berry', label: '莓果' },
+  { id: 'graphite', label: '石墨' },
 ]
 
-function SettingsGroup({ icon, title, desc, children }: { icon: ReactNode; title: string; desc?: string; children: ReactNode }) {
-  return (
-    <section className="settings-group">
-      <header><span className="settings-group-icon">{icon}</span><h3>{title}</h3>{desc && <p>{desc}</p>}</header>
-      {children}
-    </section>
-  )
-}
-
-export function SettingsDialog({ settings, busy, onClose, onSave }: SettingsDialogProps) {
+export function SettingsDialog({ settings, busy, onClose, onSave, onDownloadRecommendedWebUi }: SettingsDialogProps) {
   const api = useLauncherApi()
   const [draft, setDraft] = useState(settings)
   // 参数在界面上是一整行文本，保存时才切成数组。

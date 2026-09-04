@@ -54,10 +54,9 @@ export async function buildPackExport(
   packProfileDir: string,
   manifest: PackManifest,
   packageNames: string[],
-  launcherConfig?: string,
 ): Promise<{ zip: Uint8Array; missing: string[] }> {
   const { bodies, missing } = await collectPackBodies(packProfileDir, packageNames)
-  return { zip: buildPackZip(manifest, bodies, launcherConfig), missing }
+  return { zip: buildPackZip(manifest, bodies), missing }
 }
 
 /** 流式把导出包写入指定文件；缺失的本体会被跳过并返回其包名。 */
@@ -67,9 +66,8 @@ export async function buildPackExportToFile(
   packageNames: string[],
   outputPath: string,
   presetDirs: Map<string, string> = new Map(),
-  launcherConfig?: string,
 ): Promise<{ zipPath: string; missing: string[] }> {
   const { bodies, missing } = await collectPackBodies(packProfileDir, packageNames)
-  await buildPackZipToFile(manifest, bodies, outputPath, presetDirs, launcherConfig)
+  await buildPackZipToFile(manifest, bodies, outputPath, presetDirs)
   return { zipPath: outputPath, missing }
 }

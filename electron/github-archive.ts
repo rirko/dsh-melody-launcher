@@ -1,50 +1,10 @@
 import { get as httpsGet } from 'node:https'
 
-/** gh-proxy 系镜像接受 `<mirror>/<完整原始 URL>` 形式；去掉尾部斜杠避免双斜杠。 */
-export function applyGitHubMirror(url: string, mirror?: string): string {
-  const trimmed = mirror?.trim().replace(/\/+$/, '')
-  return trimmed ? `${trimmed}/${url}` : url
-}
-
-export function githubArchiveUrl(repository: string, revision: string, mirror?: string): string {
+export function githubArchiveUrl(repository: string, revision: string): string {
   const encodedRepository = repository.split('/').map(encodeURIComponent).join('/')
-  const direct = /^[a-f0-9]{40}$/i.test(revision)
-    ? `https://codeload.github.com/${encodedRepository}/zip/${revision}`
-    : `https://codeload.github.com/${encodedRepository}/zip/refs/heads/${revision.split('/').map(encodeURIComponent).join('/')}`
-  return applyGitHubMirror(direct, mirror)
-}
-
-/**
- * 经 fetch（可为代理感知实现）下载仓库归档字节。
- * 与 downloadGitHubArchive 的区别：走 Chromium 网络栈时可继承系统代理，并支持 GitHub 镜像前缀。
- */
-export async function fetchGitHubArchiveBytes(
-  repository: string,
-  revision: string,
-  maxBytes: number,
-  fetchImpl: typeof fetch,
-  mirror?: string,
-): Promise<Buffer> {
-  const response = await fetchImpl(githubArchiveUrl(repository, revision, mirror), {
-    headers: { 'User-Agent': 'DSH-Launcher' },
-    redirect: 'follow',
-    signal: AbortSignal.timeout(60_000),
-  })
-  if (!response.ok || !response.body) throw new Error(`下载仓库压缩包失败（HTTP ${response.status}）。`)
-  const reader = response.body.getReader()
-  const chunks: Buffer[] = []
-  let received = 0
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    received += value.byteLength
-    if (received > maxBytes) {
-      await reader.cancel().catch(() => undefined)
-      throw new Error('仓库压缩包过大，已停止下载。')
-    }
-    chunks.push(Buffer.from(value))
-  }
-  return Buffer.concat(chunks, received)
+  if (/^[a-f0-9]{40}$/i.test(revision)) return `https://codeload.github.com/${encodedRepository}/zip/${revision}`
+  const encodedRevision = revision.split('/').map(encodeURIComponent).join('/')
+  return `https://codeload.github.com/${encodedRepository}/zip/refs/heads/${encodedRevision}`
 }
 
 export async function downloadGitHubArchive(

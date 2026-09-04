@@ -2,28 +2,19 @@ import { Check, ExternalLink, LoaderCircle, RefreshCw, Search, Star, Store, Togg
 import { useEffect, useMemo, useState } from 'react'
 import { useLauncherApi } from '../api/client'
 import { PageHeading } from '../components/PageHeading'
-import { SkeletonCards } from '../components/Skeleton'
 import { formatStars } from '../lib/format'
 import type { DshMarketCatalog, DshMarketPlugin, DshMarketProgress } from '../types'
 
 type Sort = 'stars' | 'updated' | 'name'
 
-/**
- * 目录结果的模块级缓存：切走 tab 组件被卸载后，重进时先用旧目录直接渲染、
- * 后台静默刷新（主进程另有磁盘缓存 + 30 分钟 SWR），不再每次闪一遍骨架屏。
- */
-let cachedCatalog: DshMarketCatalog | null = null
-
 interface DshMarketViewProps {
   /** Market mutations write the active Profile; let the shared store refresh it. */
   onProfileChanged?: () => Promise<void> | void
-  /** 嵌入 C 端设置页时：去掉整页容器与 PageHeading，改用紧凑面板头。 */
-  embedded?: boolean
 }
 
-export function DshMarketView({ onProfileChanged, embedded = false }: DshMarketViewProps) {
+export function DshMarketView({ onProfileChanged }: DshMarketViewProps) {
   const api = useLauncherApi()
-  const [catalog, setCatalog] = useState<DshMarketCatalog | null>(cachedCatalog)
+  const [catalog, setCatalog] = useState<DshMarketCatalog | null>(null)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
   const [sort, setSort] = useState<Sort>('stars')
@@ -36,11 +27,7 @@ export function DshMarketView({ onProfileChanged, embedded = false }: DshMarketV
   const load = async () => {
     setLoading(true)
     setError(null)
-    try {
-      const next = await api.loadDshMarket()
-      cachedCatalog = next
-      setCatalog(next)
-    } catch (cause) { setError(cause instanceof Error ? cause.message : '无法读取 DSH Market') }
+    try { setCatalog(await api.loadDshMarket()) } catch (cause) { setError(cause instanceof Error ? cause.message : '无法读取 DSH Market') }
     finally { setLoading(false) }
   }
 
@@ -94,17 +81,14 @@ export function DshMarketView({ onProfileChanged, embedded = false }: DshMarketV
   }
 
   const categories = Object.entries(catalog?.categories ?? {})
-  const refreshActions = <><button type="button" className="secondary-button" onClick={() => void checkUpdates()} disabled={loading || checkingUpdates}><RefreshCw size={14} className={checkingUpdates ? 'spin' : undefined} />检查更新</button><button type="button" className="secondary-button" onClick={() => void load()} disabled={loading || checkingUpdates}><RefreshCw size={14} className={loading ? 'spin' : undefined} />刷新目录</button></>
   return (
-    <div className={embedded ? 'dsh-market-page dsh-market-embedded' : 'page dsh-market-page'}>
-      {embedded
-        ? <div className="settings-panel-heading"><div className="settings-panel-title"><Store size={17} /><span>DSH Market · 精选插件</span></div><div className="dsh-market-embedded-actions">{refreshActions}</div></div>
-        : <PageHeading
-            eyebrow="独立插件市场"
-            title="DSH Market"
-            description="复用 dsh-market 的精选目录、安装、更新和启停逻辑。与资源市场完全独立。"
-            actions={refreshActions}
-          />}
+    <div className="page dsh-market-page">
+      <PageHeading
+        eyebrow="独立插件市场"
+        title="DSH Market"
+        description="复用 dsh-market 的精选目录、安装、更新和启停逻辑。与资源市场完全独立。"
+        actions={<><button type="button" className="secondary-button" onClick={() => void checkUpdates()} disabled={loading || checkingUpdates}><RefreshCw size={14} className={checkingUpdates ? 'spin' : undefined} />检查更新</button><button type="button" className="secondary-button" onClick={() => void load()} disabled={loading || checkingUpdates}><RefreshCw size={14} className={loading ? 'spin' : undefined} />刷新目录</button></>}
+      />
       <div className="dsh-market-note">
         <span><Store size={14} /> 数据源：awesome-dsh-plugin.com/plugins.json</span>
         <span>{catalog ? `${catalog.count} 个精选插件 · 更新于 ${catalog.updated || '未知'}` : '正在读取目录'}</span>
@@ -133,7 +117,7 @@ export function DshMarketView({ onProfileChanged, embedded = false }: DshMarketV
           return (
             <article key={`${plugin.owner}/${plugin.name}`} className="dsh-market-card">
               <div className="dsh-market-card-head"><div><h2>{plugin.name}</h2><span>{plugin.owner}</span></div><span className="dsh-market-stars"><Star size={13} />{formatStars(plugin.stars)}</span></div>
-              <div className="dsh-market-meta"><span>{plugin.category}</span>{plugin.npm ? <code>npm</code> : <code>GitHub</code>}{plugin.version && <code>v{plugin.version}</code>}{plugin.installed && <b className={plugin.enabled ? 'market-enabled' : 'market-disabled'}>{plugin.enabled ? '已启用' : '未启用'}</b>}</div>
+              <div className="dsh-market-meta"><span>{plugin.category}</span>{plugin.npm ? <code>npm</code> : <code>GitHub</code>}{plugin.installed && <b className={plugin.enabled ? 'market-enabled' : 'market-disabled'}>{plugin.enabled ? '已启用' : '未启用'}</b>}</div>
               <p>{plugin.description.zh ?? plugin.description.en ?? '暂无描述'}</p>
               <div className="dsh-market-card-foot"><button type="button" className="dsh-market-link" onClick={() => void api.openExternal(plugin.url)}><ExternalLink size={13} />仓库</button><span className="dsh-market-grow" />{plugin.installed && <button type="button" className="icon-button" title={plugin.enabled ? '停用插件' : '启用插件'} disabled={isBusy} onClick={() => void mutate(plugin, 'toggle', !plugin.enabled)}>{plugin.enabled ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}</button>}{plugin.installed && plugin.updateAvailable && <button type="button" className="secondary-button dsh-market-action" disabled={isBusy} onClick={() => void mutate(plugin, 'update')}>{isBusy ? <LoaderCircle size={13} className="spin" /> : <RefreshCw size={13} />}更新</button>}{plugin.installed ? <button type="button" className="danger-button dsh-market-action" title="彻底清除插件及未引用的 pnpm 缓存" disabled={isBusy} onClick={() => void mutate(plugin, 'uninstall')}><Trash2 size={13} />卸载</button> : <button type="button" className="primary-command dsh-market-action" disabled={isBusy} onClick={() => void mutate(plugin, 'install')}>{isBusy ? <LoaderCircle size={13} className="spin" /> : <Check size={13} />}安装</button>}</div>
             </article>

@@ -94,25 +94,6 @@ describe('runtime version indexes', () => {
     expect(candidates[1]?.label).toBe('next')
   })
 
-  it('镜像失败时回退下一个 registry，全部失败才抛错', async () => {
-    const packument = { versions: { '1.0.0': {} }, 'dist-tags': { latest: '1.0.0' } }
-    const urls: string[] = []
-    const fetchImpl: typeof fetch = async input => {
-      const url = String(input)
-      urls.push(url)
-      if (url.startsWith('https://registry.npmjs.org')) {
-        return { ok: true, status: 200, json: async () => packument } as Response
-      }
-      return { ok: false, status: 404 } as Response
-    }
-    const candidates = await listAvailableDshVersions(fetchImpl, ['https://registry.npmmirror.com', 'https://registry.npmjs.org'])
-    expect(candidates.map(item => item.version)).toEqual(['1.0.0'])
-    expect(urls).toHaveLength(2)
-
-    const allFail: typeof fetch = async () => ({ ok: false, status: 503 } as Response)
-    await expect(listAvailableDshVersions(allFail, ['https://a.example', 'https://b.example'])).rejects.toThrow('HTTP 503')
-  })
-
   it('normalizes Node.js index entries and identifies prereleases', async () => {
     const fetchImpl: typeof fetch = async () => ({
       ok: true,

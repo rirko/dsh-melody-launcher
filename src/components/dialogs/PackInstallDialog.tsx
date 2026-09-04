@@ -366,7 +366,7 @@ const packDialogStyle = `
 .pack-preview-head span { color: var(--muted); font-size: 11px; line-height: 16px; overflow-wrap: anywhere; }
 .pack-preview-meta { margin: 0; color: var(--muted); font-size: 11px; line-height: 17px; }
 .pack-source-badge {
-  flex: 0 0 auto; padding: 2px 9px; border: 1px solid color-mix(in srgb, var(--accent) 22%, white); border-radius: 999px;
+  flex: 0 0 auto; padding: 2px 9px; border: 1px solid #b9d7c7; border-radius: 999px;
   color: var(--accent); background: var(--accent-soft); font-size: 11px; font-weight: 650;
 }
 .pack-preview-name {

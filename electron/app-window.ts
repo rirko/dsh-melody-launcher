@@ -1,14 +1,19 @@
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow, screen, type Rectangle } from 'electron'
 import type { WindowMode } from '../src/types'
 import { attachWindowShadow, showWindowShadow, syncWindowShadow } from './window-shadow'
-import { resolveWindowModeTarget, type WindowSize } from './window-bounds'
 
 /** 主窗口的创建、尺寸模式切换，以及发往渲染层的消息通道。 */
 
-// 一级导航改造后：启动页与管理界面共用同一个固定尺寸窗口（PCL2 式单窗换页）。
+interface WindowSize {
+  width: number
+  height: number
+  minWidth: number
+  minHeight: number
+}
+
 export const WINDOW_MODES: Record<WindowMode, WindowSize> = {
-  launcher: { width: 1080, height: 700, minWidth: 960, minHeight: 620 },
-  manager: { width: 1080, height: 700, minWidth: 960, minHeight: 620 },
+  launcher: { width: 900, height: 560, minWidth: 760, minHeight: 480 },
+  manager: { width: 1380, height: 860, minWidth: 1024, minHeight: 680 },
 }
 
 const WINDOW_MODE_ANIMATION_DURATION = 100
@@ -20,6 +25,47 @@ const WINDOW_MODE_ANIMATION_FRAME = 8
 // has committed the new bounds so the newly exposed right edge is filled.
 const WINDOW_MODE_REPAINT_DELAY = 16
 const WINDOW_BACKGROUND_COLOR = '#00000000'
+const WINDOW_WORK_AREA_MARGIN = 24
+
+interface WindowModeAnimation {
+  cancelled: boolean
+  timer: ReturnType<typeof setTimeout> | null
+}
+
+const windowModeAnimations = new WeakMap<BrowserWindow, WindowModeAnimation>()
+
+function easeOutCubic(progress: number): number {
+  // 先响应、后收束；比高次缓出更连贯，不会在开始时突然冲出。
+  return 1 - Math.pow(1 - progress, 3)
+}
+
+function interpolate(from: number, to: number, progress: number): number {
+  return Math.round(from + (to - from) * progress)
+}
+
+function centeredTargetBounds(current: Rectangle, size: WindowSize): Rectangle {
+  const workArea = screen.getDisplayMatching(current).workArea
+  // Keep the design size when it fits, but never let the manager extend
+  // behind the taskbar or outside a smaller/high-DPI display.
+  const availableWidth = Math.max(1, workArea.width - WINDOW_WORK_AREA_MARGIN * 2)
+  const availableHeight = Math.max(1, workArea.height - WINDOW_WORK_AREA_MARGIN * 2)
+  const width = Math.min(size.width, availableWidth)
+  const height = Math.min(size.height, availableHeight)
+  return {
+    x: Math.round(workArea.x + (workArea.width - width) / 2),
+    y: Math.round(workArea.y + (workArea.height - height) / 2),
+    width,
+    height,
+  }
+}
+
+function cancelWindowModeAnimation(window: BrowserWindow): void {
+  const current = windowModeAnimations.get(window)
+  if (!current) return
+  current.cancelled = true
+  if (current.timer) clearTimeout(current.timer)
+  windowModeAnimations.delete(window)
+}
 
 function invalidateAfterResize(window: BrowserWindow): void {
   if (window.isDestroyed() || window.webContents.isDestroyed()) return
@@ -86,7 +132,7 @@ export function createMainWindow(options: CreateWindowOptions): BrowserWindow {
     roundedCorners: true,
     hasShadow: true,
     icon: options.iconPath,
-    title: 'DSH-Melody-Launcher',
+    title: 'DSH Launcher',
     show: false,
     webPreferences: {
       preload: options.preloadPath,
@@ -117,6 +163,7 @@ export function createMainWindow(options: CreateWindowOptions): BrowserWindow {
 
 export function applyWindowMode(window: BrowserWindow | null, mode: WindowMode): void {
   if (!window || window.isDestroyed()) return
+  cancelWindowModeAnimation(window)
 
   const size = WINDOW_MODES[mode]
   if (window.isMaximized()) window.unmaximize()
@@ -126,11 +173,11 @@ export function applyWindowMode(window: BrowserWindow | null, mode: WindowMode):
   // square is exposed during the resize.
   window.setBackgroundColor(WINDOW_BACKGROUND_COLOR)
 
-  const current = window.getBounds()
-  const workArea = screen.getDisplayMatching(current).workArea
-  const { bounds, resizeNeeded } = resolveWindowModeTarget(current, size, workArea)
-  const targetMinWidth = Math.min(size.minWidth, bounds.width)
-  const targetMinHeight = Math.min(size.minHeight, bounds.height)
+  const startBounds = window.getBounds()
+  const targetBounds = centeredTargetBounds(startBounds, size)
+  const targetMinWidth = Math.min(size.minWidth, targetBounds.width)
+  const targetMinHeight = Math.min(size.minHeight, targetBounds.height)
+  const [currentMinWidth, currentMinHeight] = window.getMinimumSize()
 
   // Keep one absolute screen-space anchor for the whole resize. Interpolating
   // x/y independently from width/height can produce alternating half-pixel
@@ -181,11 +228,7 @@ export function applyWindowMode(window: BrowserWindow | null, mode: WindowMode):
     animation.timer = setTimeout(animateFrame, WINDOW_MODE_ANIMATION_FRAME)
   }
 
-  // 仅当工作区装不下设计尺寸时单次 setBounds 收缩（保持窗口中心）。
-  // 不再做 100ms 逐帧缩放动画：那是"卡一下再跳走"观感的来源。
-  window.setMinimumSize(targetMinWidth, targetMinHeight)
-  window.setBounds(bounds)
-  syncWindowShadow(window)
+  animateFrame()
 }
 
 /**
