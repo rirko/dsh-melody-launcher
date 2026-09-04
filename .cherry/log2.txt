@@ -1,0 +1,10 @@
+ok: installer: imports
+ok: installer: options
+ok: installer: interface
+ok: installer: analyzeSkillArchive impl
+ok: installer: return
+ok: installer: installSkillFromMarket
+ok: preset-install imports
+ok: preset: drop dup check noop
+ok: preset-install readBuiltinAgentPresets appended
+ok: runtime-versions dshVersionRoot

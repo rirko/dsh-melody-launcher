@@ -1,38 +1,31 @@
 import { useCallback, useEffect, useState } from 'react'
 import { TopBar } from '../components/TopBar'
 import { WheelchairHome } from './WheelchairHome'
+import { SettingsPanels } from '../views/SettingsView'
+import { SettingsDialog } from '../components/dialogs/SettingsDialog'
 import { useLauncherApi } from '../api/client'
-import type { DshInstallationStatus, DshUpdateStatus, HomeTab, InstallProgress, InstalledApplicationAddon, LauncherUpdateStatus, RuntimeState, ViewName } from '../types'
+import { BUSY } from '../hooks/use-async-action'
+import { isInstallProgressActive } from '../lib/install-progress'
+import { DSH_REPOSITORY } from '../constants'
+import type { AppSettings, HomeTab } from '../types'
+import type { useLauncherStore } from '../hooks/use-launcher-store'
 // PR 的整套主题样式以 ?inline 取文本，仅在轮椅模式挂载期间注入 <style>，
 // 退出时移除——原版界面的视觉永远使用原版 styles.css，互不渗透。
 import wheelchairCss from './wheelchair.css?inline'
 
 /**
- * 轮椅模式（PR #94 新首页）的覆盖层：全屏挂载在原版界面之上，
- * 原版 UI 保持挂载与状态，只是被完全遮盖。顶栏 tab 语义映射回原版视图——
- * PR 的管理/设置实现不接线，一律用原版实现接管。
+ * 轮椅模式（PR #94 完整新 UI）：TopBar 一级导航 + 新首页 + C 端面板，
+ * 全屏覆盖在原版界面之上，原版 UI 保持挂载与状态。
+ *
+ * UI 用 PR 的；底下全部是原版逻辑——安装走原版下载队列，面板动作直接
+ * 绑定原版 store，齿轮打开的是未经改动的原版设置对话框。
  */
 
 export interface WheelchairModeProps {
-  runtime: RuntimeState
-  dshInstallation: DshInstallationStatus
-  dshUpdate: DshUpdateStatus | null
-  launcherUpdate: LauncherUpdateStatus | null
-  installProgress: InstallProgress | null
-  busy: boolean
-  installingDsh: boolean
-  activeRuntimeReplacement: InstalledApplicationAddon | null
-  bundleCount: number
-  pluginCount: number
-  skillCount: number
-  presetCount: number
-  onToggleRuntime: () => void
-  onUpdateDsh: () => void
+  store: ReturnType<typeof useLauncherStore>
+  /** 原版整合包导入流程（App 作用域的 handlePackImport）。 */
+  onImportPack: () => void
   onOpenLauncherUpdate: () => void
-  onOpenVersionPicker: () => void
-  onOpenSettings: () => void
-  /** 顶栏 tab 映射到原版视图并退出轮椅模式（PR 的对应实现由原版接管）。 */
-  onNavigateOriginal: (view: ViewName) => void
   onOpenHarness: () => void
   onOpenDeveloper: () => void
   onExit: () => void
@@ -42,68 +35,116 @@ const STYLE_ELEMENT_ID = 'wheelchair-mode-styles'
 /** PR 首页视觉期望的主题变量（PR 主题体系未并入原版，进入模式时临时覆写，退出还原）。 */
 const WHEELCHAIR_THEME = 'deepseek'
 
-export function WheelchairMode(props: WheelchairModeProps) {
+export function WheelchairMode({ store, onImportPack, onOpenLauncherUpdate, onOpenHarness, onOpenDeveloper, onExit }: WheelchairModeProps) {
   const api = useLauncherApi()
-  const [activeTab] = useState<HomeTab | null>('start')
+  const settings = store.settings as AppSettings
+  const profile = store.profile as NonNullable<ReturnType<typeof useLauncherStore>['profile']>
+  const [activeTab, setActiveTab] = useState<HomeTab>('start')
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
     const style = document.createElement('style')
     style.id = STYLE_ELEMENT_ID
     style.textContent = wheelchairCss
     document.head.appendChild(style)
-    const root = document.documentElement
-    const previous = root.dataset.wheelchairTheme
-    root.dataset.wheelchairTheme = WHEELCHAIR_THEME
-    return () => {
-      style.remove()
-      if (previous === undefined) delete root.dataset.wheelchairTheme
-      else root.dataset.wheelchairTheme = previous
-    }
+    return () => { style.remove() }
   }, [])
 
-  const navigate = useCallback((tab: HomeTab) => {
-    if (tab === 'start') return
-    const mapped: ViewName = tab === 'packs' ? 'packs' : tab === 'versions' ? 'environment' : 'plugins'
-    props.onNavigateOriginal(mapped)
-  }, [props])
+  const installProgressForHome = store.installProgress?.repository === DSH_REPOSITORY ? store.installProgress : null
+  const runtimeBusy = store.busy === BUSY.runtime || isInstallProgressActive(store.installProgress)
+  const installingDsh = store.busy === BUSY.dshInstall
+    || (isInstallProgressActive(store.installProgress) && store.installProgress?.kind === 'dsh')
+  const profileMutationLocked = isInstallProgressActive(store.installProgress)
+
+  const onSelectTab = useCallback((tab: HomeTab) => {
+    setActiveTab(tab)
+  }, [])
 
   return (
     <div className="wheelchair-mode-overlay" role="dialog" aria-label="轮椅模式">
       <TopBar
         activeTab={activeTab}
         developerActive={false}
-        openWebVisible={props.runtime.running && Boolean(props.runtime.url)}
-        onSelectTab={navigate}
-        onOpenHarness={props.onOpenHarness}
-        onOpenDeveloper={props.onOpenDeveloper}
+        openWebVisible={store.runtime.running && Boolean(store.runtime.url)}
+        onSelectTab={onSelectTab}
+        onOpenHarness={onOpenHarness}
+        onOpenDeveloper={onOpenDeveloper}
         onMinimize={() => { void api.minimizeWindow() }}
         onClose={() => { void api.closeWindow() }}
       />
       <div className="wheelchair-mode-body">
-        <WheelchairHome
-          runtime={props.runtime}
-          dshInstallation={props.dshInstallation}
-          dshUpdate={props.dshUpdate}
-          launcherUpdate={props.launcherUpdate}
-          installProgress={props.installProgress}
-          busy={props.busy}
-          installingDsh={props.installingDsh}
-          activeRuntimeReplacement={props.activeRuntimeReplacement}
-          bundleCount={props.bundleCount}
-          pluginCount={props.pluginCount}
-          skillCount={props.skillCount}
-          presetCount={props.presetCount}
-          onToggleRuntime={props.onToggleRuntime}
-          onVersionSelect={props.onOpenVersionPicker}
-          onUpdateDsh={props.onUpdateDsh}
-          onOpenLauncherUpdate={props.onOpenLauncherUpdate}
-          onNavigateTab={navigate}
-          onOpenSettings={props.onOpenSettings}
-        />
+        {activeTab === 'start' ? (
+          <WheelchairHome
+            runtime={store.runtime}
+            dshInstallation={store.dshInstallation}
+            dshUpdate={store.dshUpdate}
+            launcherUpdate={store.launcherUpdate}
+            installProgress={installProgressForHome}
+            busy={runtimeBusy}
+            installingDsh={installingDsh}
+            activeRuntimeReplacement={store.activeRuntimeReplacement}
+            bundleCount={profile.activeBundles.length}
+            pluginCount={profile.dependencyCount}
+            skillCount={store.installedSkills.length}
+            presetCount={store.installedPresets.length}
+            onToggleRuntime={() => { void store.toggleRuntime() }}
+            onVersionSelect={() => setActiveTab('packs')}
+            onUpdateDsh={() => { void store.updateDsh() }}
+            onOpenLauncherUpdate={onOpenLauncherUpdate}
+            onNavigateTab={onSelectTab}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+        ) : (
+          <SettingsPanels
+            tab={activeTab}
+            settings={settings}
+            profile={profile}
+            dshInstallation={store.dshInstallation}
+            runtimeEnvironment={store.runtimeEnvironment}
+            installedSkills={store.installedSkills}
+            installedPresets={store.installedPresets}
+            packs={store.packs}
+            busy={store.busy}
+            profileMutationLocked={profileMutationLocked}
+            installProgress={store.installProgress}
+            onRefresh={() => {
+              void store.refreshProfile()
+              void store.refreshSecondaryResources()
+              void store.refreshPacks()
+              void store.refreshRuntimeEnvironment(true)
+            }}
+            onImportPack={onImportPack}
+            onInstallDshVersion={store.installDshVersion}
+            onSelectDshVersion={store.selectDshVersion}
+            onRemoveDshVersion={store.removeDshVersion}
+            onTogglePlugin={store.togglePlugin}
+            onToggleSkill={store.toggleSkill}
+            onTogglePreset={store.togglePreset}
+            onSkillInstalled={store.applyCatalogSkillInstall}
+            onProfileChanged={() => { void store.refreshProfile() }}
+            onActivatePack={store.activatePack}
+            onDeactivatePack={store.deactivatePack}
+            onRemovePack={store.removePack}
+            onExportPack={store.exportPack}
+            onOpenDshFolder={() => { void api.openDshFolder() }}
+            onOpenPluginFolder={packageName => { void api.openProfilePluginFolder(packageName) }}
+            onOpenPath={targetPath => { void api.openPath(targetPath) }}
+          />
+        )}
       </div>
-      <button type="button" className="wheelchair-exit-button" title="退出轮椅模式，返回原版界面" onClick={props.onExit}>
+      <button type="button" className="wheelchair-exit-button" title="退出轮椅模式，返回原版界面" onClick={onExit}>
         退出轮椅模式
       </button>
+      {settingsOpen && settings && (
+        <SettingsDialog
+          settings={settings}
+          busy={store.busy === BUSY.settings}
+          onClose={() => setSettingsOpen(false)}
+          onSave={next => { void store.saveSettings(next); setSettingsOpen(false) }}
+          onDownloadRecommendedWebUi={() => { void store.installRecommendedWebUi({ suspendOthers: false }) }}
+        />
+      )}
     </div>
   )
 }
+

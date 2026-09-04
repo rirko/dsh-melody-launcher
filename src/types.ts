@@ -646,6 +646,8 @@ export type InstallQueueKind =
   | 'pack-create'
   | 'pack-import'
   | 'dsh-market'
+  | 'skill-market-install'
+  | 'skill-market-install-by-name'
 
 export interface InstallQueueJobInputs {
   /** 要下载的 DSH 版本号。 */
@@ -659,6 +661,8 @@ export interface InstallQueueJobInputs {
   'pack-create': PackCreateRequest
   'pack-import': { path: string; items?: string[]; name?: string }
   'dsh-market': { action: 'install' | 'update'; name: string; profileName?: string; exactVersion?: string }
+  'skill-market-install': { repository: string; target: SkillInstallTarget }
+  'skill-market-install-by-name': { sourceRepository: string; skillId: string }
 }
 
 export type InstallQueueEntryState = 'pending' | 'running' | 'done' | 'failed' | 'cancelled'

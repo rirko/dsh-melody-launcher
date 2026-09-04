@@ -1,9 +1,13 @@
 import { createWriteStream } from 'node:fs'
-import { access, cp, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { access, cp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { once } from 'node:events'
 import path from 'node:path'
 import AdmZip from 'adm-zip'
-import type { InstalledPreset, PresetInstallTarget } from '../src/types'
+import { parse } from 'yaml'
+
+const PRESET_MANIFEST = 'preset.yml'
+import type { Dirent } from 'node:fs'
+import type { BuiltinAgentPreset, InstalledPreset, PresetInstallTarget } from '../src/types'
 import { downloadGitHubArchive, githubArchiveUrl } from './github-archive'
 import { isSafeRepositoryName } from './profile'
 import { removePresetReceipt } from './preset-receipts'
@@ -15,7 +19,6 @@ const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 const MAX_ARCHIVE_FILES = 12_000
 
 /** DSH agent-preset 的清单文件：目录存在此文件即视为已安装该预设。 */
-const PRESET_MANIFEST = 'preset.yml'
 
 export interface PresetInstallProgress {
   percent: number
@@ -311,4 +314,40 @@ export async function uninstallInstalledPreset(dshHome: string, name: string, pr
   await rm(preset.path, { recursive: true, force: true })
   await removePresetReceipt(presetReceiptsPath, name)
   return readInstalledPresets(dshHome)
+}
+
+export async function readBuiltinAgentPresets(packageRoot: string): Promise<BuiltinAgentPreset[]> {
+  const root = path.join(packageRoot, 'config', 'agent-presets')
+  let entries: Dirent[]
+  try {
+    entries = await readdir(root, { withFileTypes: true })
+  } catch {
+    return []
+  }
+  const presets: BuiltinAgentPreset[] = []
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !isSkillName(entry.name)) continue
+    try {
+      const raw = await readFile(path.join(root, entry.name, PRESET_MANIFEST), 'utf8')
+      const data = parse(raw) as { name?: unknown; description?: unknown; order?: unknown } | null
+      if (!data || typeof data.name !== 'string' || !data.name.trim()) continue
+      presets.push({
+        name: entry.name,
+        displayName: data.name.trim(),
+        description: typeof data.description === 'string' ? data.description.trim() : '',
+        order: typeof data.order === 'number' && Number.isFinite(data.order) ? data.order : null,
+      })
+    } catch {
+      // 单个内置预设清单损坏不影响其余枚举。
+    }
+  }
+  return presets.sort((left, right) => (left.order ?? 999) - (right.order ?? 999) || left.name.localeCompare(right.name))
+}
+
+export interface PresetInstallProgress {
+  percent: number
+  message: string
+  indeterminate?: boolean
+  downloadedBytes?: number
+  totalBytes?: number
 }

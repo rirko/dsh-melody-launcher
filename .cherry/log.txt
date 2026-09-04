@@ -1,0 +1,3 @@
+ok: gh: signature + applyGitHubMirror
+ok: gh: fetchGitHubArchiveBytes appended
+ok: skill-catalog archive block appended

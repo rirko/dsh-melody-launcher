@@ -3,7 +3,8 @@ import { existsSync } from 'node:fs'
 import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { IPC, IPC_EVENTS, IPC_WHEELCHAIR } from '../src/constants'
-import type { AiSessionCreateInput, ApplicationInstallRequest, AppSettings, ApiProbeTarget, CustomApiProviderInput, PackCreateRequest, PluginInstallRequest, PresetInstallRequest, SkillInstallRequest, WindowMode, ProfileRepositoryImportMode, PackPluginEntry, NonstandardPackImportPreview, PluginUninstallOptions } from '../src/types'
+import type { AiSessionCreateInput,
+  SkillInstallTarget, ApplicationInstallRequest, AppSettings, ApiProbeTarget, CustomApiProviderInput, PackCreateRequest, PluginInstallRequest, PresetInstallRequest, SkillInstallRequest, WindowMode, ProfileRepositoryImportMode, PackPluginEntry, NonstandardPackImportPreview, PluginUninstallOptions } from '../src/types'
 import type { ApiProbeService } from './api-probe'
 import type { ApplicationAddonManager } from './application-addons'
 import type { RecommendedWebUiService } from './recommended-web-ui'
@@ -48,6 +49,10 @@ import { clearLauncherBackgrounds, importLauncherBackground } from './launcher-a
 import type { DeepSeekBalanceService } from './deepseek-balance'
 import type { DshUsageService } from './dsh-usage'
 import { createNewsCacheStore, fetchNewsFeed, JUYA_NEWS_FEED_URL, lookupNewsCache, type NewsCacheFile } from './juya-news'
+import { createSkillsShIndexStore, fetchSkillsShIndex, lookupSkillsShIndexCache, shouldPersistSkillsShIndex } from './skills-sh'
+import { readBuiltinAgentPresets } from './preset-install'
+import { dshVersionRoot } from './runtime-versions'
+import { matchSkillsShTarget } from './skills-sh'
 
 /**
  * 渲染层能触达主进程的全部入口。
@@ -80,12 +85,13 @@ export interface IpcDependencies {
   deepSeekBalance: DeepSeekBalanceService
   dshUsageService: DshUsageService
   newsCachePath: string
+  skillsShIndexPath: string
   getWindow: () => BrowserWindow | null
   setWindowMode: (mode: WindowMode) => void
 }
 
 export function registerIpcHandlers(deps: IpcDependencies): void {
-  const { settings, pluginReceiptsPath, launcherAssetsUserData, runtime, installer, launcherUpdater, pluginTrial, aiInstaller, copilot, packManager, githubAuth, applicationAddons, catalogSync, dshMarket, recommendedWebUi, runtimeVersions, profiles, nonstandardPack, apiProbe, installQueue, deepSeekBalance, dshUsageService, newsCachePath } = deps
+  const { settings, pluginReceiptsPath, launcherAssetsUserData, runtime, installer, launcherUpdater, pluginTrial, aiInstaller, copilot, packManager, githubAuth, applicationAddons, catalogSync, dshMarket, recommendedWebUi, runtimeVersions, profiles, nonstandardPack, apiProbe, installQueue, deepSeekBalance, dshUsageService, newsCachePath, skillsShIndexPath } = deps
   const linkedComponents = createLinkedComponentController({
     readSettings: () => settings.read(),
     // Include the shared-pool inventory and profile-scoped receipts when
@@ -751,6 +757,74 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   }
   ipcMain.handle(IPC_WHEELCHAIR.deepseekBalance, (_event, force?: boolean) => deepSeekBalance.get(force === true))
   ipcMain.handle(IPC_WHEELCHAIR.dshUsage, (_event, force?: boolean) => dshUsageService.get(force === true))
+
+  // —— 轮椅模式技能市场（PR #94 新 UI + 原版逻辑接管：安装一律走原版下载队列）——
+  const skillsShIndexStore = createSkillsShIndexStore(skillsShIndexPath)
+  let skillsShRefreshing = false
+  const persistSkillsShIndex = async (skills: Awaited<ReturnType<typeof fetchSkillsShIndex>>) => {
+    // 质量闸门：残缺结果（多半是批量查询失败）不写盘，避免把小目录钉住 24 小时。
+    if (shouldPersistSkillsShIndex(skills.length)) await skillsShIndexStore.write({ version: 1, fetchedAt: Date.now(), skills })
+    else console.warn(`[skills-sh] 聚合结果仅 ${skills.length} 条，低于持久化门槛，本次不写缓存`)
+  }
+  const refreshSkillsShIndex = (): void => {
+    if (skillsShRefreshing) return
+    skillsShRefreshing = true
+    void fetchSkillsShIndex(githubAuth.fetch)
+      .then(skills => persistSkillsShIndex(skills))
+      .catch((cause: unknown) => console.error('[skills-sh] background refresh failed', cause))
+      .finally(() => { skillsShRefreshing = false })
+  }
+  ipcMain.handle(IPC_WHEELCHAIR.skillMarketCatalog, async (_event, payload?: { refresh?: boolean }) => {
+    if (payload?.refresh) {
+      const skills = await fetchSkillsShIndex(githubAuth.fetch)
+      await persistSkillsShIndex(skills)
+      return skills
+    }
+    const lookup = lookupSkillsShIndexCache(await skillsShIndexStore.read(), Date.now())
+    if (lookup.status === 'fresh') return lookup.skills
+    if (lookup.status === 'stale') {
+      refreshSkillsShIndex()
+      return lookup.skills
+    }
+    const skills = await fetchSkillsShIndex(githubAuth.fetch)
+    await persistSkillsShIndex(skills)
+    return skills
+  })
+  ipcMain.handle(IPC_WHEELCHAIR.skillMarketAnalyze, async (_event, payload: { repository: string; defaultBranch: string }) => {
+    if (!payload || typeof payload.repository !== 'string' || !payload.repository || typeof payload.defaultBranch !== 'string') {
+      throw new Error('技能仓库参数无效。')
+    }
+    return installer.analyzeSkillArchive(payload.repository, payload.defaultBranch)
+  })
+  ipcMain.handle(IPC_WHEELCHAIR.skillMarketInstall, async (_event, payload: { repository: string; target: SkillInstallTarget }) => {
+    if (!payload || typeof payload.repository !== 'string' || !payload.repository || !payload.target
+      || typeof payload.target !== 'object' || typeof payload.target.name !== 'string' || typeof payload.target.id !== 'string'
+      || typeof payload.target.sourcePath !== 'string' || typeof payload.target.revision !== 'string'
+      || (payload.target.format !== 'bundle' && payload.target.format !== 'flat')) {
+      throw new Error('Skill 安装目标无效。')
+    }
+    // 安装走原版下载队列：与插件/整合包同一串行通道，不再受 installer 单槽冲突。
+    return installQueue.enqueue('skill-market-install', `安装技能 ${payload.target.name}`, payload)
+  })
+  ipcMain.handle(IPC_WHEELCHAIR.skillMarketInstallByName, async (_event, payload: { sourceRepository: string; skillId: string }) => {
+    if (!payload || typeof payload.sourceRepository !== 'string' || !payload.sourceRepository
+      || typeof payload.skillId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(payload.skillId)) {
+      throw new Error('skills.sh 安装参数无效。')
+    }
+    return installQueue.enqueue('skill-market-install-by-name', `安装技能 ${payload.skillId}`, payload)
+  })
+  ipcMain.handle(IPC_WHEELCHAIR.presetsBuiltin, async () => {
+    const current = await settings.read()
+    // 优先读当前选中版本的安装包；旧版布局回落到安装根目录。
+    const roots: string[] = []
+    if (current.dshVersion) roots.push(path.join(dshVersionRoot(current.dshInstallPath, current.dshVersion), 'node_modules', '@deepseek-ai', 'dsh'))
+    roots.push(path.join(current.dshInstallPath, 'node_modules', '@deepseek-ai', 'dsh'))
+    for (const root of roots) {
+      const presets = await readBuiltinAgentPresets(root)
+      if (presets.length > 0) return presets
+    }
+    return []
+  })
   ipcMain.handle(IPC_WHEELCHAIR.newsFeed, async () => {
     const lookup = lookupNewsCache(await newsStore.read(), Date.now())
     if (lookup.status === 'fresh') return { status: 'ok' as const, items: lookup.items }

@@ -4,7 +4,7 @@ import { cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { AppSettings, RuntimeOutput, WindowMode } from '../src/types'
+import type { AppSettings, RuntimeOutput, SkillInstallTarget, WindowMode } from '../src/types'
 import { ACP_RUNTIME_DIRNAME, CREDENTIALS_LOCK_DIRNAME, createAiInstaller, healCredentialsLock, type AiInstaller } from './ai-install'
 import { createApplicationAddonManager, type ApplicationAddonManager } from './application-addons'
 import { applyWindowMode, applyWindowModeImmediate, createMainWindow, createRendererChannel } from './app-window'
@@ -18,6 +18,7 @@ import { createApiProbe, type ApiProbeService } from './api-probe'
 import { createInstallQueue, type InstallQueue } from './install-queue'
 import { createDeepSeekBalanceService } from './deepseek-balance'
 import { createDshUsageService } from './dsh-usage'
+import { matchSkillsShTarget } from './skills-sh'
 import { readLauncherBackground } from './launcher-asset'
 
 // 自定义插图协议必须在 app ready 之前声明为安全 scheme，渲染层的 CSS 才能引用。
@@ -436,6 +437,7 @@ function createServices(): Services {
     presetReceiptsPath,
     skillReceiptsPath,
     skillSourceRoot,
+    skillMarketCachePath: path.join(userData, 'skill-market-cache.json'),
     emitOutput: (level, text) => events.output('plugin', level, text),
     emitProgress: progress => events.installProgress(progress),
     isRuntimeRunning: () => runtime.isRunning(),
@@ -687,6 +689,20 @@ function createServices(): Services {
       'dsh-market': job => job.action === 'update'
         ? dshMarket.update(job.name, job.profileName)
         : dshMarket.install(job.name, job.profileName, job.exactVersion),
+      'skill-market-install': job => installer.installSkillFromMarket(job),
+      'skill-market-install-by-name': async job => {
+        // skills.sh 索引条目不知道默认分支：main/master 逐个尝试归档分析，命中 target 即停（原版队列接管安装）。
+        let target: SkillInstallTarget | null = null
+        for (const branch of ['main', 'master']) {
+          try {
+            const analysis = await installer.analyzeSkillArchive(job.sourceRepository, branch)
+            const candidate = matchSkillsShTarget(analysis.targets, job.skillId)
+            if (candidate) { target = candidate; break }
+          } catch { /* 分支不存在或仓库过大：换下一个分支 */ }
+        }
+        if (!target) throw new Error(`来源仓库 ${job.sourceRepository} 中找不到技能「${job.skillId}」，可能仓库结构已变化。`)
+        return installer.installSkillFromMarket({ repository: job.sourceRepository, target })
+      },
     },
     emitEvent: snapshot => events.installQueue(snapshot),
   })
@@ -807,6 +823,7 @@ app.whenReady().then(async () => {
     ...services,
     launcherAssetsUserData: app.getPath('userData'),
     newsCachePath: path.join(app.getPath('userData'), 'juya-news-cache.json'),
+    skillsShIndexPath: path.join(app.getPath('userData'), 'skills-sh-index.json'),
     getWindow,
     setWindowMode: (mode: WindowMode) => {
       mainWindowMode = mode

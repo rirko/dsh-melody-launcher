@@ -1,15 +1,47 @@
-import { get as httpsGet } from 'node:https'
-
 export function applyGitHubMirror(url: string, mirror?: string): string {
-  const trimmed = mirror?.trim().replace(/[\/]+$/, '')
+  const trimmed = mirror?.trim().replace(/\/+$/, '')
   return trimmed ? `${trimmed}/${url}` : url
 }
 
 export function githubArchiveUrl(repository: string, revision: string, mirror?: string): string {
   const encodedRepository = repository.split('/').map(encodeURIComponent).join('/')
-  if (/^[a-f0-9]{40}$/i.test(revision)) return applyGitHubMirror(`https://codeload.github.com/${encodedRepository}/zip/${revision}`, mirror)
-  const encodedRevision = revision.split('/').map(encodeURIComponent).join('/')
-  return applyGitHubMirror(`https://codeload.github.com/${encodedRepository}/zip/refs/heads/${encodedRevision}`, mirror)
+  const direct = /^[a-f0-9]{40}$/i.test(revision)
+    ? `https://codeload.github.com/${encodedRepository}/zip/${revision}`
+    : `https://codeload.github.com/${encodedRepository}/zip/refs/heads/${revision.split('/').map(encodeURIComponent).join('/')}`
+  return applyGitHubMirror(direct, mirror)
+}
+
+/**
+ * 经 fetch（可为代理感知实现）下载仓库归档字节。
+ * 与 downloadGitHubArchive 的区别：走 Chromium 网络栈时可继承系统代理，并支持 GitHub 镜像前缀。
+ */
+export async function fetchGitHubArchiveBytes(
+  repository: string,
+  revision: string,
+  maxBytes: number,
+  fetchImpl: typeof fetch,
+  mirror?: string,
+): Promise<Buffer> {
+  const response = await fetchImpl(githubArchiveUrl(repository, revision, mirror), {
+    headers: { 'User-Agent': 'DSH-Launcher' },
+    redirect: 'follow',
+    signal: AbortSignal.timeout(60_000),
+  })
+  if (!response.ok || !response.body) throw new Error(`下载仓库压缩包失败（HTTP ${response.status}）。`)
+  const reader = response.body.getReader()
+  const chunks: Buffer[] = []
+  let received = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    received += value.byteLength
+    if (received > maxBytes) {
+      await reader.cancel().catch(() => undefined)
+      throw new Error('仓库压缩包过大，已停止下载。')
+    }
+    chunks.push(Buffer.from(value))
+  }
+  return Buffer.concat(chunks, received)
 }
 
 export async function downloadGitHubArchive(
@@ -64,37 +96,3 @@ export async function downloadGitHubArchive(
     request.setTimeout(30_000, () => request.destroy(new Error('下载仓库压缩包超时，请检查网络后重试。')))
   })
 }
-
-/**
- * 经 fetch（可为代理感知实现）下载仓库归档字节。
- * 与 downloadGitHubArchive 的区别：走 Chromium 网络栈时可继承系统代理，并支持 GitHub 镜像前缀。
- */
-export async function fetchGitHubArchiveBytes(
-  repository: string,
-  revision: string,
-  maxBytes: number,
-  fetchImpl: typeof fetch,
-  mirror?: string,
-): Promise<Buffer> {
-  const response = await fetchImpl(githubArchiveUrl(repository, revision, mirror), {
-    headers: { 'User-Agent': 'DSH-Launcher' },
-    redirect: 'follow',
-    signal: AbortSignal.timeout(60_000),
-  })
-  if (!response.ok || !response.body) throw new Error(`下载仓库压缩包失败（HTTP ${response.status}）。`)
-  const reader = response.body.getReader()
-  const chunks: Buffer[] = []
-  let received = 0
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    received += value.byteLength
-    if (received > maxBytes) {
-      await reader.cancel().catch(() => undefined)
-      throw new Error('仓库压缩包过大，已停止下载。')
-    }
-    chunks.push(Buffer.from(value))
-  }
-  return Buffer.concat(chunks, received)
-}
-

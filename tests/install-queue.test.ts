@@ -57,6 +57,8 @@ function baseExecutors(overrides: Partial<InstallQueueExecutors> = {}): InstallQ
     'pack-create': async () => undefined,
     'pack-import': async () => undefined,
     'dsh-market': async () => undefined,
+    'skill-market-install': async () => undefined,
+    'skill-market-install-by-name': async () => undefined,
     ...overrides,
   }
 }

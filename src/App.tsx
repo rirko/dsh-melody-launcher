@@ -791,26 +791,11 @@ function LauncherShell() {
       {wheelchairMode && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: '#0f1411', overflow: 'auto' }}>
           <WheelchairMode
-            runtime={store.runtime}
-            dshInstallation={store.dshInstallation}
-            dshUpdate={store.dshUpdate}
-            launcherUpdate={store.launcherUpdate}
-            installProgress={store.installProgress}
-            busy={runtimeBusy}
-            installingDsh={installingDsh}
-            activeRuntimeReplacement={store.activeRuntimeReplacement}
-            bundleCount={store.packs.length}
-            pluginCount={store.profile?.plugins.length ?? 0}
-            skillCount={store.installedSkills.length}
-            presetCount={store.installedPresets.length}
-            onToggleRuntime={() => { void toggleRuntime() }}
-            onUpdateDsh={() => { void store.updateDsh() }}
+            store={store}
+            onImportPack={() => { void handlePackImport() }}
             onOpenLauncherUpdate={() => setUpdateOpen(true)}
-            onOpenVersionPicker={() => { setWheelchairMode(false); navigation.showManager(); navigation.setView('packs') }}
-            onOpenSettings={() => { setWheelchairMode(false); setSettingsOpen(true) }}
-            onNavigateOriginal={view => { setWheelchairMode(false); navigation.showManager(); navigation.setView(view) }}
             onOpenHarness={openHarness}
-            onOpenDeveloper={() => { setWheelchairMode(false); setCopilotOpen(true) }}
+            onOpenDeveloper={() => { setCopilotOpen(true) }}
             onExit={() => setWheelchairMode(false)}
           />
         </div>
