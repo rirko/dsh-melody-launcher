@@ -1,4 +1,4 @@
-import { Box, ChevronLeft, ChevronRight, Cpu, ExternalLink, Layers, Newspaper, Puzzle, RefreshCw, Sparkles, Wand2, Wallet } from 'lucide-react'
+import { Box, ChevronLeft, ChevronRight, Cpu, Layers, Newspaper, Puzzle, RefreshCw, Sparkles, Wand2, Wallet } from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useLauncherApi } from '../api/client'
 import { DEEPSEEK_PRICING, periodPrice, pricingPeriod, type PricingPeriod } from '../lib/deepseek-pricing'
@@ -207,18 +207,16 @@ function BalanceCard() {
             <strong>{period === 'peak' ? '峰段 · 原价' : '谷段 · 半价'}</strong>
           </div>
         </div>
-        {info && (info.grantedBalance !== null || info.toppedUpBalance !== null) && (
-          <div className="widget-bubble-row">
-            <div className="widget-bubble widget-bubble-sub">
-              <span>赠送余额</span>
-              <strong>{info.grantedBalance?.toFixed(2) ?? '--'}</strong>
-            </div>
-            <div className="widget-bubble widget-bubble-sub">
-              <span>充值余额</span>
-              <strong>{info.toppedUpBalance?.toFixed(2) ?? '--'}</strong>
-            </div>
+        <div className="widget-bubble-row">
+          <div className="widget-bubble widget-bubble-sub" title="接入本地会话日志后显示">
+            <span>今日使用 Token</span>
+            <strong>--</strong>
           </div>
-        )}
+          <div className="widget-bubble widget-bubble-sub" title="接入本地会话日志后显示">
+            <span>缓存命中率</span>
+            <strong>--</strong>
+          </div>
+        </div>
       </div>
     )
   })()
@@ -286,13 +284,11 @@ function NewsCard() {
           <small>{shortDate(today.pubDate) || today.title}</small>
         </div>
         <ul className="widget-news">
-          {headlines.slice(0, 5).map((headline, index) => (
+          {headlines.slice(0, 5).map(headline => (
             <li key={headline.link}>
               <button type="button" onClick={() => void api.openExternal(headline.link)} title={headline.text}>
                 <span className="widget-news-dot" aria-hidden="true" />
                 <span className="widget-news-text">{headline.text}</span>
-                <ExternalLink size={12} className="widget-news-ext" />
-                <span className="widget-news-ref">#{index + 1}</span>
               </button>
             </li>
           ))}
