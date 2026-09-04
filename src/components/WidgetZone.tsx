@@ -180,16 +180,28 @@ function BalanceCard() {
     const info = result.balance.infos[0]
     return (
       <div className="widget-balance">
-        <div className="widget-balance-main">
-          <span>可用余额</span>
-          <strong>{info ? `${info.totalBalance?.toFixed(2) ?? '--'} ${info.currency}` : '--'}</strong>
-          {!result.balance.isAvailable && <em className="widget-bad">余额不足，API 已不可调用</em>}
+        <div className="widget-bubble-row">
+          <div className="widget-bubble widget-bubble-main">
+            <span>可用余额</span>
+            <strong>{info ? `${info.totalBalance?.toFixed(2) ?? '--'} ${info.currency}` : '--'}</strong>
+            {!result.balance.isAvailable && <em className="widget-bad">余额不足，API 已不可调用</em>}
+          </div>
+          <div className={`widget-bubble widget-bubble-period ${period}`}>
+            <span>{period === 'peak' ? '峰段 · 原价' : '谷段 · 半价'}</span>
+            <strong>{period === 'peak' ? '9–12 / 14–18' : '现在调用更划算'}</strong>
+            <small>工作日峰段（北京时间）</small>
+          </div>
         </div>
         {info && (info.grantedBalance !== null || info.toppedUpBalance !== null) && (
-          <div className="widget-balance-split">
-            <span>赠金 {info.grantedBalance?.toFixed(2) ?? '--'}</span>
-            <span>充值 {info.toppedUpBalance?.toFixed(2) ?? '--'}</span>
-            <span className="widget-muted">优先扣赠金</span>
+          <div className="widget-bubble-row">
+            <div className="widget-bubble widget-bubble-sub">
+              <span>赠送余额</span>
+              <strong>{info.grantedBalance?.toFixed(2) ?? '--'}</strong>
+            </div>
+            <div className="widget-bubble widget-bubble-sub">
+              <span>充值余额</span>
+              <strong>{info.toppedUpBalance?.toFixed(2) ?? '--'}</strong>
+            </div>
           </div>
         )}
       </div>
@@ -206,7 +218,6 @@ function BalanceCard() {
     >
       {body}
       <div className="widget-pricing">
-        <span className={`widget-period-badge ${period}`}>{period === 'peak' ? '峰段' : '谷段 · 半价'}</span>
         {DEEPSEEK_PRICING.map(row => (
           <span key={row.model}>{row.model.replace('deepseek-', '')} 命中{periodPrice(row.hit, period)} / 未命中{periodPrice(row.miss, period)} / 输出{periodPrice(row.output, period)}</span>
         ))}

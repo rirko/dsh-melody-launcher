@@ -698,11 +698,47 @@ input:focus-visible {
 .widget-tile-body small { color: var(--quiet); font-size: 11px; font-weight: 650; }
 .widget-tile-arrow { margin-left: auto; flex: none; color: var(--quiet); }
 
-.widget-balance-main { display: flex; flex-direction: column; gap: 2px; }
-.widget-balance-main > span { color: var(--quiet); font-size: 11px; }
-.widget-balance-main > strong { color: var(--accent); font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.widget-balance-main em { font-style: normal; }
-.widget-balance-split { display: flex; gap: 12px; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.widget-balance { display: flex; flex-direction: column; gap: 10px; }
+
+.widget-bubble-row { display: flex; gap: 10px; }
+
+.widget-bubble {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--line));
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.widget-bubble > span { color: var(--quiet); font-size: 11px; font-weight: 650; }
+.widget-bubble > strong { color: var(--ink); font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.widget-bubble em { font-style: normal; }
+
+.widget-bubble-main > strong { color: var(--accent); font-size: 26px; }
+
+.widget-bubble-period { flex: none; width: 46%; }
+.widget-bubble-period > strong { font-size: 14px; }
+.widget-bubble-period > small { color: var(--quiet); font-size: 9.5px; }
+
+.widget-bubble-period.peak {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.widget-bubble-period.peak > span,
+.widget-bubble-period.peak > strong,
+.widget-bubble-period.peak > small { color: #fff; }
+
+.widget-bubble-period.off {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  background: var(--accent-soft);
+}
+.widget-bubble-period.off > strong { color: var(--accent); }
+
+.widget-bubble-sub > strong { font-size: 15px; }
 
 .widget-pricing {
   display: flex;
@@ -717,16 +753,6 @@ input:focus-visible {
 }
 
 .widget-card-actions { margin-left: auto; }
-
-.widget-period-badge {
-  padding: 2px 9px;
-  border-radius: 999px;
-  font-size: 10.5px;
-  font-weight: 750;
-}
-
-.widget-period-badge.peak { color: #fff; background: var(--accent); }
-.widget-period-badge.off { color: var(--accent); background: var(--accent-soft); }
 
 .widget-key-form { display: flex; flex-direction: column; gap: 8px; }
 .widget-key-hint { margin: 0; color: var(--muted); font-size: 12px; }
@@ -743,6 +769,11 @@ input:focus-visible {
   font-size: 12.5px;
 }
 .widget-key-row .primary-command { flex: none; }
+.widget-key-row input:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
 .widget-key-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .widget-key-foot small { color: var(--quiet); font-size: 10.5px; }
 .widget-inline-actions { display: flex; gap: 14px; }
