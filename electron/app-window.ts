@@ -1,15 +1,9 @@
-import { BrowserWindow, screen, type Rectangle } from 'electron'
+import { BrowserWindow, screen } from 'electron'
 import type { WindowMode } from '../src/types'
 import { attachWindowShadow, showWindowShadow, syncWindowShadow } from './window-shadow'
+import { resolveWindowModeTarget, type WindowSize } from './window-bounds'
 
 /** 主窗口的创建、尺寸模式切换，以及发往渲染层的消息通道。 */
-
-interface WindowSize {
-  width: number
-  height: number
-  minWidth: number
-  minHeight: number
-}
 
 // 一级导航改造后：启动页与管理界面共用同一个固定尺寸窗口（PCL2 式单窗换页）。
 export const WINDOW_MODES: Record<WindowMode, WindowSize> = {
@@ -17,52 +11,7 @@ export const WINDOW_MODES: Record<WindowMode, WindowSize> = {
   manager: { width: 1080, height: 700, minWidth: 960, minHeight: 620 },
 }
 
-const WINDOW_MODE_ANIMATION_DURATION = 100
-// Drive high-refresh displays more frequently than the traditional 60 Hz
-// interval. Windows still coalesces updates to the compositor refresh rate.
-const WINDOW_MODE_ANIMATION_FRAME = 8
 const WINDOW_BACKGROUND_COLOR = '#00000000'
-const WINDOW_WORK_AREA_MARGIN = 24
-
-interface WindowModeAnimation {
-  cancelled: boolean
-  timer: ReturnType<typeof setTimeout> | null
-}
-
-const windowModeAnimations = new WeakMap<BrowserWindow, WindowModeAnimation>()
-
-function easeOutCubic(progress: number): number {
-  // 先响应、后收束；比高次缓出更连贯，不会在开始时突然冲出。
-  return 1 - Math.pow(1 - progress, 3)
-}
-
-function interpolate(from: number, to: number, progress: number): number {
-  return Math.round(from + (to - from) * progress)
-}
-
-function centeredTargetBounds(current: Rectangle, size: WindowSize): Rectangle {
-  const workArea = screen.getDisplayMatching(current).workArea
-  // Keep the design size when it fits, but never let the manager extend
-  // behind the taskbar or outside a smaller/high-DPI display.
-  const availableWidth = Math.max(1, workArea.width - WINDOW_WORK_AREA_MARGIN * 2)
-  const availableHeight = Math.max(1, workArea.height - WINDOW_WORK_AREA_MARGIN * 2)
-  const width = Math.min(size.width, availableWidth)
-  const height = Math.min(size.height, availableHeight)
-  return {
-    x: Math.round(workArea.x + (workArea.width - width) / 2),
-    y: Math.round(workArea.y + (workArea.height - height) / 2),
-    width,
-    height,
-  }
-}
-
-function cancelWindowModeAnimation(window: BrowserWindow): void {
-  const current = windowModeAnimations.get(window)
-  if (!current) return
-  current.cancelled = true
-  if (current.timer) clearTimeout(current.timer)
-  windowModeAnimations.delete(window)
-}
 
 export function isWindowMode(value: unknown): value is WindowMode {
   return value === 'launcher' || value === 'manager'
@@ -128,7 +77,6 @@ export function createMainWindow(options: CreateWindowOptions): BrowserWindow {
 
 export function applyWindowMode(window: BrowserWindow | null, mode: WindowMode): void {
   if (!window || window.isDestroyed()) return
-  cancelWindowModeAnimation(window)
 
   const size = WINDOW_MODES[mode]
   if (window.isMaximized()) window.unmaximize()
@@ -138,69 +86,24 @@ export function applyWindowMode(window: BrowserWindow | null, mode: WindowMode):
   // square is exposed during the resize.
   window.setBackgroundColor(WINDOW_BACKGROUND_COLOR)
 
-  const startBounds = window.getBounds()
-  const targetBounds = centeredTargetBounds(startBounds, size)
-  const targetMinWidth = Math.min(size.minWidth, targetBounds.width)
-  const targetMinHeight = Math.min(size.minHeight, targetBounds.height)
+  const current = window.getBounds()
+  const workArea = screen.getDisplayMatching(current).workArea
+  const { bounds, resizeNeeded } = resolveWindowModeTarget(current, size, workArea)
+  const targetMinWidth = Math.min(size.minWidth, bounds.width)
+  const targetMinHeight = Math.min(size.minHeight, bounds.height)
 
-  // 一级导航拍平后各模式尺寸一致：直接对齐限制并返回，
-  // 省掉 100ms 的原生缩放动画（它只会让顶栏切换显得迟钝）。
-  if (startBounds.width === targetBounds.width && startBounds.height === targetBounds.height) {
+  if (!resizeNeeded) {
+    // 尺寸一致（或本来就贴合）：只对齐限制，位置一律不动——
+    // 切开发人员选项不再把用户挪好的窗口拽回屏幕中央。
     window.setMinimumSize(targetMinWidth, targetMinHeight)
     return
   }
 
-  const [currentMinWidth, currentMinHeight] = window.getMinimumSize()
-
-  // Keep one absolute screen-space anchor for the whole resize. Interpolating
-  // x/y independently from width/height can produce alternating half-pixel
-  // rounding, which makes the launcher background appear to wobble by 1px.
-  // The target is already centered in the display work area, so use that exact
-  // center for every frame instead of recalculating it from rounded bounds.
-  const anchorCenterX = targetBounds.x + targetBounds.width / 2
-  const anchorCenterY = targetBounds.y + targetBounds.height / 2
-
-  // 扩大窗口时若先提高最小尺寸，Windows 会立即把窗口跳到新下限。
-  // 动画期间保留两种模式中更小的限制，结束后再应用目标限制。
-  window.setMinimumSize(
-    Math.min(currentMinWidth, targetMinWidth),
-    Math.min(currentMinHeight, targetMinHeight),
-  )
-
-  const animation: WindowModeAnimation = { cancelled: false, timer: null }
-  const startedAt = performance.now()
-  windowModeAnimations.set(window, animation)
-
-  const animateFrame = () => {
-    if (animation.cancelled || window.isDestroyed()) return
-
-    const elapsed = performance.now() - startedAt
-    const progress = Math.min(1, elapsed / WINDOW_MODE_ANIMATION_DURATION)
-    const eased = easeOutCubic(progress)
-
-    // Keep the native fallback surface aligned with the shell while exposing
-    // the next resized frame.
-    window.setBackgroundColor(WINDOW_BACKGROUND_COLOR)
-    const width = interpolate(startBounds.width, targetBounds.width, eased)
-    const height = interpolate(startBounds.height, targetBounds.height, eased)
-    window.setBounds({
-      x: Math.round(anchorCenterX - width / 2),
-      y: Math.round(anchorCenterY - height / 2),
-      width,
-      height,
-    })
-    syncWindowShadow(window)
-
-    if (progress >= 1) {
-      window.setMinimumSize(targetMinWidth, targetMinHeight)
-      windowModeAnimations.delete(window)
-      return
-    }
-
-    animation.timer = setTimeout(animateFrame, WINDOW_MODE_ANIMATION_FRAME)
-  }
-
-  animateFrame()
+  // 仅当工作区装不下设计尺寸时单次 setBounds 收缩（保持窗口中心）。
+  // 不再做 100ms 逐帧缩放动画：那是"卡一下再跳走"观感的来源。
+  window.setMinimumSize(targetMinWidth, targetMinHeight)
+  window.setBounds(bounds)
+  syncWindowShadow(window)
 }
 
 /**
