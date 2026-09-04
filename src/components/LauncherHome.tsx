@@ -1,4 +1,4 @@
-import { CircleStop, Download, ExternalLink, LoaderCircle, Package, Play, Settings } from 'lucide-react'
+import { CircleStop, Download, LoaderCircle, Package, Play, Settings } from 'lucide-react'
 import packageMetadata from '../../package.json'
 import { WidgetZone } from './WidgetZone'
 import type { DshInstallationStatus, DshUpdateStatus, HomeTab, InstallProgress, InstalledApplicationAddon, LauncherUpdateStatus, RuntimeState } from '../types'
@@ -23,7 +23,6 @@ interface LauncherHomeProps {
   skillCount: number
   presetCount: number
   onToggleRuntime: () => void
-  onOpenHarness: () => void
   onVersionSelect: () => void
   onUpdateDsh: () => void
   onOpenLauncherUpdate: () => void
@@ -45,7 +44,6 @@ export function LauncherHome({
   skillCount,
   presetCount,
   onToggleRuntime,
-  onOpenHarness,
   onVersionSelect,
   onUpdateDsh,
   onOpenLauncherUpdate,
@@ -66,11 +64,11 @@ export function LauncherHome({
           <p className="home-brand-tagline">DeepSeek Harness 启动器</p>
         </div>
         <div className="home-brand-meta">
-          <span className="home-brand-version">v{packageMetadata.version}</span>
-          <span className="home-brand-qq">官方用户QQ群：625155044</span>
           <button type="button" className="home-brand-settings" onClick={onOpenSettings} title="启动器设置">
             <Settings size={13} /><span>设置</span>
           </button>
+          <span className="home-brand-version">v{packageMetadata.version}</span>
+          <span className="home-brand-qq">官方用户QQ群：625155044</span>
         </div>
       </section>
 
@@ -102,11 +100,6 @@ export function LauncherHome({
               <strong>{runtime.running ? `停止 ${runtime.applicationAddonName ?? 'DSH'}` : installingDsh ? installProgress?.indeterminate ? '安装进行中' : `安装 DSH ${installProgress?.percent ?? 0}%` : needsInstallation ? '下载安装 DSH' : busy ? '请稍候…' : activeRuntimeReplacement ? `启动 ${activeRuntimeReplacement.name}` : '启动 DSH'}</strong>
             </span>
           </button>
-          {runtime.running && runtime.url && (
-            <button type="button" className="home-open-square" onClick={onOpenHarness} title="打开 DSH 网页工作台" aria-label="打开网页">
-              <ExternalLink size={18} />
-            </button>
-          )}
         </div>
         <button type="button" className="launcher-utility-button home-version-button" onClick={onVersionSelect} title="切换到其它整合包"><Package size={16} /><span>切换整合包</span></button>
         </div>

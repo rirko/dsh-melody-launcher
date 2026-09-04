@@ -316,7 +316,9 @@ function LauncherShell() {
       <TopBar
         activeTab={navigation.surface === 'launcher' ? navigation.homeTab : null}
         developerActive={navigation.surface === 'manager'}
+        openWebVisible={store.runtime.running && Boolean(store.runtime.url)}
         onSelectTab={navigation.goHome}
+        onOpenHarness={openHarness}
         onOpenDeveloper={navigation.showManager}
         onMinimize={minimizeWindow}
         onClose={closeWindow}
@@ -344,7 +346,6 @@ function LauncherShell() {
                   skillCount={store.installedSkills.length}
                   presetCount={store.installedPresets.length}
                   onToggleRuntime={toggleRuntime}
-                  onOpenHarness={openHarness}
                   onVersionSelect={() => navigation.goHome('packs')}
                   onUpdateDsh={() => { void store.updateDsh() }}
                   onOpenLauncherUpdate={() => setUpdateOpen(true)}

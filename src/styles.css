@@ -398,6 +398,27 @@ input:focus-visible {
   -webkit-app-region: no-drag;
 }
 
+.topbar-open-web {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  margin-right: 8px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.92);
+  background: transparent;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .topbar-open-web:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+}
+
 .topbar-developer {
   display: inline-flex;
   margin-right: 8px;
@@ -891,9 +912,6 @@ input:focus-visible {
   font-weight: 650;
 }
 
-.widget-news-ext { flex: none; color: var(--quiet); }
-.widget-news button:hover .widget-news-ext { color: var(--accent); }
-
 .widget-news-dot {
   flex: none;
   width: 6px;
@@ -908,17 +926,6 @@ input:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.widget-news-ref {
-  flex: none;
-  padding: 1px 6px;
-  border-radius: 6px;
-  color: var(--quiet);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  font-size: 9.5px;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
 }
 
 .widget-nav {
@@ -1042,30 +1049,6 @@ input:focus-visible {
 .launcher-start-button strong {
   font-size: 19px;
   line-height: 24px;
-}
-
-/* 启动按钮右侧的「打开网页」小方块（仅运行时出现） */
-.home-open-square {
-  display: grid;
-  width: 72px;
-  flex: none;
-  place-items: center;
-  border: 1.5px solid var(--accent);
-  border-radius: 8px;
-  color: var(--accent);
-  background: var(--surface);
-  cursor: pointer;
-  transition: transform 160ms cubic-bezier(.23,1,.32,1), background 150ms ease;
-}
-
-.home-open-square:active {
-  transform: scale(.97);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .home-open-square:hover {
-    background: var(--accent-soft);
-  }
 }
 
 .launcher-utility-button {
@@ -6823,10 +6806,6 @@ input:focus-visible {
     line-height: 20px;
   }
 
-  .home-open-square {
-    width: 60px;
-  }
-
   .launcher-utility-button {
     min-height: 38px;
   }
@@ -8608,8 +8587,7 @@ input:focus-visible {
   }
 
   .launcher-start-button:active,
-  .launcher-utility-button:active,
-  .home-open-square:active {
+  .launcher-utility-button:active {
     transform: none;
   }
 
