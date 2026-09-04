@@ -1,7 +1,7 @@
 import { CircleStop, Download, ExternalLink, LoaderCircle, Package, Play } from 'lucide-react'
 import packageMetadata from '../../package.json'
 import { WidgetZone } from './WidgetZone'
-import type { DshInstallationStatus, DshUpdateStatus, InstallProgress, InstalledApplicationAddon, LauncherUpdateStatus, RuntimeState } from '../types'
+import type { DshInstallationStatus, DshUpdateStatus, HomeTab, InstallProgress, InstalledApplicationAddon, LauncherUpdateStatus, RuntimeState } from '../types'
 
 /**
  * 「启动」tab：PCL2 式首页。左列品牌（logo/名称/版本/QQ群），
@@ -27,6 +27,7 @@ interface LauncherHomeProps {
   onVersionSelect: () => void
   onUpdateDsh: () => void
   onOpenLauncherUpdate: () => void
+  onNavigateTab: (tab: HomeTab) => void
 }
 
 export function LauncherHome({
@@ -47,6 +48,7 @@ export function LauncherHome({
   onVersionSelect,
   onUpdateDsh,
   onOpenLauncherUpdate,
+  onNavigateTab,
 }: LauncherHomeProps) {
   const needsInstallation = !dshInstallation.installed && !activeRuntimeReplacement
 
@@ -54,8 +56,12 @@ export function LauncherHome({
     <div className="launcher-home">
       <section className="home-brand">
         <div className="home-brand-head">
-          <img className="home-brand-logo" src="/launcher-logo.png" alt="" width={96} height={96} draggable={false} />
-          <h1>DSH-Melody-Launcher</h1>
+          <img className="home-brand-logo" src="/launcher-logo.png" alt="" width={112} height={112} draggable={false} />
+          <h1 className="home-brand-name">
+            <strong>DSH</strong>
+            <span>Melody Launcher</span>
+          </h1>
+          <p className="home-brand-tagline">DeepSeek Harness 桌面启动器</p>
         </div>
         <div className="home-brand-meta">
           <span className="home-brand-version">v{packageMetadata.version}</span>
@@ -75,6 +81,7 @@ export function LauncherHome({
           presetCount={presetCount}
           onUpdateDsh={onUpdateDsh}
           onOpenLauncherUpdate={onOpenLauncherUpdate}
+          onNavigateTab={onNavigateTab}
         />
         <div className="home-actions">
         <div className="home-start-row">

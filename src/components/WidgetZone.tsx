@@ -1,8 +1,8 @@
-import { ChevronLeft, ChevronRight, Cpu, Newspaper, RefreshCw, Wallet } from 'lucide-react'
+import { Box, ChevronLeft, ChevronRight, Cpu, Layers, Newspaper, Puzzle, RefreshCw, Sparkles, Wand2, Wallet } from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useLauncherApi } from '../api/client'
 import { DEEPSEEK_PRICING, periodPrice, pricingPeriod, type PricingPeriod } from '../lib/deepseek-pricing'
-import type { DeepSeekBalanceResult, DshUpdateStatus, LauncherUpdateStatus, NewsFeedResult } from '../types'
+import type { DeepSeekBalanceResult, DshUpdateStatus, HomeTab, LauncherUpdateStatus, NewsFeedResult } from '../types'
 
 /**
  * 首页小部件区：一块区域、多张卡片轮播（左右箭头 + 圆点切换）。
@@ -21,6 +21,7 @@ interface WidgetZoneProps {
   presetCount: number
   onUpdateDsh: () => void
   onOpenLauncherUpdate: () => void
+  onNavigateTab: (tab: HomeTab) => void
 }
 
 function WidgetCard({ icon, title, actions, children }: { icon: ReactNode; title: string; actions?: ReactNode; children: ReactNode }) {
@@ -75,19 +76,26 @@ function UpdateCard({ dshUpdate, launcherUpdate, busy, onUpdateDsh, onOpenLaunch
   )
 }
 
-function EnvironmentCard({ dshVersion, bundleCount, pluginCount, skillCount, presetCount }: Pick<WidgetZoneProps, 'dshVersion' | 'bundleCount' | 'pluginCount' | 'skillCount' | 'presetCount'>) {
-  const stats: Array<[string, string]> = [
-    ['DSH 版本', dshVersion ?? '未安装'],
-    ['加载层', `${bundleCount} 层`],
-    ['已装插件', `${pluginCount}`],
-    ['已装技能', `${skillCount}`],
-    ['Agent 预设', `${presetCount}`],
+function EnvironmentCard({ dshVersion, bundleCount, pluginCount, skillCount, presetCount, onNavigateTab }: Pick<WidgetZoneProps, 'dshVersion' | 'bundleCount' | 'pluginCount' | 'skillCount' | 'presetCount' | 'onNavigateTab'>) {
+  const tiles: Array<{ key: string; icon: ReactNode; value: string; label: string; tab: HomeTab; wide?: boolean }> = [
+    { key: 'dsh', icon: <Box size={15} />, value: dshVersion ?? '未安装', label: 'DSH 版本', tab: 'versions', wide: true },
+    { key: 'bundles', icon: <Layers size={15} />, value: `${bundleCount} 层`, label: '加载层', tab: 'packs' },
+    { key: 'plugins', icon: <Puzzle size={15} />, value: `${pluginCount}`, label: '已装插件', tab: 'plugins' },
+    { key: 'skills', icon: <Wand2 size={15} />, value: `${skillCount}`, label: '已装技能', tab: 'skills' },
+    { key: 'presets', icon: <Sparkles size={15} />, value: `${presetCount}`, label: 'Agent 预设', tab: 'presets' },
   ]
   return (
     <WidgetCard icon={<Cpu size={15} />} title="本地环境">
-      <div className="widget-stats">
-        {stats.map(([label, value]) => (
-          <div key={label} className="widget-stat"><span>{label}</span><strong>{value}</strong></div>
+      <div className="widget-tiles">
+        {tiles.map(tile => (
+          <button key={tile.key} type="button" className={`widget-tile ${tile.wide ? 'wide' : ''}`} onClick={() => onNavigateTab(tile.tab)} title={`前往${tile.label}`}>
+            <span className="widget-tile-icon">{tile.icon}</span>
+            <span className="widget-tile-body">
+              <strong>{tile.value}</strong>
+              <small>{tile.label}</small>
+            </span>
+            <ChevronRight size={14} className="widget-tile-arrow" />
+          </button>
         ))}
       </div>
     </WidgetCard>
@@ -249,11 +257,11 @@ function NewsCard() {
   )
 }
 
-export function WidgetZone({ dshUpdate, launcherUpdate, busy, dshVersion, bundleCount, pluginCount, skillCount, presetCount, onUpdateDsh, onOpenLauncherUpdate }: WidgetZoneProps) {
+export function WidgetZone({ dshUpdate, launcherUpdate, busy, dshVersion, bundleCount, pluginCount, skillCount, presetCount, onUpdateDsh, onOpenLauncherUpdate, onNavigateTab }: WidgetZoneProps) {
   const [index, setIndex] = useState(0)
   const cards: Array<{ key: string; node: ReactNode }> = [
     { key: 'update', node: <UpdateCard dshUpdate={dshUpdate} launcherUpdate={launcherUpdate} busy={busy} onUpdateDsh={onUpdateDsh} onOpenLauncherUpdate={onOpenLauncherUpdate} /> },
-    { key: 'env', node: <EnvironmentCard dshVersion={dshVersion} bundleCount={bundleCount} pluginCount={pluginCount} skillCount={skillCount} presetCount={presetCount} /> },
+    { key: 'env', node: <EnvironmentCard dshVersion={dshVersion} bundleCount={bundleCount} pluginCount={pluginCount} skillCount={skillCount} presetCount={presetCount} onNavigateTab={onNavigateTab} /> },
     { key: 'balance', node: <BalanceCard /> },
     { key: 'news', node: <NewsCard /> },
   ]

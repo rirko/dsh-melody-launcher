@@ -328,9 +328,30 @@ input:focus-visible {
 }
 
 .topbar-mark {
-  font-size: 17.5px;
-  font-weight: 900;
-  letter-spacing: 0.06em;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+
+.topbar-settings {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  margin-right: 2px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.92);
+  background: transparent;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .topbar-settings:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
 }
 
 .topbar-tabs {
@@ -475,18 +496,39 @@ input:focus-visible {
 }
 
 .home-brand-logo {
-  width: 96px;
-  height: 96px;
+  width: 112px;
+  height: 112px;
   filter: drop-shadow(0 10px 22px rgba(38, 52, 104, 0.2));
 }
 
-.home-brand h1 {
+.home-brand-name {
+  display: flex;
   margin: 0;
-  color: var(--ink);
-  font-size: 21px;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.home-brand-name strong {
+  color: var(--accent);
+  font-size: 34px;
   font-weight: 800;
-  line-height: 27px;
-  letter-spacing: -0.01em;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+}
+
+.home-brand-name span {
+  color: var(--ink);
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+}
+
+.home-brand-tagline {
+  margin: -4px 0 0;
+  color: var(--quiet);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
 }
 
 .home-brand-meta {
@@ -593,24 +635,57 @@ input:focus-visible {
 .widget-good { color: var(--accent); font-size: 11.5px; font-weight: 700; }
 .widget-bad { color: var(--danger); font-size: 11px; }
 
-.widget-stats {
+.widget-tiles {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.widget-stat {
+.widget-tile {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  gap: 9px;
   padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
+  color: var(--ink);
   background: var(--surface-soft);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 160ms cubic-bezier(.23,1,.32,1), border-color 150ms ease, background 150ms ease;
 }
 
-.widget-stat span { color: var(--quiet); font-size: 9.5px; font-weight: 650; }
-.widget-stat strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+.widget-tile.wide { grid-column: 1 / -1; }
+
+.widget-tile:active { transform: scale(.97); }
+
+@media (hover: hover) and (pointer: fine) {
+  .widget-tile:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+}
+
+.widget-tile-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.widget-tile-body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.widget-tile-body strong { font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.widget-tile-body small { color: var(--quiet); font-size: 10.5px; font-weight: 650; }
+.widget-tile-arrow { margin-left: auto; flex: none; color: var(--quiet); }
 
 .widget-balance-main { display: flex; flex-direction: column; gap: 2px; }
 .widget-balance-main > span { color: var(--quiet); font-size: 10px; }
@@ -6460,9 +6535,16 @@ input:focus-visible {
     height: 72px;
   }
 
-  .home-brand h1 {
-    font-size: 18px;
-    line-height: 23px;
+  .home-brand-name strong {
+    font-size: 27px;
+  }
+
+  .home-brand-name span {
+    font-size: 16px;
+  }
+
+  .home-brand-tagline {
+    font-size: 11px;
   }
 
   .launcher-start-button {

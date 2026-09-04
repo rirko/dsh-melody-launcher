@@ -317,6 +317,7 @@ function LauncherShell() {
         activeTab={navigation.surface === 'launcher' ? navigation.homeTab : null}
         developerActive={navigation.surface === 'manager'}
         onSelectTab={navigation.goHome}
+        onOpenSettings={() => setSettingsOpen(true)}
         onOpenDeveloper={navigation.showManager}
         onMinimize={minimizeWindow}
         onClose={closeWindow}
@@ -348,6 +349,7 @@ function LauncherShell() {
                   onVersionSelect={() => navigation.goHome('packs')}
                   onUpdateDsh={() => { void store.updateDsh() }}
                   onOpenLauncherUpdate={() => setUpdateOpen(true)}
+                  onNavigateTab={navigation.goHome}
                 />
               ) : (
                 <SettingsPanels
