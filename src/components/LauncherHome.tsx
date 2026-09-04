@@ -66,13 +66,11 @@ export function LauncherHome({
           <p className="home-brand-tagline">DeepSeek Harness 启动器</p>
         </div>
         <div className="home-brand-meta">
-          <div className="home-brand-meta-row">
-            <span className="home-brand-version">v{packageMetadata.version}</span>
-            <button type="button" className="home-brand-settings" onClick={onOpenSettings} title="启动器设置">
-              <Settings size={13} /><span>设置</span>
-            </button>
-          </div>
+          <span className="home-brand-version">v{packageMetadata.version}</span>
           <span className="home-brand-qq">官方用户QQ群：625155044</span>
+          <button type="button" className="home-brand-settings" onClick={onOpenSettings} title="启动器设置">
+            <Settings size={13} /><span>设置</span>
+          </button>
         </div>
       </section>
 

@@ -76,7 +76,8 @@ export function SettingsDialog({ settings, busy, onClose, onSave, onDownloadReco
           <SettingsGroup icon={<Globe size={16} />} title="网络" desc="默认使用国内 npm 镜像（npmmirror），并自动跟随 Windows 系统代理；留空即可。">
             <label className="form-field"><span>npm 镜像</span><input value={draft.network?.npmRegistry ?? ''} placeholder="https://registry.npmmirror.com" onChange={event => setDraft({ ...draft, network: { ...draft.network, npmRegistry: event.target.value } })} /></label>
             <label className="form-field"><span>代理地址</span><input value={draft.network?.proxy ?? ''} placeholder="留空自动探测系统代理；如 http://127.0.0.1:7890" onChange={event => setDraft({ ...draft, network: { ...draft.network, proxy: event.target.value } })} /></label>
-            <label className="form-field"><span>GitHub 镜像</span><input value={draft.network?.githubMirror ?? ''} placeholder="可选，留空不启用；如 https://gh-proxy.com" onChange={event => setDraft({ ...draft, network: { ...draft.network, githubMirror: event.target.value } })} /><small>直连 GitHub 不稳时，可配置代理或 GitHub 镜像后重试 DSH Market 安装；npm 安装始终优先镜像。</small></label>
+            <label className="form-field"><span>GitHub 镜像</span><input value={draft.network?.githubMirror ?? ''} placeholder="可选，留空不启用；如 https://gh-proxy.com" onChange={event => setDraft({ ...draft, network: { ...draft.network, githubMirror: event.target.value } })} /></label>
+            <p className="settings-group-note">直连 GitHub 不稳时，可配置代理或 GitHub 镜像后重试 DSH Market 安装；npm 安装始终优先镜像。</p>
           </SettingsGroup>
           {onDownloadRecommendedWebUi && (
             <SettingsGroup icon={<Download size={16} />} title="官方推荐" desc="一键安装官方推荐的「DSH Web UI」全家桶整合包，获得更佳使用体验。">
