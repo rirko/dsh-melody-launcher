@@ -27,6 +27,8 @@ interface WindowShadowController {
   showBehind(): void
   /** 模式翻转时的「抬升-回落」脉冲：影子随卡片抬起而收拢变淡。 */
   pulse(): void
+  /** 拖动暂隐后的恢复：清除爆发计数并淡回影子。 */
+  restoreShadow(): void
 }
 
 const controllers = new WeakMap<BrowserWindow, WindowShadowController>()
