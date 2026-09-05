@@ -46,6 +46,20 @@
   isolation: none;
 }
 
+/* 转场期间整个页面垫上应用画布色：快照旋转露出的区域显示品牌底色，
+   不再透出窗口后面的桌面/文档；圆角与原版壳一致。 */
+::view-transition {
+  background: #dfe7ec;
+  border-radius: 12px;
+}
+
+html.mode-flipping {
+  background: #dfe7ec !important;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+
 ::view-transition-old(root) {
   z-index: 10;
 }

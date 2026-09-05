@@ -77,6 +77,10 @@ function LauncherShell() {
   useEffect(() => {
     try { localStorage.setItem('dsh-launcher:ui-mode', wheelchairMode ? 'wheelchair' : 'classic') } catch { /* 私有模式忽略 */ }
   }, [wheelchairMode])
+  // 转场期间给 html 垫实底：快照旋转露出的区域不透出桌面。
+  useEffect(() => {
+    document.documentElement.classList.toggle('mode-flipping', modeFlip !== null)
+  }, [modeFlip])
   const runModeFlip = useCallback((direction: 'enter' | 'exit') => {
     if (modeFlipRef.current) return
     modeFlipRef.current = direction
@@ -113,6 +117,15 @@ function LauncherShell() {
     window.addEventListener('wheel', onWheel, { passive: true })
     return () => window.removeEventListener('wheel', onWheel)
   }, [enterWheelchair, navigation.surface, wheelchairMode])
+  // TEMP(验证用，稍后删除)：F9/F10 键盘触发模式翻转
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'F9') enterWheelchair()
+      if (event.key === 'F10') exitWheelchair()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [enterWheelchair, exitWheelchair])
   const [credentialOpen, setCredentialOpen] = useState(false)
   const [githubAccountOpen, setGitHubAccountOpen] = useState(false)
   const [createPackOpen, setCreatePackOpen] = useState(false)
