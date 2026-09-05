@@ -68,8 +68,10 @@ export function attachWindowShadow(window: BrowserWindow): void {
   shadow.setIgnoreMouseEvents(true)
   void shadow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(SHADOW_HTML)}`)
 
-  // 拖动/缩放进行中收起影子：独立阴影窗跟手是异步的，移动中难免脱钩；
-  // 停稳 160ms 后淡回。隐藏状态每次爆发只通知一次，不逐 move 打 executeJavaScript。
+  // 拖动/缩放进行中收起影子：独立阴影窗跟手是异步的，移动中难免脱钩——
+  // 连续 ≥2 次 sync 判定为真拖动后暂隐，停稳 180ms 淡回；聚焦/显示时强制恢复，
+  // 启动阶段的一次性 move 事件永远不会把影子藏起来。
+  let burstCount = 0
   let dragHidden = false
   let dragHideTimer: NodeJS.Timeout | null = null
 
@@ -84,21 +86,36 @@ export function attachWindowShadow(window: BrowserWindow): void {
     sync() {
       if (window.isDestroyed() || shadow.isDestroyed()) return
       shadow.setBounds(shadowBounds(window.getBounds()), false)
-      // move/resize 事件爆发 = 正在拖动或拖拽边框：影子暂隐，停稳后淡回。
-      void shadow.webContents.executeJavaScript(
-        "const s=document.querySelector('.shadow');s.classList.add('drag-hide')",
-      ).catch(() => undefined)
+      burstCount += 1
+      if (burstCount >= 2 && !dragHidden) {
+        dragHidden = true
+        void shadow.webContents.executeJavaScript(
+          "const s=document.querySelector('.shadow');s.classList.add('drag-hide')",
+        ).catch(() => undefined)
+      }
       if (dragHideTimer) clearTimeout(dragHideTimer)
       dragHideTimer = setTimeout(() => {
         dragHideTimer = null
-        void shadow.webContents.executeJavaScript(
-          "const s=document.querySelector('.shadow');s.classList.remove('drag-hide')",
-        ).catch(() => undefined)
-      }, 160)
+        burstCount = 0
+        this.restoreShadow()
+      }, 180)
+    },
+    restoreShadow() {
+      burstCount = 0
+      if (dragHideTimer) {
+        clearTimeout(dragHideTimer)
+        dragHideTimer = null
+      }
+      if (!dragHidden) return
+      dragHidden = false
+      void shadow.webContents.executeJavaScript(
+        "const s=document.querySelector('.shadow');s.classList.remove('drag-hide')",
+      ).catch(() => undefined)
     },
     showBehind() {
       if (window.isDestroyed() || shadow.isDestroyed() || window.isMinimized() || !window.isVisible()) return
       this.sync()
+      this.restoreShadow()
       shadow.showInactive()
       // Raise both windows as a pair. Moving only the main window leaves the
       // shadow behind other applications; moveAbove(shadow) can instead demote
