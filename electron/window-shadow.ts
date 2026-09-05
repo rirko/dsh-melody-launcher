@@ -1,6 +1,11 @@
 import { BrowserWindow, type Rectangle } from 'electron'
 
-const SHADOW_MARGIN = 30
+/** 主窗口壳的圆角：必须与 styles.css 里 .surface-stage 的 border-radius 保持一致，
+ *  否则阴影环与卡片圆角错位。改动壳圆角时请同步此处。 */
+const SHELL_CORNER_RADIUS = 12
+/** 阴影页四周留白：需 ≥ box-shadow 垂直偏移(10) + 模糊(28) = 38px，
+ *  否则底部阴影会被阴影窗自身裁剪。 */
+const SHADOW_MARGIN = 40
 const SHADOW_HTML = `<!doctype html>
 <html>
   <head>
@@ -10,7 +15,7 @@ const SHADOW_HTML = `<!doctype html>
       .shadow {
         position: absolute;
         inset: ${SHADOW_MARGIN}px;
-        border-radius: 14px;
+        border-radius: ${SHELL_CORNER_RADIUS}px;
         box-shadow: 0 10px 28px rgba(22, 32, 26, .25), 0 2px 9px rgba(22, 32, 26, .16);
         transition: opacity .18s ease, transform .3s ease;
       }
