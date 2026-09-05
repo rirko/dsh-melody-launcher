@@ -12,9 +12,10 @@ const SHADOW_HTML = `<!doctype html>
         inset: ${SHADOW_MARGIN}px;
         border-radius: 14px;
         box-shadow: 0 10px 28px rgba(22, 32, 26, .25), 0 2px 9px rgba(22, 32, 26, .16);
-        transition: transform .32s ease, opacity .32s ease;
+        transition: opacity .18s ease, transform .3s ease;
       }
       .shadow.lift { transform: scale(.955); opacity: .38; }
+      .shadow.drag-hide { opacity: 0; }
     </style>
   </head>
   <body><div class="shadow"></div></body>
@@ -67,6 +68,11 @@ export function attachWindowShadow(window: BrowserWindow): void {
   shadow.setIgnoreMouseEvents(true)
   void shadow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(SHADOW_HTML)}`)
 
+  // 拖动/缩放进行中收起影子：独立阴影窗跟手是异步的，移动中难免脱钩；
+  // 停稳 160ms 后淡回。隐藏状态每次爆发只通知一次，不逐 move 打 executeJavaScript。
+  let dragHidden = false
+  let dragHideTimer: NodeJS.Timeout | null = null
+
   const controller: WindowShadowController = {
     shadow,
     pulse() {
@@ -78,6 +84,17 @@ export function attachWindowShadow(window: BrowserWindow): void {
     sync() {
       if (window.isDestroyed() || shadow.isDestroyed()) return
       shadow.setBounds(shadowBounds(window.getBounds()), false)
+      // move/resize 事件爆发 = 正在拖动或拖拽边框：影子暂隐，停稳后淡回。
+      void shadow.webContents.executeJavaScript(
+        "const s=document.querySelector('.shadow');s.classList.add('drag-hide')",
+      ).catch(() => undefined)
+      if (dragHideTimer) clearTimeout(dragHideTimer)
+      dragHideTimer = setTimeout(() => {
+        dragHideTimer = null
+        void shadow.webContents.executeJavaScript(
+          "const s=document.querySelector('.shadow');s.classList.remove('drag-hide')",
+        ).catch(() => undefined)
+      }, 160)
     },
     showBehind() {
       if (window.isDestroyed() || shadow.isDestroyed() || window.isMinimized() || !window.isVisible()) return
