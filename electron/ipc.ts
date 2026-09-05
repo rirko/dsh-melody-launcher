@@ -53,7 +53,7 @@ import { createSkillsShIndexStore, fetchSkillsShIndex, lookupSkillsShIndexCache,
 import { readBuiltinAgentPresets } from './preset-install'
 import { dshVersionRoot } from './runtime-versions'
 import { matchSkillsShTarget } from './skills-sh'
-
+import { pulseWindowShadow } from './window-shadow'
 /**
  * 渲染层能触达主进程的全部入口。
  * 集中在一处，便于一眼看全攻击面：每个 handler 都先校验入参再进业务逻辑。
@@ -1128,7 +1128,11 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     return window.isMaximized()
   })
   ipcMain.handle(IPC.windowClose, () => deps.getWindow()?.close())
-
+  // 模式翻转：通知阴影窗播放抬升脉冲（卡片抬起，影子收拢）。
+  ipcMain.handle(IPC.windowFlipPulse, () => {
+    const window = deps.getWindow()
+    if (window) pulseWindowShadow(window)
+  })
   ipcMain.handle(IPC.openExternal, (_event, url: string) => {
     const parsed = new URL(url)
     if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('只允许打开网页链接。')

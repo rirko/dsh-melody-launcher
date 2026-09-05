@@ -1652,5 +1652,5 @@ export const demoApi: LauncherApi = {
   skillMarketInstall: async () => ({ installedSkill: { name: 'demo', description: '', path: '', format: 'bundle', enabled: true, modelInvocable: true, userInvocable: true }, installedSkills: [] }),
   skillMarketInstallByName: async () => ({ installedSkill: { name: 'demo', description: '', path: '', format: 'bundle', enabled: true, modelInvocable: true, userInvocable: true }, installedSkills: [] }),
   presetsBuiltin: async () => [],
-}
+  pulseWindowShadow: async () => undefined,}
 // （PR #94 轮椅模式演示桩已并入上方字面量。）

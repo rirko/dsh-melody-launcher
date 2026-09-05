@@ -142,7 +142,7 @@ const api: LauncherApi = {
   minimizeWindow: () => ipcRenderer.invoke(IPC.windowMinimize),
   toggleMaximizeWindow: () => ipcRenderer.invoke(IPC.windowToggleMaximize),
   closeWindow: () => ipcRenderer.invoke(IPC.windowClose),
-  aiInstall: input => ipcRenderer.invoke(IPC.aiInstall, input),
+  pulseWindowShadow: () => ipcRenderer.invoke(IPC.windowFlipPulse),  aiInstall: input => ipcRenderer.invoke(IPC.aiInstall, input),
   aiAdaptPlugin: input => ipcRenderer.invoke(IPC.aiAdaptPlugin, input),
   aiRepairRuntime: () => ipcRenderer.invoke(IPC.aiRepairRuntime),
   aiApprove: (requestId, allow) => ipcRenderer.invoke(IPC.aiApprove, requestId, allow),

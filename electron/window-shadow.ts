@@ -12,7 +12,9 @@ const SHADOW_HTML = `<!doctype html>
         inset: ${SHADOW_MARGIN}px;
         border-radius: 14px;
         box-shadow: 0 10px 28px rgba(22, 32, 26, .25), 0 2px 9px rgba(22, 32, 26, .16);
+        transition: transform .32s ease, opacity .32s ease;
       }
+      .shadow.lift { transform: scale(.955); opacity: .38; }
     </style>
   </head>
   <body><div class="shadow"></div></body>
@@ -22,6 +24,8 @@ interface WindowShadowController {
   shadow: BrowserWindow
   sync(): void
   showBehind(): void
+  /** 模式翻转时的「抬升-回落」脉冲：影子随卡片抬起而收拢变淡。 */
+  pulse(): void
 }
 
 const controllers = new WeakMap<BrowserWindow, WindowShadowController>()
@@ -65,6 +69,12 @@ export function attachWindowShadow(window: BrowserWindow): void {
 
   const controller: WindowShadowController = {
     shadow,
+    pulse() {
+      if (window.isDestroyed() || shadow.isDestroyed()) return
+      void shadow.webContents.executeJavaScript(
+        "const s=document.querySelector('.shadow');s.classList.add('lift');setTimeout(()=>s.classList.remove('lift'),620)",
+      ).catch(() => undefined)
+    },
     sync() {
       if (window.isDestroyed() || shadow.isDestroyed()) return
       shadow.setBounds(shadowBounds(window.getBounds()), false)
@@ -109,4 +119,9 @@ export function syncWindowShadow(window: BrowserWindow): void {
 
 export function showWindowShadow(window: BrowserWindow): void {
   controllers.get(window)?.showBehind()
+}
+
+/** 模式翻转时的阴影脉冲（卡片抬起，影子收拢变淡后恢复）。 */
+export function pulseWindowShadow(window: BrowserWindow): void {
+  controllers.get(window)?.pulse()
 }
