@@ -83,10 +83,14 @@ function LauncherShell() {
     // View Transitions 优先：新旧界面各自成快照，真实「卡牌翻面」（Chromium 111+，Electron 43 满足）。
     const doc = document as Document & { startViewTransition?: (update: () => void) => unknown }
     if (typeof doc.startViewTransition === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.documentElement.dataset.vtFlip = direction === 'enter' ? 'down' : 'up'
       doc.startViewTransition(() => {
         flushSync(() => { setWheelchairMode(direction === 'enter') })
       })
-      window.setTimeout(() => { modeFlipRef.current = null }, 650)
+      window.setTimeout(() => {
+        modeFlipRef.current = null
+        delete document.documentElement.dataset.vtFlip
+      }, 700)
       return
     }
     // 回退：卡牌类动画（无 VT 能力的环境）。

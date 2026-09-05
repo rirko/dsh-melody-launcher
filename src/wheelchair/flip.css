@@ -31,12 +31,13 @@
   .app-flip-anim { animation-duration: 0.01s !important; }
 }
 
-/* —— View Transitions 版翻面：旧快照朝用户翻走，新快照从反向翻入落平 ——
-   快照层默认会被拍平，需 isolation: none 打开 3D 上下文；
-   perspective() 直接写进关键帧，不依赖父级透视。 */
+/* —— View Transitions 版翻面：方向随切换方向反转 ——
+   进入轮椅模式（vt-flip=down）：界面从上向下翻走、新界面从上方翻入；
+   回到旋律界面（vt-flip=up）：整体反向，从下向上翻。
+   快照层默认被拍平，用 isolation: none 打开 3D；perspective() 直接进关键帧。 */
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: 0.3s;
+  animation-duration: 0.34s;
   animation-fill-mode: both;
   backface-visibility: hidden;
 }
@@ -46,22 +47,28 @@
 }
 
 ::view-transition-old(root) {
-  animation-name: vtFlipOut;
   z-index: 10;
 }
 
-::view-transition-new(root) {
-  animation-name: vtFlipIn;
-  animation-delay: 0.06s;
-}
+html[data-vt-flip='down']::view-transition-old(root) { animation-name: vtFlipOutDown; }
+html[data-vt-flip='down']::view-transition-new(root) { animation-name: vtFlipInDown; animation-delay: 0.06s; }
+html[data-vt-flip='up']::view-transition-old(root) { animation-name: vtFlipOutUp; }
+html[data-vt-flip='up']::view-transition-new(root) { animation-name: vtFlipInUp; animation-delay: 0.06s; }
 
-@keyframes vtFlipOut {
+@keyframes vtFlipOutDown {
   from { transform: perspective(1500px) rotateX(0deg) translateY(0); opacity: 1; }
-  to { transform: perspective(1500px) rotateX(38deg) translateY(7%); opacity: 0; }
+  to { transform: perspective(1500px) rotateX(58deg) translateY(9%); opacity: 0; }
 }
-
-@keyframes vtFlipIn {
-  from { transform: perspective(1500px) rotateX(-38deg) translateY(-6%); opacity: 0; }
+@keyframes vtFlipInDown {
+  from { transform: perspective(1500px) rotateX(-58deg) translateY(-7%); opacity: 0; }
+  to { transform: perspective(1500px) rotateX(0deg) translateY(0); opacity: 1; }
+}
+@keyframes vtFlipOutUp {
+  from { transform: perspective(1500px) rotateX(0deg) translateY(0); opacity: 1; }
+  to { transform: perspective(1500px) rotateX(-58deg) translateY(-7%); opacity: 0; }
+}
+@keyframes vtFlipInUp {
+  from { transform: perspective(1500px) rotateX(58deg) translateY(6%); opacity: 0; }
   to { transform: perspective(1500px) rotateX(0deg) translateY(0); opacity: 1; }
 }
 
