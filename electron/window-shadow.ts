@@ -16,7 +16,7 @@ const SHADOW_HTML = `<!doctype html>
         position: absolute;
         inset: ${SHADOW_MARGIN}px;
         border-radius: ${SHELL_CORNER_RADIUS}px;
-        box-shadow: 0 10px 28px rgba(22, 32, 26, .25), 0 2px 9px rgba(22, 32, 26, .16);
+        box-shadow: 0 4px 20px rgba(22, 32, 26, .17), 0 2px 7px rgba(22, 32, 26, .12);
         transition: opacity .18s ease, transform .3s ease;
       }
       .shadow.lift { transform: scale(.955); opacity: .38; }

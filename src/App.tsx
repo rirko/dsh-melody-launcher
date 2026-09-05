@@ -81,6 +81,27 @@ function LauncherShell() {
   useEffect(() => {
     document.documentElement.classList.toggle('mode-flipping', modeFlip !== null)
   }, [modeFlip])
+  // TEMP 诊断：对比窗口高度与页面各层高度（验证后删除）
+  useEffect(() => {
+    const report = () => {
+      const stage = document.querySelector('.surface-stage') as HTMLElement | null
+      const root = document.getElementById('root') as HTMLElement | null
+      console.error('[flip-diag]', JSON.stringify({
+        winOuterH: window.outerHeight,
+        winInnerH: window.innerHeight,
+        docClientH: document.documentElement.clientHeight,
+        docScrollH: document.documentElement.scrollHeight,
+        bodyClientH: document.body.clientHeight,
+        rootH: root?.offsetHeight ?? null,
+        stageH: stage?.offsetHeight ?? null,
+        stageBottom: stage ? Math.round(stage.getBoundingClientRect().bottom) : null,
+        modeFlipping: document.documentElement.classList.contains('mode-flipping'),
+      }))
+    }
+    report()
+    const id = window.setInterval(report, 1000)
+    return () => window.clearInterval(id)
+  }, [])
   const runModeFlip = useCallback((direction: 'enter' | 'exit') => {
     if (modeFlipRef.current) return
     modeFlipRef.current = direction
