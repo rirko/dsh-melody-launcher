@@ -82,7 +82,7 @@ export function attachWindowShadow(window: BrowserWindow): void {
     pulse() {
       if (window.isDestroyed() || shadow.isDestroyed()) return
       void shadow.webContents.executeJavaScript(
-        "const s=document.querySelector('.shadow');s.classList.add('lift');setTimeout(()=>s.classList.remove('lift'),620)",
+        "(()=>{const s=document.querySelector('.shadow');s.classList.add('lift');setTimeout(()=>s.classList.remove('lift'),620)})()",
       ).catch(() => undefined)
     },
     sync() {
@@ -92,7 +92,7 @@ export function attachWindowShadow(window: BrowserWindow): void {
       if (burstCount >= 2 && !dragHidden) {
         dragHidden = true
         void shadow.webContents.executeJavaScript(
-          "const s=document.querySelector('.shadow');s.classList.add('drag-hide')",
+          "(()=>{const s=document.querySelector('.shadow');s.classList.add('drag-hide')})()",
         ).catch(() => undefined)
       }
       if (dragHideTimer) clearTimeout(dragHideTimer)
@@ -111,7 +111,7 @@ export function attachWindowShadow(window: BrowserWindow): void {
       if (!dragHidden) return
       dragHidden = false
       void shadow.webContents.executeJavaScript(
-        "const s=document.querySelector('.shadow');s.classList.remove('drag-hide')",
+        "(()=>{const s=document.querySelector('.shadow');s.classList.remove('drag-hide')})()",
       ).catch(() => undefined)
     },
     showBehind() {
