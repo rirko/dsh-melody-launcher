@@ -30,3 +30,41 @@
 @media (prefers-reduced-motion: reduce) {
   .app-flip-anim { animation-duration: 0.01s !important; }
 }
+
+/* —— View Transitions 版翻面：旧快照朝用户翻走，新快照从反向翻入落平 ——
+   快照层默认会被拍平，需 isolation: none 打开 3D 上下文；
+   perspective() 直接写进关键帧，不依赖父级透视。 */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.3s;
+  animation-fill-mode: both;
+  backface-visibility: hidden;
+}
+
+::view-transition-image-pair(root) {
+  isolation: none;
+}
+
+::view-transition-old(root) {
+  animation-name: vtFlipOut;
+  z-index: 10;
+}
+
+::view-transition-new(root) {
+  animation-name: vtFlipIn;
+  animation-delay: 0.06s;
+}
+
+@keyframes vtFlipOut {
+  from { transform: perspective(1500px) rotateX(0deg) translateY(0); opacity: 1; }
+  to { transform: perspective(1500px) rotateX(38deg) translateY(7%); opacity: 0; }
+}
+
+@keyframes vtFlipIn {
+  from { transform: perspective(1500px) rotateX(-38deg) translateY(-6%); opacity: 0; }
+  to { transform: perspective(1500px) rotateX(0deg) translateY(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; }
+}

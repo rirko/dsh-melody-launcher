@@ -6,6 +6,7 @@ import { LauncherHome } from './components/LauncherHome'
 import { SideNavigation } from './components/SideNavigation'
 import { DSHCopilotPanel } from './components/DSHCopilotPanel'
 import { RuntimeDrawer } from './components/RuntimeDrawer'
+import { flushSync } from 'react-dom'
 import { WheelchairMode } from './wheelchair/WheelchairMode'
 import './wheelchair/flip.css'
 import { Toast } from './components/Toast'
@@ -79,6 +80,16 @@ function LauncherShell() {
   const runModeFlip = useCallback((direction: 'enter' | 'exit') => {
     if (modeFlipRef.current) return
     modeFlipRef.current = direction
+    // View Transitions 优先：新旧界面各自成快照，真实「卡牌翻面」（Chromium 111+，Electron 43 满足）。
+    const doc = document as Document & { startViewTransition?: (update: () => void) => unknown }
+    if (typeof doc.startViewTransition === 'function' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      doc.startViewTransition(() => {
+        flushSync(() => { setWheelchairMode(direction === 'enter') })
+      })
+      window.setTimeout(() => { modeFlipRef.current = null }, 650)
+      return
+    }
+    // 回退：卡牌类动画（无 VT 能力的环境）。
     setModeFlip(direction)
     setWheelchairMode(direction === 'enter')
     window.setTimeout(() => {
