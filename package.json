@@ -50,7 +50,7 @@
     "@types/yauzl": "^3.4.0",
     "@types/yazl": "^3.3.1",
     "@vitejs/plugin-react": "^6.0.5",
-    "electron": "^43.4.0",
+    "electron": "^44.1.1",
     "electron-builder": "^26.15.3",
     "jsdom": "^27.4.0",
     "typescript": "^7.0.2",
