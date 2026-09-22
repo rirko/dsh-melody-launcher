@@ -14,6 +14,7 @@
   <repository name="whiteguo233/dsh-openbiliclaw" branch="main" updated="2026-08-23T08:33:26Z" tags="plugin,skill"/>
   <repository name="HuanLinOTO/dsh-plugin-anti-ads" branch="master" updated="2026-08-17T02:18:27Z" tags="plugin"/>
   <repository name="yjh051108/dsh-routing-suite" branch="main" updated="2026-08-22T09:05:29Z" tags="plugin,preset"/>
+  <repository name="PeterTXPan/dsh-unreal-mcp" branch="main" updated="2026-09-19T01:31:39Z" tags="plugin,skill"/>
   <repository name="zhu1090093659/dsh-web-ui" branch="dev" updated="2026-08-22T09:02:17Z" tags="plugin,skill"/>
   <repository name="edison7009/EchoBird" branch="main" updated="2026-08-22T08:47:29Z" tags="invalid"/>
   <repository name="EverMind-AI/EverOS" branch="main" updated="2026-08-22T08:40:58Z" tags="plugin,skill"/>
