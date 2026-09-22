@@ -52,10 +52,12 @@
   <repository name="banttethai-ops/dsh-right-editor" branch="main" updated="2026-08-24T08:59:58Z" tags="plugin"/>
   <repository name="xiaoxianyu-office/dsh-router-flash" branch="main" updated="2026-09-14T01:24:07Z" tags="plugin"/>
   <repository name="yjh051108/dsh-routing-suite" branch="main" updated="2026-09-21T23:49:54Z" tags="plugin"/>
+  <repository name="AKS1st/dsh-skill-manager" branch="main" updated="2026-09-11T20:44:50Z" tags="plugin"/>
   <repository name="xiaoxianyu-office/dsh-skills-manager" branch="main" updated="2026-09-11T20:44:56Z" tags="plugin"/>
   <repository name="lihang-lh/dsh-task-panel" branch="main" updated="2026-09-18T08:20:35Z" tags="plugin"/>
   <repository name="suimi8/dsh-test-runner" branch="main" updated="2026-09-12T00:40:47Z" tags="plugin"/>
   <repository name="MashedPotato817/dsh-tool-browser" branch="main" updated="2026-08-28T08:04:23Z" tags="invalid"/>
+  <repository name="omdsh-dev/dsh-tool-browser" branch="main" updated="2026-09-12T14:40:17Z" tags="invalid"/>
   <repository name="TQSY114514/dsh-ui-appearance" branch="main" updated="2026-09-20T04:52:59Z" tags="plugin"/>
   <repository name="dream-num/dsh-univer-office" branch="main" updated="2026-09-22T01:52:46Z" tags="plugin,skill"/>
   <repository name="zhu1090093659/dsh-web-ui" branch="dev" updated="2026-08-22T09:02:17Z" tags="plugin,skill"/>
