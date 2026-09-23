@@ -17,19 +17,19 @@
   <repository name="vibeinging/dsh-desktop" branch="dev" updated="2026-09-21T20:29:20Z" tags="plugin"/>
   <repository name="loudMore/dsh-drop-to-path" branch="main" updated="2026-09-18T12:51:39Z" tags="plugin"/>
   <repository name="yangshen830-eng/dsh-editor" branch="main" updated="2026-09-22T08:26:19Z" tags="plugin"/>
-  <repository name="yangdcm/dsh-expert-team" branch="main" updated="2026-09-21T14:40:01Z" tags="plugin,skill"/>
+  <repository name="yangdcm/dsh-expert-team" branch="main" updated="2026-09-23T03:12:42Z" tags="plugin,skill"/>
   <repository name="lijian-ui/dsh-file-manager" branch="main" updated="2026-09-22T08:24:48Z" tags="plugin"/>
   <repository name="FylarOpen/dsh-fylar-office-editor" branch="main" updated="2026-09-22T02:47:30Z" tags="plugin"/>
-  <repository name="chenw2759-wq/dsh-IDE" branch="main" updated="2026-09-22T02:08:14Z" tags="plugin"/>
+  <repository name="chenw2759-wq/dsh-IDE" branch="main" updated="2026-09-22T03:25:22Z" tags="plugin"/>
   <repository name="xiaoxianyu-office/dsh-image-tools" branch="main" updated="2026-09-12T05:40:20Z" tags="plugin"/>
   <repository name="dsh-market/dsh-market" branch="main" updated="2026-09-22T08:51:00Z" tags="plugin"/>
-  <repository name="PerryLink/dsh-mcp-panel" branch="main" updated="2026-09-22T03:14:51Z" tags="plugin"/>
+  <repository name="PerryLink/dsh-mcp-panel" branch="main" updated="2026-09-23T03:24:49Z" tags="plugin"/>
   <repository name="yakoylp/dsh-md-convert" branch="main" updated="2026-09-12T07:19:40Z" tags="plugin"/>
   <repository name="ly6170/dsh-messager" branch="main" updated="2026-09-22T02:42:39Z" tags="plugin"/>
   <repository name="Leawind/dsh-minecraft-dev" branch="main" updated="2026-08-15T19:30:41Z" tags="skill"/>
   <repository name="CodermanYHZ/dsh-node-flow" branch="main" updated="2026-09-22T08:31:49Z" tags="plugin"/>
   <repository name="didclawapp-ai/DSH-Office" branch="main" updated="2026-09-12T14:38:45Z" tags="plugin"/>
-  <repository name="Fayelin12/dsh-office" branch="main" updated="2026-09-16T03:29:21Z" tags="plugin"/>
+  <repository name="Fayelin12/dsh-office" branch="main" updated="2026-09-22T03:01:26Z" tags="plugin"/>
   <repository name="jiazekang/dsh-office" branch="main" updated="2026-09-17T07:12:15Z" tags="plugin"/>
   <repository name="omdsh-dev/dsh-office" branch="main" updated="2026-09-19T15:04:43Z" tags="plugin,skill"/>
   <repository name="wwumit/dsh-office" branch="main" updated="2026-08-27T07:00:32Z" tags="plugin"/>
@@ -44,9 +44,9 @@
   <repository name="cnkids/dsh-office-toolkit" branch="main" updated="2026-09-20T16:05:28Z" tags="plugin"/>
   <repository name="kw78/dsh-office-tools" branch="main" updated="2026-09-19T15:50:33Z" tags="plugin"/>
   <repository name="violetdream/dsh-officecli" branch="main" updated="2026-09-20T15:52:54Z" tags="plugin"/>
-  <repository name="xiazhi88/dsh-onecompany" branch="main" updated="2026-09-21T11:43:21Z" tags="plugin"/>
+  <repository name="xiazhi88/dsh-onecompany" branch="main" updated="2026-09-22T02:55:42Z" tags="plugin"/>
   <repository name="whiteguo233/dsh-openbiliclaw" branch="main" updated="2026-08-23T08:33:26Z" tags="plugin,skill"/>
-  <repository name="kevin-luo/dsh-org-panel" branch="main" updated="2026-09-12T14:39:36Z" tags="plugin"/>
+  <repository name="kevin-luo/dsh-org-panel" branch="main" updated="2026-09-22T02:56:07Z" tags="plugin"/>
   <repository name="HuanLinOTO/dsh-plugin-anti-ads" branch="master" updated="2026-08-17T02:18:27Z" tags="plugin"/>
   <repository name="HuanLinOTO/dsh-plugin-better-sidebar-plugin-office" branch="master" updated="2026-09-19T09:00:14Z" tags="plugin"/>
   <repository name="banttethai-ops/dsh-right-editor" branch="main" updated="2026-08-24T08:59:58Z" tags="plugin"/>
@@ -54,8 +54,8 @@
   <repository name="yjh051108/dsh-routing-suite" branch="main" updated="2026-09-21T23:49:54Z" tags="plugin"/>
   <repository name="AKS1st/dsh-skill-manager" branch="main" updated="2026-09-11T20:44:50Z" tags="plugin"/>
   <repository name="xiaoxianyu-office/dsh-skills-manager" branch="main" updated="2026-09-11T20:44:56Z" tags="plugin"/>
-  <repository name="lihang-lh/dsh-task-panel" branch="main" updated="2026-09-18T08:20:35Z" tags="plugin"/>
-  <repository name="suimi8/dsh-test-runner" branch="main" updated="2026-09-12T00:40:47Z" tags="plugin"/>
+  <repository name="lihang-lh/dsh-task-panel" branch="main" updated="2026-09-22T03:19:16Z" tags="plugin"/>
+  <repository name="suimi8/dsh-test-runner" branch="main" updated="2026-09-22T03:21:42Z" tags="plugin"/>
   <repository name="MashedPotato817/dsh-tool-browser" branch="main" updated="2026-09-22T02:43:33Z" tags="invalid"/>
   <repository name="omdsh-dev/dsh-tool-browser" branch="main" updated="2026-09-12T14:40:17Z" tags="invalid"/>
   <repository name="TQSY114514/dsh-ui-appearance" branch="main" updated="2026-09-22T08:37:00Z" tags="plugin"/>
@@ -70,7 +70,7 @@
   <repository name="walkinglabs/learn-harness-engineering" branch="main" updated="2026-08-22T09:04:01Z" tags="skill"/>
   <repository name="MemTensor/MemOS" branch="main" updated="2026-08-22T09:09:32Z" tags="skill"/>
   <repository name="strukto-ai/mirage" branch="main" updated="2026-08-22T08:58:13Z" tags="plugin,skill"/>
-  <repository name="liustack/modlens" branch="main" updated="2026-09-22T03:13:47Z" tags="plugin,skill"/>
+  <repository name="liustack/modlens" branch="main" updated="2026-09-23T05:25:36Z" tags="plugin,skill"/>
   <repository name="nexu-io/open-design" branch="main" updated="2026-08-22T16:44:58Z" tags="plugin"/>
   <repository name="whiteguo233/OpenBiliClaw" branch="main" updated="2026-08-24T13:05:57Z" tags="skill"/>
   <repository name="ZSeven-W/openpencil" branch="main" updated="2026-08-22T08:12:58Z" tags="invalid"/>
