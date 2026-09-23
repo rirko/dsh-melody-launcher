@@ -23,7 +23,7 @@
   <repository name="MemTensor/MemOS" branch="main" updated="2026-08-22T09:09:32Z" tags="skill"/>
   <repository name="strukto-ai/mirage" branch="main" updated="2026-08-22T08:58:13Z" tags="plugin,skill"/>
   <repository name="liustack/modlens" branch="main" updated="2026-08-22T08:32:36Z" tags="plugin,skill"/>
-  <repository name="nexu-io/open-design" branch="main" updated="2026-08-22T16:44:58Z" tags="plugin"/>
+  <repository name="nexu-io/open-design" branch="main" updated="2026-09-23T10:15:44Z" tags="plugin"/>
   <repository name="whiteguo233/OpenBiliClaw" branch="main" updated="2026-08-24T13:05:57Z" tags="skill"/>
   <repository name="ZSeven-W/openpencil" branch="main" updated="2026-08-22T08:12:58Z" tags="invalid"/>
   <repository name="volcengine/OpenViking" branch="main" updated="2026-08-22T09:08:06Z" tags="plugin,skill"/>
