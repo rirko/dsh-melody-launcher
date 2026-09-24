@@ -42,6 +42,8 @@ import { extractPackBodiesFromPath, extractPresetBodiesFromPath, findManifestInA
 import { validateFullArchive } from './profile-repository-import'
 import { cleanPackNameHint, extractRawPluginBodiesFromPath, extractRawPresetSourcesFromPath, extractRawSkillSourcesFromPath, scanRawPackZipFromPath, type ExtractByteBudget } from './pack-scan'
 import { buildPackExportToFile } from './pack-export'
+import { exportStandalonePlugin } from './standalone-plugin'
+import type { StandaloneNativeRuntime } from './standalone-plugin-native'
 import {
   readPackRegistry,
   removePackRecord,
@@ -59,8 +61,8 @@ import { readPluginReceipts, removePluginReceipt, type PluginInstallReceipt } fr
 import { readPresetReceipts, type PresetInstallReceipt } from './preset-receipts'
 import { readSkillReceipts, type SkillInstallReceipt } from './skill-receipts'
 import { createProfileSnapshot, restoreProfileSnapshot, type ProfileSnapshot } from './ai-install'
-import { isSafePackageName, isSafeProfileName, reorderPlugins } from './profile'
-import { ensureProfileCoreBundles, readProfileMetadata, writeProfileMetadata } from './profile-service'
+import { isSafePackageName, isSafeProfileName, removePluginFromProfile, reorderPlugins, repositoryFullNameFromSpecifier } from './profile'
+import { deleteProfile, ensureProfileCoreBundles, ensureProfileWorkspaceConfig, readProfileMetadata, switchProfile, writeProfileMetadata, type ProfileService } from './profile-service'
 import { readPackManifest, removePackManifest, writePackManifest } from './pack-manifest-store'
 
 /** 扩展 PluginInstallTarget：携带 GitHub 仓库名，供 github / npm 源重建安装目标。 */
@@ -113,6 +115,8 @@ export interface PackManagerOptions {
     toggle?(id: string, enabled: boolean): Promise<InstalledApplicationAddon[]>
   }
   installer: InstallInstaller
+  /** Probe the selected installed Node without downloading a runtime. */
+  nativeRuntime?: () => Promise<StandaloneNativeRuntime>
   emitOutput?: (level: 'info' | 'error' | 'success', text: string) => void
   emitEvent: (event: PackProgressEvent) => void
   isRuntimeRunning: () => boolean
@@ -121,6 +125,7 @@ export interface PackManagerOptions {
   dshHome?: string
   /** 新运行态：把每个整合包 id materialize 为 Profile。 */
   unifiedProfiles?: boolean
+  profiles?: Pick<ProfileService, 'switch' | 'remove'>
 }
 
 export interface PackManager {
@@ -182,31 +187,45 @@ function assertSafePackId(packId: string): void {
 }
 
 export function createPackManager(options: PackManagerOptions): PackManager {
+  // Legacy mode is only an explicit compatibility adapter. New callers use
+  // Profile files, never packs.json, as their configuration source.
+  options = { ...options, unifiedProfiles: options.unifiedProfiles ?? true }
   let active = false
   let snapshot: ProfileSnapshot | null = null
-  /** 兼容旧快照字段；共享 Profile 模式下始终为 false。 */
+  /** Whether rollback should remove a Profile created by this import. */
   let profileWasNew = false
   const manifestRoot = options.manifestRoot ?? path.join(path.dirname(options.registryPath), 'pack-manifests')
   const baselinePath = path.join(manifestRoot, 'default-state.json')
 
-  async function ensureUnifiedProfile(dshHome: string, profileName: string, sourceProfileName: string, metadata: { description?: string; dshVersion?: string | null; source?: 'zip' | 'yaml' | 'local' | 'github' }): Promise<void> {
+  async function ensureUnifiedProfile(dshHome: string, profileName: string, metadata: { description?: string; dshVersion?: string | null; source?: 'zip' | 'yaml' | 'local' | 'github' }): Promise<void> {
     const target = path.join(dshHome, 'profiles', profileName)
     if (!existsSync(target)) await mkdir(target, { recursive: true })
-    const source = path.join(dshHome, 'profiles', sourceProfileName)
-    for (const file of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml']) {
-      const sourceFile = path.join(source, file)
-      const targetFile = path.join(target, file)
-      if (!existsSync(targetFile) && existsSync(sourceFile)) await cp(sourceFile, targetFile)
-    }
     if (!existsSync(path.join(target, 'package.json'))) {
       await writeFile(path.join(target, 'package.json'), `${JSON.stringify({ name: `dsh-profile-${profileName}`, private: true, dependencies: {}, dsh: { profile: { bundles: [] } } }, null, 2)}\n`, 'utf8')
     }
+    await ensureProfileWorkspaceConfig(target)
     await ensureProfileCoreBundles(target)
     await writeProfileMetadata(dshHome, profileName, {
       description: metadata.description ?? '',
       dshVersion: metadata.dshVersion ?? null,
       source: metadata.source === 'github' ? { kind: 'github', repository: '' } : metadata.source === 'zip' || metadata.source === 'yaml' ? { kind: 'import', format: metadata.source } : { kind: 'local' },
     })
+  }
+
+  async function prepareImportedProfile(dshHome: string, profileName: string, metadata: Parameters<typeof ensureUnifiedProfile>[2], overwrite?: boolean): Promise<void> {
+    const directory = path.join(dshHome, 'profiles', profileName)
+    profileWasNew = Boolean(options.unifiedProfiles && !existsSync(directory))
+    snapshot = await createProfileSnapshot(dshHome, profileName, options.snapshotRoot)
+    options.emitEvent({ kind: 'snapshot' })
+    if (!options.unifiedProfiles) return
+    if (overwrite) {
+      await mkdir(directory, { recursive: true })
+      await writeFile(path.join(directory, 'package.json'), `${JSON.stringify({ name: `dsh-profile-${profileName}`, private: true, dependencies: {}, dsh: { profile: { bundles: [] } } }, null, 2)}\n`, 'utf8')
+      // The previous declarations and resolution are recoverable from the
+      // snapshot. An imported replacement must not retain their dependencies.
+      await rm(path.join(directory, 'pnpm-lock.yaml'), { force: true })
+    }
+    await ensureUnifiedProfile(dshHome, profileName, metadata)
   }
 
   type BaselineState = {
@@ -226,6 +245,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
     records: PackRecord[],
     importOptions?: PackImportOptions,
   ): Promise<string> {
+    assertSafePackId(baseId)
     const occupied = (candidate: string) => records.some(record => record.id === candidate)
       || existsSync(path.join(dshHome, 'profiles', candidate))
     if (importOptions?.overwrite) {
@@ -306,6 +326,16 @@ export function createPackManager(options: PackManagerOptions): PackManager {
   async function applyPluginSet(profileName: string, desired: PackInstalledPlugin[], order: string[]): Promise<ProfileState> {
     const dshHome = await getDshHome()
     let profile = await options.installer.readProfile(dshHome, profileName)
+    if (options.unifiedProfiles) {
+      for (const item of desired) {
+        const plugin = profile.plugins.find(candidate => candidate.packageName === item.packageName)
+        if (plugin && !plugin.builtin && !plugin.declaredInProfile && !plugin.enabled) {
+          // Selecting a shared plugin makes it a dependency of this Profile,
+          // even when the selected environment leaves it disabled.
+          profile = await options.installer.togglePlugin(dshHome, profileName, item.packageName, true)
+        }
+      }
+    }
     const desiredSet = new Set(desired.filter(item => item.enabled).map(item => item.packageName))
     for (const plugin of profile.plugins) {
       if (plugin.builtin) continue
@@ -375,6 +405,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
   }
 
   async function writeRecordManifest(record: PackRecord, sourceManifest?: PackManifest): Promise<void> {
+    if (options.unifiedProfiles) return
     const existing = sourceManifest ?? await readPackManifest(manifestRoot, record.id)
     const existingPlugins = new Map((existing?.plugins ?? []).map(item => [item.packageName, item]))
     const dshVersion = isValidPackDshVersion(record.dshVersion)
@@ -456,13 +487,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
       await options.installer.installPluginTarget(target)
       return
     }
-    await options.installer.installPluginTarget({
-      repository: target.repository ?? `npm:${target.packageName}`,
-      defaultBranch: target.defaultBranch ?? 'main',
-      targetId: target.targetId ?? target.id,
-      commit: target.commit || undefined,
-      version: target.version ?? undefined,
-    } as PackInstallTarget, target.profileName)
+    await options.installer.installPluginTarget(target, target.profileName)
   }
 
   function guarded(): string | null {
@@ -473,31 +498,62 @@ export function createPackManager(options: PackManagerOptions): PackManager {
     })
   }
 
-  async function findRecord(packId: string): Promise<PackRecord> {
+  async function findRecord(packId: string, currentProfile?: ProfileState): Promise<PackRecord> {
     assertSafePackId(packId)
-    const records = await readPackRegistry(options.registryPath)
-    const record = records.find(item => item.id === packId)
-    if (record) return record
     if (options.unifiedProfiles) {
       const dshHome = await getDshHome()
-      const profile = await options.installer.readProfile(dshHome, packId)
+      const profile = currentProfile ?? await options.installer.readProfile(dshHome, packId)
       if (profile.initialized) {
         const metadata = await readProfileMetadata(dshHome, packId)
         return {
           id: packId,
-          name: metadata.name,
+          name: metadata.packName ?? metadata.name,
           description: metadata.description,
-          version: '1.0.0',
+          version: metadata.version ?? '1.0.0',
           ...(metadata.dshVersion ? { dshVersion: metadata.dshVersion } : {}),
           source: metadata.source?.kind === 'import' && metadata.source.format === 'zip' ? 'zip' : metadata.source?.kind === 'import' && metadata.source.format === 'yaml' ? 'manifest' : 'created',
           installedAt: metadata.createdAt,
           updatedAt: metadata.updatedAt,
-          state: 'complete',
-          plugins: profile.plugins.filter(plugin => !plugin.builtin).map(plugin => ({ packageName: plugin.packageName, enabled: plugin.enabled, version: plugin.version })),
+          state: metadata.importState ?? 'complete',
+          plugins: profile.plugins.filter(plugin => !plugin.builtin && (plugin.declaredInProfile || profile.activeBundles.includes(plugin.packageName))).map(plugin => ({ packageName: plugin.packageName, enabled: plugin.enabled, version: plugin.version })),
+          ...metadata.resources,
+          failures: metadata.importFailures?.map(reason => ({ packageName: '', reason })),
         }
       }
+    } else {
+      const record = (await readPackRegistry(options.registryPath)).find(item => item.id === packId)
+      if (record) return record
     }
     throw new Error('整合包不存在。')
+  }
+
+  async function readRecords(): Promise<PackRecord[]> {
+    if (!options.unifiedProfiles) return readPackRegistry(options.registryPath)
+    const dshHome = await getDshHome()
+    const entries = await readdir(path.join(dshHome, 'profiles'), { withFileTypes: true }).catch(() => [])
+    const records: PackRecord[] = []
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !isSafeProfileName(entry.name)) continue
+      const profile = await options.installer.readProfile(dshHome, entry.name)
+      if (profile.initialized) records.push(await findRecord(entry.name, profile))
+    }
+    return records
+  }
+
+  async function saveRecord(record: PackRecord): Promise<void> {
+    if (!options.unifiedProfiles) {
+      await upsertPackRecord(options.registryPath, record)
+      return
+    }
+    await writeProfileMetadata(await getDshHome(), record.id, {
+      packName: record.name,
+      description: record.description,
+      version: record.version,
+      dshVersion: record.dshVersion ?? null,
+      importState: record.state,
+      importFailures: (record.failures ?? []).map(item => item.packageName ? `${item.packageName}：${item.reason}` : item.reason),
+      resources: { presets: record.presets ?? [], skills: record.skills ?? [], applications: record.applications ?? [] },
+    })
   }
 
   function isSelectedProfile(settings: AppSettings, profileName: string): boolean {
@@ -516,31 +572,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
     async listPacks() {
       const settings = await options.readSettings()
       if (options.unifiedProfiles) {
-        const dshHome = await getDshHome()
-        const profileRoot = path.join(dshHome, 'profiles')
-        const names = await readdir(profileRoot, { withFileTypes: true }).catch(() => [])
-        const statuses: PackStatus[] = []
-        for (const entry of names) {
-          if (!entry.isDirectory() || !isSafeProfileName(entry.name)) continue
-          const profile = await options.installer.readProfile(dshHome, entry.name)
-          if (!profile.initialized) continue
-          const metadata = await readProfileMetadata(dshHome, entry.name)
-          const plugins = profile.plugins.filter(plugin => !plugin.builtin).map(plugin => ({ packageName: plugin.packageName, enabled: plugin.enabled, version: plugin.version }))
-          const missing = plugins.filter(plugin => !existsSync(path.join(dshHome, 'profiles', entry.name, 'node_modules', ...plugin.packageName.split('/'))))
-          statuses.push({
-            id: entry.name,
-            name: metadata.name,
-            description: metadata.description,
-            version: '1.0.0',
-            dshVersion: metadata.dshVersion,
-            source: metadata.source?.kind === 'import' && metadata.source.format === 'zip' ? 'zip' : metadata.source?.kind === 'import' && metadata.source.format === 'yaml' ? 'manifest' : 'created',
-            enabled: entry.name === settings.profileName,
-            state: missing.length > 0 ? 'partial' : 'complete',
-            plugins,
-            installedAt: metadata.createdAt,
-            updatedAt: metadata.updatedAt,
-          })
-        }
+        const statuses = (await readRecords()).map(record => toPackStatus(record, settings.profileName))
         return statuses.sort((a, b) => a.name.localeCompare(b.name))
       }
       const records = await readPackRegistry(options.registryPath)
@@ -557,14 +589,15 @@ export function createPackManager(options: PackManagerOptions): PackManager {
       profileWasNew = false
       try {
         const packId = packProfileName(request.name)
-        const existing = await readPackRegistry(options.registryPath)
+        const existing = await readRecords()
         if (existing.some(record => record.id === packId)) throw new Error('整合包已存在。')
 
         const settings = await options.readSettings()
         const dshVersion = await resolvePackDshVersion(settings, request.dshVersion)
         const dshHome = await getDshHome()
         const profileName = settings.profileName
-        if (options.unifiedProfiles) await ensureUnifiedProfile(dshHome, packId, profileName, { description: request.description, dshVersion, source: 'local' })
+        if (options.unifiedProfiles && existsSync(path.join(dshHome, 'profiles', packId))) throw new Error('Profile 已存在。')
+        if (options.unifiedProfiles) await ensureUnifiedProfile(dshHome, packId, { description: request.description, dshVersion, source: 'local' })
         // 确认当前 profile 可读（顺带校验 profile 名），安装来源仍以 receipt 为准。
         await options.installer.readProfile(dshHome, profileName)
 
@@ -664,13 +697,11 @@ export function createPackManager(options: PackManagerOptions): PackManager {
           failures: result.failures.length > 0 ? result.failures : undefined,
         }
         if (options.unifiedProfiles) {
-          // A newly-created Profile starts as a clone so it has the DSH core
-          // links, but its enabled set and order must be independent from the
-          // source Profile. Apply the selected pack state to the new directory
-          // before exposing it through the unified Profile API.
+          // Only explicitly selected plugins become dependencies of the new
+          // Profile. The shared inventory remains available without cloning it.
           await applyPluginSet(packId, record.plugins, record.plugins.map(item => item.packageName))
         }
-        await upsertPackRecord(options.registryPath, record)
+        await saveRecord(record)
         await writeRecordManifest(record)
         const extraParts: string[] = []
         if (installedPresets.length > 0) extraParts.push(`${installedPresets.length} 个预设`)
@@ -735,25 +766,18 @@ export function createPackManager(options: PackManagerOptions): PackManager {
       const packId = packProfileName(manifest.name)
 
       const items: PackAnalysisItem[] = []
-      if (inspection.hasBodies) {
-        // 有 plugin-bodies：按 body 包名逐项列出（全部可离线安装）。
-        for (const packageName of inspection.bodyPackageNames) {
-          items.push(isSafePackageName(packageName)
-            ? { packageName, available: true, offline: true, enabled: manifest.plugins.find(entry => entry.packageName === packageName)?.enabled !== false }
-            : { packageName, available: false, offline: false, reason: '插件名称非法。' })
+      // Bodies provide content, not membership. Mixed lightweight archives
+      // still install every selected entry from the Profile manifest.
+      for (const entry of manifest.plugins) {
+        if (!isSafePackageName(entry.packageName)) {
+          items.push({ packageName: entry.packageName, available: false, offline: false, reason: '插件名称非法。' })
+          continue
         }
-      } else {
-        // manifest-only：按 manifest.plugins 逐项列出；缺 repository 且非 npm 源标不可用。
-        for (const entry of manifest.plugins) {
-          if (!isSafePackageName(entry.packageName)) {
-            items.push({ packageName: entry.packageName, available: false, offline: false, reason: '插件名称非法。' })
-            continue
-          }
-          const available = entry.source === 'npm' || Boolean(entry.repository)
-          items.push(available
-            ? { packageName: entry.packageName, available: true, offline: false, enabled: entry.enabled !== false }
-            : { packageName: entry.packageName, available: false, offline: false, reason: '缺少来源仓库，无法联网安装' })
-        }
+        const offline = inspection.bodyPackageNames.includes(entry.packageName)
+        const available = offline || entry.source === 'npm' || Boolean(entry.repository)
+        items.push(available
+          ? { packageName: entry.packageName, available: true, offline, enabled: entry.enabled !== false }
+          : { packageName: entry.packageName, available: false, offline: false, reason: '缺少来源仓库，无法联网安装' })
       }
       for (const preset of manifest.presets ?? []) {
         const offline = inspection.presetBodyNames.includes(preset.name)
@@ -804,10 +828,10 @@ export function createPackManager(options: PackManagerOptions): PackManager {
       let presetStaging: string | null = null
       let presetBodiesDir: string | null = null
       try {
-        // 本地 YAML 是轻量清单格式：只安装清单引用的插件到共享 Profile，不创建包目录。
+        // YAML and ZIP both materialize an independent Profile from their manifest.
         if (/\.ya?ml$/i.test(filePath)) {
           const manifest = parsePackManifest(await readFile(filePath, 'utf8'), { requireDshVersion: true })
-          const existing = await readPackRegistry(options.registryPath)
+          const existing = await readRecords()
           const dshHome = await getDshHome()
           const packId = await resolveImportedProfileId(
             packProfileName(importOptions?.name ?? manifest.name),
@@ -817,12 +841,8 @@ export function createPackManager(options: PackManagerOptions): PackManager {
           )
           const settings = await options.readSettings()
           const profileName = options.unifiedProfiles ? packId : settings.profileName
-          if (options.unifiedProfiles) await ensureUnifiedProfile(dshHome, profileName, settings.profileName, { description: manifest.description, dshVersion: manifest.dshVersion, source: 'yaml' })
+          await prepareImportedProfile(dshHome, profileName, { description: manifest.description, dshVersion: manifest.dshVersion, source: 'yaml' }, importOptions?.overwrite)
           const profileBeforeInstall = await options.installer.readProfile(dshHome, profileName)
-          if (importOptions?.overwrite && options.unifiedProfiles) {
-            snapshot = await createProfileSnapshot(dshHome, profileName, options.snapshotRoot)
-            options.emitEvent({ kind: 'snapshot' })
-          }
           const requested = items && items.length > 0 ? new Set(items) : null
           const selected = manifest.plugins.filter(entry => !requested || requested.has(entry.packageName))
           const installables: InstallableItem[] = selected.map(entry => {
@@ -846,7 +866,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
             .filter(entry => installed.includes(entry.packageName))
             .map(entry => entry.packageName)
           if (options.unifiedProfiles) {
-            // Installation appends bundles to a cloned Profile. Restore the
+            // Installation appends bundles to the Profile. Restore the
             // imported manifest order explicitly after all installs finish.
             await applyPluginSet(
               profileName,
@@ -870,7 +890,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
             plugins: installedPluginNames.map(packageName => ({ packageName, enabled: manifest.plugins.find(entry => entry.packageName === packageName)?.enabled !== false })),
             failures: result.failures.length > 0 ? result.failures : undefined,
           }
-          await upsertPackRecord(options.registryPath, record)
+          await saveRecord(record)
           await writeRecordManifest(record, manifest)
           options.emitEvent({ kind: 'done', result })
           return result
@@ -888,13 +908,13 @@ export function createPackManager(options: PackManagerOptions): PackManager {
           const nameHint = cleanPackNameHint(path.basename(filePath)) ?? cleanPackNameHint(scan.topName ?? '') ?? ''
           const packName = (importOptions?.name ?? '').trim() || nameHint
           if (!packName) throw new Error('无法确定整合包名称，请在预览中手动命名。')
-          const existing = await readPackRegistry(options.registryPath)
+          const existing = await readRecords()
           const dshHome = await getDshHome()
           const packId = await resolveImportedProfileId(assertMeaningfulPackName(packName), dshHome, existing, importOptions)
           const settings = await options.readSettings()
           const dshVersion = await resolvePackDshVersion(settings)
           const profileName = options.unifiedProfiles ? packId : settings.profileName
-          if (options.unifiedProfiles) await ensureUnifiedProfile(dshHome, profileName, settings.profileName, { description: `非标准整合包：${packName}`, dshVersion, source: 'zip' })
+          await prepareImportedProfile(dshHome, profileName, { description: `非标准整合包：${packName}`, dshVersion, source: 'zip' }, importOptions?.overwrite)
           const profileBeforeInstall = await options.installer.readProfile(dshHome, profileName)
           // items 缺省 = 全装；插件名、技能名、预设名各自独立过滤（理论上可能撞名）。
           const wantedPlugins = scan.plugins.filter(plugin => !items || items.includes(plugin.packageName))
@@ -902,8 +922,6 @@ export function createPackManager(options: PackManagerOptions): PackManager {
           const wantedPresets = scan.presets.filter(preset => !items || items.includes(preset.name))
 
           options.emitEvent({ kind: 'status', message: `正在扫描并导入非标准整合包「${packName}」…` })
-          snapshot = await createProfileSnapshot(dshHome, profileName, options.snapshotRoot)
-          options.emitEvent({ kind: 'snapshot' })
 
           const installables: InstallableItem[] = []
 
@@ -1007,7 +1025,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
             ...(installedPresets.length > 0 ? { presets: installedPresets } : {}),
             failures: result.failures.length > 0 ? result.failures : undefined,
           }
-          await upsertPackRecord(options.registryPath, record)
+          await saveRecord(record)
           await writeRecordManifest(record)
           log('success', `非标准整合包「${packName}」已导入：${installed.length} 项。`)
           options.emitEvent({ kind: 'done', result })
@@ -1023,15 +1041,15 @@ export function createPackManager(options: PackManagerOptions): PackManager {
           // a newer npm/GitHub copy when a body is missing.
           await validateFullArchive(filePath, manifest)
         }
-        const existing = await readPackRegistry(options.registryPath)
+        const existing = await readRecords()
         const dshHome = await getDshHome()
-        const packId = await resolveImportedProfileId(packProfileName(manifest.name), dshHome, existing, importOptions)
+        const packId = await resolveImportedProfileId(packProfileName(importOptions?.name ?? manifest.name), dshHome, existing, importOptions)
         const settings = await options.readSettings()
         const profileName = options.unifiedProfiles ? packId : settings.profileName
-        if (options.unifiedProfiles) await ensureUnifiedProfile(dshHome, profileName, settings.profileName, { description: manifest.description, dshVersion: manifest.dshVersion, source: 'zip' })
+        await prepareImportedProfile(dshHome, profileName, { description: manifest.description, dshVersion: manifest.dshVersion, source: 'zip' }, importOptions?.overwrite)
         const profileBeforeInstall = await options.installer.readProfile(dshHome, profileName)
 
-        // 决定要安装的包名集合：显式 items 优先，否则有 body 按 body，否则按 manifest。
+        // Selection and order always come from the manifest, never the body cache.
         // 插件 / 技能 / 预设 / 应用是独立资源，分开处理。
         const requested = items && items.length > 0 ? items : undefined
         const manifestEntries = new Map(manifest.plugins.map(entry => [entry.packageName, entry]))
@@ -1046,11 +1064,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         const requestedSet = requested ? new Set(requestedItems) : null
         const wantedPlugins = requestedSet
           ? requestedItems.filter(name => !presetNames.has(name) && !skillNames.has(name) && !applicationIds.has(name))
-          : inspection.hasBodies
-            // Archive entry enumeration is not guaranteed to match the
-            // manifest. Use the manifest as the source of display/load order.
-            ? manifest.plugins.map(entry => entry.packageName).filter(name => inspection.bodyPackageNames.includes(name))
-            : manifest.plugins.map(entry => entry.packageName)
+          : manifest.plugins.map(entry => entry.packageName)
         const wantedPresets = requestedSet
           ? requestedItems.filter(name => presetNames.has(name))
           : [...presetNames]
@@ -1064,8 +1078,6 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         const installables: InstallableItem[] = []
 
         options.emitEvent({ kind: 'status', message: `正在导入整合包「${manifest.name}」…` })
-        snapshot = await createProfileSnapshot(dshHome, profileName, options.snapshotRoot)
-        options.emitEvent({ kind: 'snapshot' })
 
         if (inspection.hasBodies) {
           // 本体解到启动器共享缓存：DSH 通过 file: 引用它，任务结束后不得删除。
@@ -1252,7 +1264,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
             installedPluginNames,
           )
         }
-        await upsertPackRecord(options.registryPath, record)
+        await saveRecord(record)
         await writeRecordManifest(record, manifest)
         const extraParts: string[] = []
         if (installedPresetNames.length > 0) extraParts.push(`${installedPresetNames.length} 个预设`)
@@ -1282,25 +1294,33 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         const dshHome = await getDshHome()
         const settings = await options.readSettings()
         const currentProfile = await options.installer.readProfile(dshHome, options.unifiedProfiles ? packId : settings.profileName)
-        let record: PackRecord
-        try {
-          record = await findRecord(packId)
-        } catch (error) {
-          if (!options.unifiedProfiles || settings.profileName !== packId) throw error
-          record = {
-            id: packId,
-            name: packId.replace(/^pack-/, ''),
-            description: '',
-            version: '1.0.0',
-            ...(settings.dshVersion ? { dshVersion: settings.dshVersion } : {}),
-            source: 'created',
-            installedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            state: 'complete',
-            plugins: currentProfile.plugins.filter(plugin => !plugin.builtin).map(plugin => ({ packageName: plugin.packageName, enabled: plugin.enabled })),
+        const record = await findRecord(packId)
+        const exportProfileName = options.unifiedProfiles ? packId : settings.profileName
+        if (exportMode === 'plugin') {
+          const exportRoot = path.join(options.snapshotRoot, 'exports')
+          await mkdir(exportRoot, { recursive: true })
+          exportDir = await mkdtemp(path.join(exportRoot, 'standalone-'))
+          const fileName = `dsh-suite-${exportProfileName.toLowerCase()}-${record.version}.dsh-plugin.zip`
+          const zipPath = path.join(exportDir, fileName)
+          await exportStandalonePlugin({
+            profileDirectory: path.join(dshHome, 'profiles', exportProfileName),
+            version: record.version,
+            dshVersion: record.dshVersion ?? await resolvePackDshVersion(settings),
+            outputPath: zipPath,
+            nativeRuntime: options.nativeRuntime,
+            onProgress: message => {
+              log('info', message)
+              options.emitEvent({ kind: 'status', message })
+            },
+          })
+          return { zipPath, fileName }
+        }
+        for (const plugin of record.plugins) {
+          const installedManifest = await readFile(path.join(dshHome, 'profiles', exportProfileName, 'node_modules', ...plugin.packageName.split('/'), 'package.json'), 'utf8').catch(() => null)
+          if (installedManifest && (JSON.parse(installedManifest) as { dsh?: { standalone?: unknown } }).dsh?.standalone) {
+            throw new Error(`Profile 包含独立插件 ${plugin.packageName}，请分享其原始 .dsh-plugin.zip；暂不支持把独立制品再次嵌入 Profile 压缩包。`)
           }
         }
-        const exportProfileName = options.unifiedProfiles ? packId : settings.profileName
         const receipts = (await readPluginReceipts(options.pluginReceiptsPath))
           .filter(item => item.profileName === exportProfileName && record.plugins.some(plugin => plugin.packageName === item.packageName))
         const presetNames = new Set((record.presets ?? []).map(preset => preset.name))
@@ -1319,29 +1339,44 @@ export function createPackManager(options: PackManagerOptions): PackManager {
           ? normalizePackDshVersion(record.dshVersion)
           : await resolvePackDshVersion(settings)
         const manifest = buildManifestFromReceipts(packId, orderedReceipts, presetReceipts, skillReceipts, applicationAddons, dshVersion)
-        manifest.plugins = manifest.plugins.map((entry) => {
-          const recordPlugin = record.plugins.find(plugin => plugin.packageName === entry.packageName)
-          return { ...entry, enabled: recordPlugin?.enabled ?? true }
-        })
-        // 把没有来源记录、但已安装在本机 Profile 的非内置插件也纳入导出：它们以 local 源 + 本地本体形式离线携带。
-        const manifestPluginNames = new Set(manifest.plugins.map(entry => entry.packageName))
+        manifest.description = record.description
+        manifest.version = record.version
+        const receiptEntries = new Map(manifest.plugins.map(entry => [entry.packageName, entry]))
         const installedPluginsByPackage = new Map(
           currentProfile.plugins
             .filter(plugin => !plugin.builtin)
             .map(plugin => [plugin.packageName, plugin]),
         )
-        for (const plugin of record.plugins) {
-          if (manifestPluginNames.has(plugin.packageName)) continue
+        const profileManifest = options.unifiedProfiles
+          ? JSON.parse(await readFile(currentProfile.manifestPath, 'utf8')) as Record<string, Record<string, string>>
+          : {}
+        const specifiers = { ...profileManifest.peerDependencies, ...profileManifest.devDependencies, ...profileManifest.optionalDependencies, ...profileManifest.dependencies }
+        // Membership, activation and order come only from the target Profile.
+        // Receipts may add provenance, but cannot override its dependency pins.
+        manifest.plugins = record.plugins.map((plugin): PackPluginEntry => {
           const installed = installedPluginsByPackage.get(plugin.packageName)
-          if (!installed) continue
-          manifest.plugins.push({
+          let entry: PackPluginEntry = {
+            ...(receiptEntries.get(plugin.packageName) ?? { source: 'local' as const }),
             packageName: plugin.packageName,
-            source: 'local',
-            version: installed.version,
+            ...(installed?.version && installed.version !== '未知版本' ? { version: installed.version } : {}),
             enabled: plugin.enabled,
-          })
-          manifestPluginNames.add(plugin.packageName)
-        }
+          }
+          const specifier = specifiers[plugin.packageName]?.trim()
+          if (specifier) {
+            const version = specifier.startsWith(`${plugin.packageName}@`) ? specifier.slice(plugin.packageName.length + 1) : specifier
+            const repository = repositoryFullNameFromSpecifier(specifier)
+            if (/^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) {
+              entry = { packageName: plugin.packageName, source: 'npm', version: version.replace(/^v/, ''), enabled: plugin.enabled }
+            } else if (/^(file|link):/.test(specifier)) {
+              entry = { packageName: plugin.packageName, source: 'local', version: entry.version, enabled: plugin.enabled }
+            } else if (repository) {
+              const commit = /#([0-9a-f]{40})(?:$|[&:])/i.exec(specifier)?.[1]
+              const matchesReceipt = entry.source === 'github' && repositoryFullNameFromSpecifier(entry.repository) === repository
+              entry = { ...(matchesReceipt ? entry : {}), packageName: plugin.packageName, source: 'github', repository, commit: commit ?? (matchesReceipt ? entry.commit : undefined), version: entry.version, enabled: plugin.enabled }
+            }
+          }
+          return entry
+        })
         const unresolvedRemote: string[] = []
         manifest.plugins = manifest.plugins.map(entry => {
           const pinned = entry.source === 'npm'
@@ -1357,7 +1392,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
           }
           // A source that cannot be pinned is made self-contained for light
           // exports instead of silently installing a moving @latest/HEAD.
-          return { packageName: entry.packageName, source: 'local', version: entry.version }
+          return { ...entry, source: 'local' }
         })
         if (unresolvedRemote.length > 0) {
           throw new Error(`导出 Profile「${packId}」失败：无法固定插件来源（${unresolvedRemote.join('、')}），且本地没有可携带的插件本体。`)
@@ -1412,11 +1447,9 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         const record = await findRecord(packId)
         const settings = await options.readSettings()
         if (options.unifiedProfiles) {
-          const dshHome = await getDshHome()
-          const profileDir = path.join(dshHome, 'profiles', packId)
-          if (!existsSync(profileDir)) throw new Error(`Profile「${packId}」不存在，请先导入或创建该 Profile。`)
-          const metadata = await readProfileMetadata(dshHome, packId)
-          return options.saveSettings({ ...settings, profileName: packId, dshVersion: metadata.dshVersion, activePackId: null })
+          return options.profiles
+            ? options.profiles.switch(packId)
+            : switchProfile({ ...options, dshHome: await getDshHome() }, packId)
         }
         if (!settings.activePackId) await saveBaseline(await currentBaseline(settings))
         await applyPluginSet(settings.profileName, record.plugins, record.plugins.map(item => item.packageName))
@@ -1448,7 +1481,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
 
     async removePack(packId) {
       const settings = await options.readSettings()
-      const reason = (options.unifiedProfiles ? settings.profileName === packId : settings.activePackId === packId)
+      const reason = (options.unifiedProfiles || settings.activePackId === packId)
         ? guarded()
         : guardPackStart({
             isRuntimeRunning: () => false,
@@ -1460,14 +1493,9 @@ export function createPackManager(options: PackManagerOptions): PackManager {
       try {
         const record = await findRecord(packId)
         if (options.unifiedProfiles) {
-          if (settings.profileName === packId) throw new Error('当前 Profile 不能删除，请先切换到其他 Profile。')
           const dshHome = await getDshHome()
-          await rm(path.join(dshHome, 'profiles', packId), { recursive: true, force: true })
-          await rm(packBodiesDir(dshHome, packId), { recursive: true, force: true }).catch(() => undefined)
-          const profileReceipts = (await readPluginReceipts(options.pluginReceiptsPath)).filter(item => item.profileName === packId)
-          for (const receipt of profileReceipts) {
-            await removePluginReceipt(options.pluginReceiptsPath, packId, receipt.packageName)
-          }
+          if (options.profiles) await options.profiles.remove(packId)
+          else await deleteProfile({ ...options, dshHome, packBodiesRoot: path.join(dshHome, '.dsh-launcher-pack-bodies') }, packId)
         }
         if (isSelectedProfile(settings, packId)) {
           await restoreBaseline(settings)
@@ -1528,9 +1556,10 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         const record = await findRecord(packId)
         const plugins = [...record.plugins.filter(item => item.packageName !== packageName), { packageName, enabled: true }]
         const updated: PackRecord = { ...record, plugins, updatedAt: new Date().toISOString() }
-        await upsertPackRecord(options.registryPath, updated)
+        if (options.unifiedProfiles) await applyPluginSet(packId, updated.plugins, updated.plugins.map(item => item.packageName))
+        await saveRecord(updated)
         await writeRecordManifest(updated)
-        if (isSelectedProfile(settings, packId)) await applyPluginSet(settings.profileName, updated.plugins, updated.plugins.map(item => item.packageName))
+        if (!options.unifiedProfiles && isSelectedProfile(settings, packId)) await applyPluginSet(settings.profileName, updated.plugins, updated.plugins.map(item => item.packageName))
         return toPackStatus(updated, selectedPackKey(settings))
       } catch (error) {
         options.emitEvent({ kind: 'error', message: asErrorMessage(error) })
@@ -1556,7 +1585,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         }
         const presets = [...(record.presets ?? []), { name: presetName, enabled: true }]
         const updated: PackRecord = { ...record, presets, updatedAt: new Date().toISOString() }
-        await upsertPackRecord(options.registryPath, updated)
+        await saveRecord(updated)
         await writeRecordManifest(updated)
         return toPackStatus(updated, selectedPackKey(settings))
       } finally {
@@ -1581,7 +1610,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         }
         const skills = [...(record.skills ?? []), { name: skillName, format: receipt.format, enabled: true }]
         const updated: PackRecord = { ...record, skills, updatedAt: new Date().toISOString() }
-        await upsertPackRecord(options.registryPath, updated)
+        await saveRecord(updated)
         await writeRecordManifest(updated)
         return toPackStatus(updated, selectedPackKey(settings))
       } finally {
@@ -1600,7 +1629,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         const record = await findRecord(packId)
         const skills = (record.skills ?? []).map(item => item.name === skillName ? { ...item, enabled: Boolean(enabled) } : item)
         const updated: PackRecord = { ...record, skills, updatedAt: new Date().toISOString() }
-        await upsertPackRecord(options.registryPath, updated)
+        await saveRecord(updated)
         await writeRecordManifest(updated)
         if (isSelectedProfile(settings, packId)) await options.installer.toggleSkill(skillName, Boolean(enabled))
         return toPackStatus(updated, selectedPackKey(settings))
@@ -1620,7 +1649,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         const record = await findRecord(packId)
         const skills = (record.skills ?? []).filter(item => item.name !== skillName)
         const updated: PackRecord = { ...record, skills: skills.length > 0 ? skills : undefined, updatedAt: new Date().toISOString() }
-        await upsertPackRecord(options.registryPath, updated)
+        await saveRecord(updated)
         await writeRecordManifest(updated)
         if (isSelectedProfile(settings, packId)) await options.installer.toggleSkill(skillName, false)
         return toPackStatus(updated, selectedPackKey(settings))
@@ -1645,7 +1674,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         }
         const applications = [...(record.applications ?? []), { id: addonId, name: addon.name, enabled: true }]
         const updated: PackRecord = { ...record, applications, updatedAt: new Date().toISOString() }
-        await upsertPackRecord(options.registryPath, updated)
+        await saveRecord(updated)
         await writeRecordManifest(updated)
         return toPackStatus(updated, selectedPackKey(settings))
       } finally {
@@ -1666,7 +1695,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         const record = await findRecord(packId)
         const applications = (record.applications ?? []).map(item => item.id === addonId ? { ...item, enabled: Boolean(enabled) } : item)
         const updated: PackRecord = { ...record, applications, updatedAt: new Date().toISOString() }
-        await upsertPackRecord(options.registryPath, updated)
+        await saveRecord(updated)
         await writeRecordManifest(updated)
         return toPackStatus(updated, selectedPackKey(settings))
       } finally {
@@ -1684,7 +1713,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         const record = await findRecord(packId)
         const applications = (record.applications ?? []).filter(item => item.id !== addonId)
         const updated: PackRecord = { ...record, applications: applications.length > 0 ? applications : undefined, updatedAt: new Date().toISOString() }
-        await upsertPackRecord(options.registryPath, updated)
+        await saveRecord(updated)
         await writeRecordManifest(updated)
         if (isSelectedProfile(settings, packId) && options.applicationAddons.toggle) await options.applicationAddons.toggle(addonId, false)
         return toPackStatus(updated, selectedPackKey(settings))
@@ -1704,7 +1733,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         const record = await findRecord(packId)
         const presets = (record.presets ?? []).map(item => item.name === presetName ? { ...item, enabled: Boolean(enabled) } : item)
         const updated: PackRecord = { ...record, presets, updatedAt: new Date().toISOString() }
-        await upsertPackRecord(options.registryPath, updated)
+        await saveRecord(updated)
         await writeRecordManifest(updated)
         if (isSelectedProfile(settings, packId)) await options.installer.togglePreset(presetName, Boolean(enabled))
         return toPackStatus(updated, selectedPackKey(settings))
@@ -1724,7 +1753,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         const record = await findRecord(packId)
         const presets = (record.presets ?? []).filter(item => item.name !== presetName)
         const updated: PackRecord = { ...record, presets: presets.length > 0 ? presets : undefined, updatedAt: new Date().toISOString() }
-        await upsertPackRecord(options.registryPath, updated)
+        await saveRecord(updated)
         await writeRecordManifest(updated)
         if (isSelectedProfile(settings, packId)) await options.installer.togglePreset(presetName, false)
         return toPackStatus(updated, selectedPackKey(settings))
@@ -1744,9 +1773,10 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         const record = await findRecord(packId)
         const plugins = record.plugins.map(item => item.packageName === packageName ? { ...item, enabled: Boolean(enabled) } : item)
         const updated: PackRecord = { ...record, plugins, updatedAt: new Date().toISOString() }
-        await upsertPackRecord(options.registryPath, updated)
+        if (options.unifiedProfiles) await applyPluginSet(packId, updated.plugins, updated.plugins.map(item => item.packageName))
+        await saveRecord(updated)
         await writeRecordManifest(updated)
-        if (isSelectedProfile(settings, packId)) await applyPluginSet(settings.profileName, updated.plugins, updated.plugins.map(item => item.packageName))
+        if (!options.unifiedProfiles && isSelectedProfile(settings, packId)) await applyPluginSet(settings.profileName, updated.plugins, updated.plugins.map(item => item.packageName))
         return toPackStatus(updated, selectedPackKey(settings))
       } finally {
         active = false
@@ -1764,12 +1794,13 @@ export function createPackManager(options: PackManagerOptions): PackManager {
         const record = await findRecord(packId)
         const plugins = record.plugins.filter(item => item.packageName !== packageName)
         const updated: PackRecord = { ...record, plugins, updatedAt: new Date().toISOString() }
-        if (options.unifiedProfiles && isSelectedProfile(settings, packId)) {
-          await options.installer.remove(packageName, settings.profileName)
+        if (options.unifiedProfiles) {
+          await removePluginFromProfile(await getDshHome(), packId, packageName)
+          await removePluginReceipt(options.pluginReceiptsPath, packId, packageName)
         }
-        await upsertPackRecord(options.registryPath, updated)
+        await saveRecord(updated)
         await writeRecordManifest(updated)
-        if (isSelectedProfile(settings, packId)) await applyPluginSet(settings.profileName, updated.plugins, updated.plugins.map(item => item.packageName))
+        if (!options.unifiedProfiles && isSelectedProfile(settings, packId)) await applyPluginSet(settings.profileName, updated.plugins, updated.plugins.map(item => item.packageName))
         return toPackStatus(updated, selectedPackKey(settings))
       } finally {
         active = false

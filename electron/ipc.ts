@@ -90,6 +90,30 @@ export interface IpcDependencies {
   setWindowMode: (mode: WindowMode) => void
 }
 
+export async function resolveLocalPluginBodies(dshHome: string, plugins: PackPluginEntry[], receipts: Awaited<ReturnType<typeof readPluginReceipts>>): Promise<Record<string, string>> {
+  const result: Record<string, string> = {}
+  const root = path.resolve(dshHome)
+  for (const entry of plugins) {
+    // A shared body may fill a local entry, never replace a declared remote target.
+    if (entry.source !== 'local' && (entry.source || entry.repository)) continue
+    const candidates = new Set(receipts.filter(receipt => receipt.packageName === entry.packageName && receipt.source === 'local-directory' && receipt.repository.startsWith('file:')).map(receipt => path.resolve(receipt.repository.slice('file:'.length))))
+    const compatible: string[] = []
+    for (const candidate of candidates) {
+      if (!(candidate === root || candidate.startsWith(`${root}${path.sep}`))) continue
+      try {
+        const packageManifest = JSON.parse(await readFile(path.join(candidate, 'package.json'), 'utf8')) as { name?: unknown; version?: unknown }
+        if (packageManifest.name !== entry.packageName || (entry.version && packageManifest.version !== entry.version)) continue
+        if (!(await stat(candidate)).isDirectory()) continue
+        compatible.push(candidate)
+      } catch {
+        // Stale receipts are ignored; the normal matcher will report a blocker.
+      }
+    }
+    if (compatible.length === 1) result[entry.packageName] = compatible[0]
+  }
+  return result
+}
+
 export function registerIpcHandlers(deps: IpcDependencies): void {
   const { settings, pluginReceiptsPath, launcherAssetsUserData, runtime, installer, launcherUpdater, pluginTrial, aiInstaller, copilot, packManager, githubAuth, applicationAddons, catalogSync, dshMarket, recommendedWebUi, runtimeVersions, profiles, nonstandardPack, apiProbe, installQueue, deepSeekBalance, dshUsageService, newsCachePath, skillsShIndexPath } = deps
   const linkedComponents = createLinkedComponentController({
@@ -118,26 +142,6 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     if (dshMarket.isBusy()) throw new Error('DSH Market 插件操作进行中，请等待完成。')
     if (recommendedWebUi.isBusy()) throw new Error('官方推荐整合包安装进行中，请等待完成。')
     if (runtimeVersions.isBusy()) throw new Error('运行环境版本操作进行中，请等待完成。')
-  }
-
-  const resolveLocalPluginBodies = async (dshHome: string, packageNames: string[], receipts: Awaited<ReturnType<typeof readPluginReceipts>>): Promise<Record<string, string>> => {
-    const result: Record<string, string> = {}
-    const root = path.resolve(dshHome)
-    for (const packageName of packageNames) {
-      const candidates = [...new Map(receipts.filter(receipt => receipt.packageName === packageName && receipt.source === 'local-directory' && receipt.repository.startsWith('file:')).map(receipt => [receipt.repository, receipt])).values()]
-      if (candidates.length !== 1) continue
-      const candidate = path.resolve(candidates[0].repository.slice('file:'.length))
-      if (!(candidate === root || candidate.startsWith(`${root}${path.sep}`))) continue
-      try {
-        const packageManifest = JSON.parse(await readFile(path.join(candidate, 'package.json'), 'utf8')) as { name?: unknown }
-        if (packageManifest.name !== packageName) continue
-        await stat(candidate)
-        result[packageName] = candidate
-      } catch {
-        // Stale receipts are ignored; the normal matcher will report a blocker.
-      }
-    }
-    return result
   }
 
   ipcMain.handle(IPC.settingsGet, () => settings.read())
@@ -309,23 +313,22 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   ipcMain.handle(IPC.profilesExport, async (_event, payload: { profileName: string; mode: string; repositoryPrivate?: boolean }) => {
     assertProfileMutationAvailable()
     if (!payload || typeof payload.profileName !== 'string' || !isSafeProfileName(payload.profileName)) throw new Error('Profile 名称无效。')
-    if (!['light', 'full', 'repository'].includes(payload.mode)) throw new Error('Profile 导出模式无效。')
+    if (!['light', 'full', 'repository', 'plugin'].includes(payload.mode)) throw new Error('Profile 导出模式无效。')
     // PackManager remains the compatibility implementation of the ZIP writer.
     // Its input is now the same profile id, so no second local runtime state is created.
-    const mode = payload.mode as 'light' | 'full' | 'repository'
+    const mode = payload.mode as 'light' | 'full' | 'repository' | 'plugin'
     const { zipPath, fileName } = await packManager.exportPack(payload.profileName, mode)
     if (mode === 'repository') {
       const auth = await githubAuth.getStatus()
       if (!auth.authenticated || !auth.login) throw new Error('仓库化导出需要先登录 GitHub。')
       const currentSettings = await settings.read()
       const existingMetadata = await profiles.metadata(payload.profileName).catch(() => null)
-      const sourceRepository = existingMetadata?.source?.kind === 'github' ? existingMetadata.source.repository : null
-      const sourceBranch = existingMetadata?.source?.kind === 'github' ? existingMetadata.source.branch ?? 'main' : 'main'
-      const repo = sourceRepository
+      const destination = existingMetadata?.exportRepository
+      const repo = destination
         ? {
-            fullName: sourceRepository,
-            htmlUrl: `https://github.com/${sourceRepository}`,
-            defaultBranch: sourceBranch,
+            fullName: destination.repository,
+            htmlUrl: `https://github.com/${destination.repository}`,
+            defaultBranch: destination.branch ?? 'main',
           }
         : await githubAuth.createRepository({
             name: `dsh-profile-${payload.profileName}`,
@@ -339,7 +342,7 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
       // downloads keep the Profile-specific filename for backward compatibility.
       await githubAuth.upsertRepositoryFile(repo.fullName, 'profile.zip', await readFile(zipPath), `更新 Profile ${payload.profileName} 完整包`, repo.defaultBranch)
       await writeProfileMetadata(currentSettings.dshHome, payload.profileName, {
-        source: { kind: 'github', repository: repo.fullName, branch: repo.defaultBranch },
+        exportRepository: { repository: repo.fullName, branch: repo.defaultBranch },
         exportedAt: new Date().toISOString(),
       })
       await rm(path.dirname(zipPath), { recursive: true, force: true }).catch(() => undefined)
@@ -348,7 +351,7 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     const window = deps.getWindow()
     if (!window) return null
     try {
-      const result = await dialog.showSaveDialog(window, { defaultPath: fileName, filters: [{ name: 'Profile / 整合包', extensions: ['zip'] }] })
+      const result = await dialog.showSaveDialog(window, { defaultPath: fileName, filters: [{ name: mode === 'plugin' ? '独立复合插件' : 'Profile / 整合包', extensions: ['zip'] }] })
       if (result.canceled || !result.filePath) return null
       await copyFile(zipPath, result.filePath)
       return result.filePath
@@ -373,13 +376,13 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
         const loaded = await loadProfileRepositoryManifest(githubAuth, importPath)
         const environment = await runtimeVersions.read(false)
         if (!environment.dshInstalled.some(item => item.version === loaded.manifest.dshVersion)) {
-          await runtimeVersions.installDsh(loaded.manifest.dshVersion!)
+          await runtimeVersions.installDsh(loaded.manifest.dshVersion!, { select: false })
         }
         const receipts = await readPluginReceipts(pluginReceiptsPath)
         const manifest = applyReceiptMatches(loaded.manifest, receipts)
         importedPluginNames = new Set(manifest.plugins.map(entry => entry.packageName))
         const dshHome = (await settings.read()).dshHome
-        localPluginBodies = await resolveLocalPluginBodies(dshHome, manifest.plugins.map(entry => entry.packageName), receipts)
+        localPluginBodies = await resolveLocalPluginBodies(dshHome, manifest.plugins, receipts)
         const unresolved = manifest.plugins.filter(entry => ((entry.source === 'npm' && !entry.version) || (entry.source !== 'npm' && (!entry.repository || !entry.commit))) && !localPluginBodies[entry.packageName])
         if (unresolved.length > 0) throw new Error(`来源安装无法匹配插件来源：${unresolved.map(entry => entry.packageName).join('、')}`)
         temporaryRoot = await mkdtemp(path.join(path.dirname(pluginReceiptsPath), 'profile-import-'))
@@ -413,7 +416,7 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     if (!existing) return { ...preview, dshVersionInstalled }
     const current = await settings.read()
     const previous = await readProfile(current.dshHome, existing.id, pluginReceiptsPath)
-    const previousPlugins = previous.plugins.filter(item => !item.builtin)
+    const previousPlugins = previous.plugins.filter(item => !item.builtin && (item.declaredInProfile || item.enabled))
     const incoming = new Map(preview.plugins.map(item => [item.packageName, item]))
     const differences = [...preview.differences]
     for (const item of preview.plugins) {
@@ -442,12 +445,12 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     if (!environment.dshInstalled.some(item => item.version === loaded.manifest.dshVersion)) {
       // Install the exact version before creating the Profile. If this fails,
       // packManager has not created or switched any Profile yet.
-      await runtimeVersions.installDsh(loaded.manifest.dshVersion!)
+      await runtimeVersions.installDsh(loaded.manifest.dshVersion!, { select: false })
     }
     const receipts = await readPluginReceipts(pluginReceiptsPath)
     const manifest = applySelectedMatches(applyReceiptMatches(loaded.manifest, receipts), payload.resolutions, receipts)
     const dshHome = (await settings.read()).dshHome
-    const localPluginBodies = await resolveLocalPluginBodies(dshHome, manifest.plugins.map(entry => entry.packageName), receipts)
+    const localPluginBodies = await resolveLocalPluginBodies(dshHome, manifest.plugins, receipts)
     const unresolved = manifest.plugins.filter(entry => ((entry.source === 'npm' && !entry.version) || (entry.source !== 'npm' && (!entry.repository || !entry.commit))) && !localPluginBodies[entry.packageName])
     if (payload.mode === 'source' && unresolved.length > 0) {
       throw new Error(`来源安装无法匹配插件来源：${unresolved.map(entry => entry.packageName).join('、')}`)
@@ -615,7 +618,7 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
       githubAuth.fetch,
     )
   })
-  ipcMain.handle(IPC.dshMarketLoad, () => dshMarket.load())
+  ipcMain.handle(IPC.dshMarketLoad, (_event, force?: boolean) => dshMarket.load(force === true))
   ipcMain.handle(IPC.dshMarketInstall, async (_event, payload: string | { name: string; profileName?: string; exactVersion?: string }) => {
     const name = typeof payload === 'string' ? payload : payload?.name
     if (typeof name !== 'string' || name.length === 0 || name.length > 200) throw new Error('dsh-market 插件名称无效。')
@@ -658,6 +661,19 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     }
     // 耗时安装走全局下载队列：并发触发自动排队而不是报「正在安装」冲突。
     return installQueue.enqueue('plugin', `安装插件 ${fullName}`, request)
+  })
+  ipcMain.handle(IPC.pluginsImportStandalone, async () => {
+    assertProfileMutationAvailable()
+    if (runtime.isRunning()) throw new Error('请先停止 DSH，再导入独立插件。')
+    const window = deps.getWindow()
+    if (!window) return null
+    const result = await dialog.showOpenDialog(window, {
+      title: '导入独立插件', properties: ['openFile'],
+      filters: [{ name: '独立插件 (.dsh-plugin.zip)', extensions: ['zip'] }],
+    })
+    if (result.canceled || !result.filePaths[0]) return null
+    assertProfileMutationAvailable()
+    return installer.importStandalonePlugin(result.filePaths[0])
   })
   ipcMain.handle(IPC.pluginsUninstall, async (_event, payload: string | (PluginUninstallOptions & { packageName: string })) => {
     assertProfileMutationAvailable()
@@ -1026,7 +1042,7 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   ipcMain.handle(IPC.packsActivate, async (_event, packId: string) => {
     assertProfileMutationAvailable()
     if (!isSafeProfileName(packId)) throw new Error('整合包标识无效。')
-    return packManager.activatePack(packId)
+    return profiles.switch(packId)
   })
 
   ipcMain.handle(IPC.packsDeactivate, () => {

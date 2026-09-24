@@ -50,6 +50,9 @@ import { readSkillReceipts, recordSkillInstall } from './skill-receipts'
 import { isSafePackageName, isSafeProfileName, readProfile, removePluginFromProfile, removeUnusedSharedPluginBodies } from './profile'
 import { gitUnavailableMessage, isGitHostedSpecifier, isGitUnavailableOutput, findGitExecutable, withExecutableDirectoryOnPath, withGitOnPath } from './process'
 import { isNpmVersionUnavailableError } from './npm-install'
+import { findStandalonePluginDirectories } from './standalone-plugin-links'
+import { importStandalonePlugin as importStandaloneArchive } from './standalone-plugin'
+import type { StandaloneNativeRuntime } from './standalone-plugin-native'
 import { buildNetworkEnvironment } from './proxy'
 import { analyzeSkillRepository, analyzeSkillRepositoryFromArchive } from './skill-catalog'
 import { createSkillMarketCacheStore, lookupSkillMarketCache, SKILL_MARKET_CACHE_TTL_MS } from './skill-market-cache'
@@ -137,6 +140,8 @@ function validateNpmVersion(version?: string): string | undefined {
 export interface InstallerOptions {
   readSettings: () => Promise<AppSettings>
   saveSettings: (settings: AppSettings) => Promise<AppSettings>
+  /** Probe the selected installed Node without downloading a runtime. */
+  nativeRuntime?: () => Promise<StandaloneNativeRuntime>
   /** 确保 Node.js 可用；onProgress 用于把下载进度并入安装进度。 */
   prepareNodeRuntime: (onProgress?: (progress: NodeRuntimeProgress) => void) => Promise<NodeRuntime>
   /** 确保 pnpm 可用；DSH 的 plugin 子命令会从 PATH 调用它。 */
@@ -206,6 +211,7 @@ export interface Installer {
     request: { packageName: string; directory: string; repository?: string; commit?: string; version?: string },
     profileOverride?: string,
   ): Promise<RepositoryInstallResult>
+  importStandalonePlugin(archivePath: string): Promise<ProfileState>
   /** 检测一个插件仓库，返回可安装组件清单（带 5 分钟缓存）。 */
   analyzePlugin(fullName: string, defaultBranch: string): Promise<RepositoryAnalysis>
   /** 检测一个 Skill 仓库，返回可安装组件清单（带 5 分钟缓存）。 */
@@ -1093,7 +1099,8 @@ export function createInstaller(options: InstallerOptions): Installer {
     async remove(packageName: string, profileName?: string, removeOptions?: { purgeStore?: boolean }): Promise<ProfileState> {
       if (active) throw new Error(`正在执行 ${active.repository}，请等待当前任务完成。`)
       const settings = await options.readSettings()
-      if (removeOptions?.purgeStore && (!options.packageStoreRoot || !options.purgePnpmStore)) {
+      const standalonePackage = (await findStandalonePluginDirectories(settings.dshHome, packageName)).length > 0
+      if (removeOptions?.purgeStore && !standalonePackage && (!options.packageStoreRoot || !options.purgePnpmStore)) {
         throw new Error('当前安装器未配置可用的受控 pnpm store，无法执行彻底清除。')
       }
       const currentProfile = settings.profileName
@@ -1141,7 +1148,7 @@ export function createInstaller(options: InstallerOptions): Installer {
           } catch {
             // 清理安装回执仍可继续；损坏的 Profile 不应阻塞其他 Profile 的卸载。
           }
-          const installed = profile?.plugins.some(item => item.packageName === packageName && !item.builtin) ?? false
+          const installed = profile?.plugins.some(item => item.packageName === packageName && !item.builtin && (item.declaredInProfile !== false || item.enabled)) ?? false
           const hasReceipt = receiptProfiles.includes(targetProfile)
           const directPackagePath = path.join(
             settings.dshHome,
@@ -1224,13 +1231,13 @@ export function createInstaller(options: InstallerOptions): Installer {
 
         if (failures.length === 0) {
           const removedBody = await removeUnusedSharedPluginBodies(settings.dshHome, packageName)
-          if (removedBody) options.emitOutput('success', `${packageName} 已从共享插件本体池删除。`)
+          if (removedBody) options.emitOutput('success', standalonePackage ? `${packageName} 的独立复合插件本体已删除。` : `${packageName} 已从共享插件本体池删除。`)
           else options.emitOutput('info', `${packageName} 的共享本体仍被其他 Profile 引用，已保留。`)
 
           // pnpm 的 store 是内容寻址缓存，不能按目录名直接删除。只有用户
           // 明确选择“彻底卸载”时才运行离线 prune，让 pnpm 根据所有 Profile
           // 的引用关系回收目标插件及其不再使用的传递依赖。
-          if (removeOptions?.purgeStore && options.packageStoreRoot && options.purgePnpmStore) {
+          if (removeOptions?.purgeStore && !standalonePackage && options.packageStoreRoot && options.purgePnpmStore) {
             try {
               const remainingReceipts = await readPluginReceipts(options.pluginReceiptsPath).catch(() => [])
               const removedSources = await purgeUnusedPluginSources({
@@ -1538,6 +1545,40 @@ export function createInstaller(options: InstallerOptions): Installer {
       } finally {
         active = null
       }
+    },
+
+    async importStandalonePlugin(archivePath) {
+      if (active) throw new Error(`正在执行 ${active.repository}，请等待当前任务完成。`)
+      if (options.isRuntimeRunning()) throw new Error('请先停止 DSH，再导入独立插件。')
+      if (!path.isAbsolute(archivePath)) throw new Error('独立插件文件路径无效。')
+      const repository = 'standalone-plugin'
+      emit({ repository, kind: 'plugin', phase: 'preparing', percent: 5, message: '正在校验独立插件' })
+      try {
+        const settings = await options.readSettings()
+        const result = await importStandaloneArchive({
+          archivePath, dshHome: settings.dshHome, profileName: settings.profileName,
+          pluginReceiptsPath: options.pluginReceiptsPath,
+          nativeRuntime: options.nativeRuntime,
+          hostNodeModules: async version => {
+            const runtimeRoot = dshVersionRoot(settings.dshInstallPath, version)
+            const hostManifest = JSON.parse(await readFile(path.join(runtimeRoot, 'node_modules', '@deepseek-ai', 'dsh', 'package.json'), 'utf8').catch(() => 'null')) as { version?: string } | null
+            if (hostManifest?.version !== version) throw new Error(`请先在运行时管理中安装 DSH ${version}，此独立插件不携带 DSH 宿主。`)
+            if (settings.dshVersion !== version) throw new Error(`独立插件需要 DSH ${version}。请先将当前 Profile 的运行时版本设为 ${version}，再导入。`)
+            return path.join(runtimeRoot, 'node_modules')
+          },
+          onProgress: message => {
+            options.emitOutput('info', message)
+            emit({ repository, kind: 'plugin', phase: 'configuring', percent: 50, message })
+          },
+        })
+        emit({ repository, kind: 'plugin', phase: 'complete', percent: 100, message: '独立插件导入完成' })
+        return result
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '独立插件导入失败'
+        options.emitOutput('error', message)
+        emit({ repository, kind: 'plugin', phase: 'error', percent: currentPercent(0), message })
+        throw error
+      } finally { active = null }
     },
 
     async installLocalPlugin(request, profileOverride) {

@@ -117,18 +117,13 @@ export function SettingsPanels({
   onSkillInstalled,
   onProfileChanged,
   onActivatePack,
-  onDeactivatePack,
   onRemovePack,
   onExportPack,
   onOpenDshFolder,
   onOpenPluginFolder,
   onOpenPath,
 }: SettingsPanelsProps) {
-  const activePack = useMemo(() => {
-    const direct = packs.find(pack => pack.id === settings.profileName)
-    if (direct) return direct
-    return packs.find(pack => pack.id === settings.activePackId) ?? null
-  }, [packs, settings.activePackId, settings.profileName])
+  const activePack = useMemo(() => packs.find(pack => pack.id === settings.profileName) ?? null, [packs, settings.profileName])
 
   const locked = busy !== null || profileMutationLocked
 
@@ -191,7 +186,6 @@ export function SettingsPanels({
               onRefresh={onRefresh}
               onImport={onImportPack}
               onActivate={id => { void onActivatePack(id) }}
-              onDeactivate={() => { void onDeactivatePack() }}
               onExport={id => { void onExportPack(id) }}
               onRemove={id => {
                 if (window.confirm('确定删除这个整合包吗？已导入的独立环境会一并移除。')) void onRemovePack(id)
@@ -413,7 +407,7 @@ function SettingsPluginsTab({
       </div>
       <div className={subView === 'market' ? undefined : 'view-hidden'}>
         <section className="settings-panel">
-          <DshMarketView onProfileChanged={onProfileChanged} />
+          <DshMarketView active={subView === 'market'} profile={profile} onProfileChanged={onProfileChanged} />
         </section>
       </div>
     </div>
@@ -815,7 +809,6 @@ function SettingsPacks({
   onRefresh,
   onImport,
   onActivate,
-  onDeactivate,
   onExport,
   onRemove,
 }: {
@@ -825,7 +818,6 @@ function SettingsPacks({
   onRefresh: () => void
   onImport: () => void
   onActivate: (packId: string) => void
-  onDeactivate: () => void
   onExport: (packId: string) => void
   onRemove: (packId: string) => void
 }) {
@@ -866,11 +858,6 @@ function SettingsPacks({
           )
         })}
       </div>
-      {activePack && (
-        <div className="settings-pack-footer">
-          <button type="button" className="secondary-button" disabled={busy} onClick={onDeactivate}>停用当前整合包</button>
-        </div>
-      )}
     </div>
   )
 }

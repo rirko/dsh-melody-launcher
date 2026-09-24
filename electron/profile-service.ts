@@ -1,17 +1,23 @@
-import { access, cp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { access, cp, lstat, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { setTimeout as delay } from 'node:timers/promises'
 import path from 'node:path'
 import { parse, stringify } from 'yaml'
-import type { AppSettings, ProfileState } from '../src/types'
+import type { AppSettings, ProfileResources, ProfileState } from '../src/types'
 import { readPackRegistry, removePackRecord, type PackRecord } from './pack-registry'
 import { readPluginReceipts, removePluginReceipt } from './plugin-receipts'
 import { readPackManifest, removePackManifest } from './pack-manifest-store'
 import { isDshCorePackage, readProfile, isSafePackageName, isSafeProfileName } from './profile'
+import { findStandalonePluginDirectories, resolveStandalonePluginDirectory } from './standalone-plugin-links'
 
 /** Metadata stored next to the DSH package manifest. It is deliberately not
  * used by DSH itself; package.json remains the runtime source of truth. */
 export interface ProfileMetadata {
   name: string
   description: string
+  version?: string
+  resources?: ProfileResources
+  exportRepository?: { repository: string; branch?: string }
   dshVersion: string | null
   source: ProfileSource | null
   createdAt: string
@@ -98,8 +104,29 @@ function metadataPath(profileDir: string): string {
   return path.join(profileDir, PROFILE_METADATA_FILENAME)
 }
 
+async function writeMetadataFile(profileDir: string, content: string): Promise<void> {
+  const destination = metadataPath(profileDir)
+  const temporary = `${destination}.${randomUUID()}.tmp`
+  try {
+    await writeFile(temporary, content, { encoding: 'utf8', flag: 'wx' })
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await rename(temporary, destination)
+        break
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        // Windows readers can briefly block replacing an otherwise valid file.
+        if (process.platform !== 'win32' || attempt >= 5 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw error
+        await delay(10 * 2 ** attempt)
+      }
+    }
+  } finally {
+    await rm(temporary, { force: true }).catch(() => undefined)
+  }
+}
+
 function profileDirFor(dshHome: string, name: string): string {
-  if (!isSafeProfileName(name)) throw new Error('Profile 名称只能包含字母、数字、点、横线或下划线。')
+  if (!isSafeProfileName(name)) throw new Error('Profile 名称只能包含字母、数字、点、横线或下划线，且不能使用 node_modules 等依赖目录名称。')
   return path.join(dshHome, 'profiles', name)
 }
 
@@ -108,8 +135,35 @@ function defaultMetadata(name: string, dshVersion: string | null = null): Profil
   return { name, description: '', dshVersion, source: null, createdAt: now, updatedAt: now, exportedAt: null }
 }
 
+function normalizeResources(raw: unknown): ProfileResources | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const value = raw as Record<string, unknown>
+  const entries = (items: unknown): Record<string, unknown>[] => Array.isArray(items)
+    ? items.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item))
+    : []
+  return {
+    presets: entries(value.presets).filter(item => typeof item.name === 'string').map(item => ({
+      name: item.name as string,
+      enabled: item.enabled !== false,
+      ...(typeof item.description === 'string' ? { description: item.description } : {}),
+    })),
+    skills: entries(value.skills).filter(item => typeof item.name === 'string' && (item.format === 'bundle' || item.format === 'flat')).map(item => ({
+      name: item.name as string,
+      format: item.format as 'bundle' | 'flat',
+      enabled: item.enabled !== false,
+      ...(typeof item.description === 'string' ? { description: item.description } : {}),
+    })),
+    applications: entries(value.applications).filter(item => typeof item.id === 'string' && typeof item.name === 'string').map(item => ({
+      id: item.id as string,
+      name: item.name as string,
+      enabled: item.enabled !== false,
+    })),
+  }
+}
+
 function normalizeMetadata(raw: unknown, fallbackName: string): ProfileMetadata {
   const value = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
+  const exportRepository = value.exportRepository && typeof value.exportRepository === 'object' ? value.exportRepository as Record<string, unknown> : null
   const source = value.source && typeof value.source === 'object' ? value.source as Record<string, unknown> : null
   const sourceKind = source?.kind
   const normalizedSource: ProfileSource | null = sourceKind === 'github' && typeof source?.repository === 'string'
@@ -123,6 +177,13 @@ function normalizeMetadata(raw: unknown, fallbackName: string): ProfileMetadata 
   return {
     name,
     description: typeof value.description === 'string' ? value.description.slice(0, 500) : '',
+    version: typeof value.version === 'string' ? value.version : undefined,
+    resources: normalizeResources(value.resources),
+    exportRepository: typeof exportRepository?.repository === 'string'
+      ? { repository: exportRepository.repository, ...(typeof exportRepository.branch === 'string' ? { branch: exportRepository.branch } : {}) }
+      : typeof value.exportedAt === 'string' && value.exportedAt.trim() && normalizedSource?.kind === 'github'
+        ? { repository: normalizedSource.repository, ...(normalizedSource.branch ? { branch: normalizedSource.branch } : {}) }
+        : undefined,
     dshVersion: typeof value.dshVersion === 'string' ? value.dshVersion : null,
     source: normalizedSource,
     createdAt: typeof value.createdAt === 'string' ? value.createdAt : new Date(0).toISOString(),
@@ -228,7 +289,7 @@ export async function writeProfileMetadata(dshHome: string, profileName: string,
   const current = await readProfileMetadata(dshHome, profileName)
   const next = normalizeMetadata({ ...current, ...metadata, name: profileName, updatedAt: new Date().toISOString() }, profileName)
   await mkdir(directory, { recursive: true })
-  await writeFile(metadataPath(directory), stringify(next, { lineWidth: 0 }), 'utf8')
+  await writeMetadataFile(directory, stringify(next, { lineWidth: 0 }))
   return next
 }
 
@@ -409,14 +470,15 @@ async function summaryFor(options: ProfileServiceOptions, name: string, selected
   const missingRaw = profile.initialized ? await missingDependencies(profile) : []
   const locallyAvailable = await locallyAvailableDependencies(dshHome, name, missingRaw)
   const missing = missingRaw.filter(packageName => !locallyAvailable.includes(packageName))
+  const plugins = profile.plugins.filter(plugin => !plugin.builtin && !isDshCorePackage(plugin.packageName) && (plugin.declaredInProfile || plugin.enabled))
   return {
     ...metadata,
     id: name,
     profileDir,
     initialized: profile.initialized,
-    pluginCount: profile.plugins.filter(plugin => !plugin.builtin && !isDshCorePackage(plugin.packageName)).length,
-    enabledPluginCount: profile.plugins.filter(plugin => !plugin.builtin && !isDshCorePackage(plugin.packageName) && plugin.enabled).length,
-    disabledPluginCount: profile.disabledCount,
+    pluginCount: plugins.length,
+    enabledPluginCount: plugins.filter(plugin => plugin.enabled).length,
+    disabledPluginCount: plugins.filter(plugin => !plugin.enabled).length,
     missingDependencies: missing,
     hasNodeModules: await exists(path.join(profileDir, 'node_modules')),
     selected,
@@ -430,7 +492,7 @@ export async function listProfiles(options: ProfileServiceOptions): Promise<Prof
   await mkdir(root, { recursive: true })
   const entries = await readdir(root, { withFileTypes: true })
   const names = entries.filter(entry => entry.isDirectory() && isSafeProfileName(entry.name)).map(entry => entry.name)
-  if (!names.includes(current.profileName)) names.push(current.profileName)
+  if (isSafeProfileName(current.profileName) && !names.includes(current.profileName)) names.push(current.profileName)
   // Existing installations predate profile.yaml. Materialize metadata lazily
   // while scanning so every visible Profile is self-contained afterwards.
   for (const name of names) {
@@ -602,6 +664,8 @@ export async function createProfile(options: ProfileServiceOptions, input: Profi
   const sourceMetadata = input.cloneFrom ? await readProfileMetadata(dshHome, input.cloneFrom) : null
   await writeProfileMetadata(dshHome, input.name, {
     description: input.description ?? sourceMetadata?.description ?? '',
+    version: sourceMetadata?.version,
+    resources: sourceMetadata?.resources,
     dshVersion: input.dshVersion ?? sourceMetadata?.dshVersion ?? null,
     source: input.source ?? { kind: 'local' },
     packName: input.packName,
@@ -657,7 +721,17 @@ export async function deleteProfile(options: ProfileServiceOptions, profileName:
   const current = await options.readSettings()
   if (current.profileName === profileName) throw new Error('当前 Profile 不能删除。')
   const dshHome = await homeOf(options)
-  await rm(profileDirFor(dshHome, profileName), { recursive: true, force: true })
+  const directory = profileDirFor(dshHome, profileName)
+  const manifest = await readProfileDependencyManifest(directory)
+  const standalonePackages = new Set<string>()
+  for (const field of PROFILE_DEPENDENCY_FIELDS) {
+    for (const [packageName, reference] of Object.entries(manifest?.[field] ?? {})) {
+      if (typeof reference === 'string' && await resolveStandalonePluginDirectory(dshHome, packageName, reference, directory)) {
+        standalonePackages.add(packageName)
+      }
+    }
+  }
+  await rm(directory, { recursive: true, force: true })
   // Receipts are profile-scoped source metadata. Removing them prevents a
   // later export from accidentally attributing another Profile's repository
   // to this one. The physical pnpm store is deliberately untouched.
@@ -674,8 +748,47 @@ export async function deleteProfile(options: ProfileServiceOptions, profileName:
   // Unified Profiles are the runtime source of truth, but older releases may
   // still have a matching legacy pack registry/manifest. Remove both so a
   // refresh cannot resurrect a deleted Profile under its old pack name.
-  if (options.registryPath) await removePackRecord(options.registryPath, profileName)
+  if (options.registryPath && await exists(options.registryPath)) await removePackRecord(options.registryPath, profileName)
   if (options.manifestRoot) await removePackManifest(options.manifestRoot, profileName)
+  await removeUnreferencedStandaloneBodies(dshHome, standalonePackages)
+}
+
+async function removeUnreferencedStandaloneBodies(dshHome: string, packages: Set<string>): Promise<void> {
+  if (packages.size === 0) return
+  const profilesRoot = path.join(dshHome, 'profiles')
+  const entries = await readdir(profilesRoot, { withFileTypes: true })
+  const unreferenced = new Set(packages)
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !isSafeProfileName(entry.name)) continue
+    const directory = path.join(profilesRoot, entry.name)
+    let manifest: (ProfileDependencyManifest & { dsh?: { profile?: { bundles?: unknown } } }) | null = null
+    try {
+      const value = JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8')) as unknown
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return
+      manifest = value
+    } catch (error) {
+      // Unreadable sibling manifests make ownership uncertain; retain bodies.
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return
+    }
+    for (const packageName of unreferenced) {
+      const declared = PROFILE_DEPENDENCY_FIELDS.some(field => Object.prototype.hasOwnProperty.call(manifest?.[field] ?? {}, packageName))
+      const bundles = manifest?.dsh?.profile?.bundles
+      let linked = false
+      try {
+        await lstat(path.join(directory, 'node_modules', ...packageName.split('/')))
+        linked = true
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return
+      }
+      if (declared || (Array.isArray(bundles) && bundles.includes(packageName)) || linked) unreferenced.delete(packageName)
+    }
+  }
+  // Only marked standalone artifacts are eligible. Normal shared pools stay intact.
+  for (const packageName of unreferenced) {
+    for (const directory of await findStandalonePluginDirectories(dshHome, packageName)) {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
 }
 
 function migratedPackageManifest(profileName: string, record: PackRecord, base?: Record<string, unknown>): Record<string, unknown> {
@@ -715,20 +828,37 @@ function migratedPackageManifest(profileName: string, record: PackRecord, base?:
   }
 }
 
-/** One-time migration. It only creates metadata and backups legacy registry
- * files; it intentionally does not perform network installs during startup. */
+async function legacyBackups(target: string): Promise<string[]> {
+  const prefix = `${path.basename(target)}.legacy.bak`
+  const entries = await readdir(path.dirname(target), { withFileTypes: true }).catch(() => [])
+  return entries.filter(entry => entry.name === prefix || (entry.name.startsWith(`${prefix}.`) && /^\d+$/.test(entry.name.slice(prefix.length + 1))))
+    .map(entry => path.join(path.dirname(target), entry.name))
+}
+
+async function archiveLegacyPath(target: string): Promise<string | null> {
+  if (!await exists(target)) return null
+  const base = `${target}.legacy.bak`
+  let backupPath = base
+  for (let suffix = 1; await exists(backupPath); suffix += 1) backupPath = `${base}.${suffix}`
+  await rename(target, backupPath)
+  return backupPath
+}
+
+/** Legacy data is an import source only. Existing Profile fields always win,
+ * and archived records prevent deleted Profiles from being recreated. */
 export async function migrateLegacyPacks(options: ProfileServiceOptions): Promise<{ migrated: number; backupPath: string | null }> {
   if (!options.registryPath && !options.manifestRoot) return { migrated: 0, backupPath: null }
   let records = options.registryPath ? await readPackRegistry(options.registryPath) : []
   // Some older builds persisted only pack-manifests/*.yaml. Treat those files
   // as the same legacy source and convert them before backing the directory up.
-  if (records.length === 0 && options.manifestRoot && await exists(options.manifestRoot)) {
+  if (options.manifestRoot && await exists(options.manifestRoot)) {
     const entries = await readdir(options.manifestRoot, { withFileTypes: true }).catch(() => [])
     const manifestRecords: PackRecord[] = []
     for (const entry of entries) {
       if (!entry.isFile() || !entry.name.endsWith('.yaml')) continue
       const id = entry.name.slice(0, -'.yaml'.length)
       if (!isSafeProfileName(id)) continue
+      if (records.some(record => record.id === id)) continue
       const manifest = await readPackManifest(options.manifestRoot, id).catch(() => null)
       if (!manifest) continue
       manifestRecords.push({
@@ -746,9 +876,21 @@ export async function migrateLegacyPacks(options: ProfileServiceOptions): Promis
         ...(manifest.presets?.length ? { presets: manifest.presets.map(preset => ({ name: preset.name, enabled: true })) } : {}),
       })
     }
-    records = manifestRecords
+    records = [...records, ...manifestRecords]
   }
-  if (records.length === 0) return { migrated: 0, backupPath: null }
+  const archivedIds = new Set<string>()
+  if (options.registryPath) {
+    for (const backup of await legacyBackups(options.registryPath)) {
+      for (const record of await readPackRegistry(backup)) archivedIds.add(record.id)
+    }
+  }
+  if (options.manifestRoot) {
+    for (const backup of await legacyBackups(options.manifestRoot)) {
+      for (const entry of await readdir(backup, { withFileTypes: true }).catch(() => [])) {
+        if (entry.isFile() && entry.name.endsWith('.yaml')) archivedIds.add(entry.name.slice(0, -'.yaml'.length))
+      }
+    }
+  }
   let migrated = 0
   const settings = await options.readSettings()
   let baseManifest: Record<string, unknown> | undefined
@@ -761,15 +903,34 @@ export async function migrateLegacyPacks(options: ProfileServiceOptions): Promis
   const activeRecord = typeof settings.activePackId === 'string'
     ? records.find(record => record.id === settings.activePackId) ?? null
     : null
-  let activeMappedToCurrent = false
+  const dshHome = await homeOf(options)
   for (const record of records) {
     // The active pack historically described the already-installed Profile.
     // Keep that physical directory and only attach metadata to it instead of
     // creating a second copy that would split the user's runtime state.
     const profileName = activeRecord?.id === record.id ? settings.profileName : record.id
     if (!isSafeProfileName(profileName)) continue
-    const dshHome = await homeOf(options)
     const directory = profileDirFor(dshHome, profileName)
+    if (!await exists(directory) && archivedIds.has(record.id)) continue
+    const legacyMetadata: Partial<ProfileMetadata> = {
+      version: record.version,
+      packName: record.name,
+      resources: { presets: record.presets, skills: record.skills, applications: record.applications },
+      importState: record.state,
+      importFailures: record.failures?.map(failure => `${failure.packageName}: ${failure.reason}`),
+    }
+    if (await exists(metadataPath(directory))) {
+      // Older Profile metadata had no fields for resource ownership. Populate
+      // only absent fields once; never replay old runtime or source settings.
+      const current = await readFile(metadataPath(directory), 'utf8').then(raw => parse(raw) as unknown).catch(() => null)
+      if (!current || typeof current !== 'object' || Array.isArray(current)) continue
+      const additions = Object.fromEntries(Object.entries(legacyMetadata).filter(([key, value]) => value !== undefined && !Object.hasOwn(current, key)))
+      if (Object.keys(additions).length > 0) {
+        await writeMetadataFile(directory, stringify({ ...current, ...additions }, { lineWidth: 0 }))
+        migrated += 1
+      }
+      continue
+    }
     if (!await exists(directory)) await mkdir(directory, { recursive: true })
     if (!await exists(path.join(directory, 'package.json'))) {
       await writeFile(path.join(directory, 'package.json'), `${JSON.stringify(migratedPackageManifest(profileName, record, baseManifest), null, 2)}\n`, 'utf8')
@@ -777,26 +938,20 @@ export async function migrateLegacyPacks(options: ProfileServiceOptions): Promis
     await ensureProfileWorkspaceConfig(directory)
     await ensureProfileCoreBundles(directory)
     await writeProfileMetadata(dshHome, profileName, {
+      ...legacyMetadata,
       description: record.description,
+      createdAt: record.installedAt,
       dshVersion: record.dshVersion ?? null,
       source: record.source === 'zip' || record.source === 'manifest' ? { kind: 'import', format: record.source === 'zip' ? 'zip' : 'yaml' } : { kind: 'local' },
     })
-    if (activeRecord?.id === record.id) activeMappedToCurrent = true
     migrated += 1
   }
-  if (activeMappedToCurrent || (typeof settings.activePackId === 'string' && isSafeProfileName(settings.activePackId))) {
-    // The old active pack is now the selected Profile. Clear the legacy flag
-    // so future runtime decisions only consult settings.profileName. When the
-    // active pack mapped to the existing Profile, preserve that Profile name.
-    await options.saveSettings({ ...settings, profileName: activeMappedToCurrent ? settings.profileName : settings.activePackId!, activePackId: null })
+  if (settings.activePackId) {
+    await options.saveSettings({ ...settings, activePackId: null })
   }
-  const backupPath = options.registryPath ? `${options.registryPath}.legacy.bak` : null
-  if (options.registryPath && backupPath && await exists(options.registryPath) && !await exists(backupPath)) await rename(options.registryPath, backupPath)
-  if (options.manifestRoot && await exists(options.manifestRoot)) {
-    const backupManifestRoot = `${options.manifestRoot}.legacy.bak`
-    if (!await exists(backupManifestRoot)) await rename(options.manifestRoot, backupManifestRoot)
-  }
-  return { migrated, backupPath }
+  const registryBackup = options.registryPath ? await archiveLegacyPath(options.registryPath) : null
+  const manifestBackup = options.manifestRoot ? await archiveLegacyPath(options.manifestRoot) : null
+  return { migrated, backupPath: registryBackup ?? manifestBackup }
 }
 
 export function createProfileService(options: ProfileServiceOptions): ProfileService {

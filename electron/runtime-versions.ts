@@ -259,7 +259,7 @@ export interface RuntimeVersionServiceOptions {
 
 export interface RuntimeVersionService {
   read(refresh?: boolean): Promise<RuntimeEnvironmentState>
-  installDsh(version: string): Promise<RuntimeEnvironmentState>
+  installDsh(version: string, options?: { select?: boolean }): Promise<RuntimeEnvironmentState>
   selectDsh(version: string): Promise<RuntimeEnvironmentState>
   removeDsh(version: string): Promise<RuntimeEnvironmentState>
   installNode(version: string): Promise<RuntimeEnvironmentState>
@@ -414,7 +414,7 @@ const executeTrackedCommand = (
     return readInstalled(settings)
   }
 
-  async function installDsh(version: string): Promise<RuntimeEnvironmentState> {
+  async function installDsh(version: string, installOptions?: { select?: boolean }): Promise<RuntimeEnvironmentState> {
     const normalized = normalizeDshVersion(version)
     if (!validVersion(normalized)) throw new Error('DSH 版本格式无效。')
     return runExclusive(`安装 DSH ${normalized}`, async () => {
@@ -545,7 +545,9 @@ const executeTrackedCommand = (
       const executable = managedDshExecutable(root)
       const status = await getManagedDshStatus(root)
       if (!status.installed || !status.executable) throw new Error(`DSH ${normalized} 安装完成但未找到启动入口。`)
-      await options.saveSettings({ ...settings, dshVersion: normalized, launchExecutable: executable, launchArgs: ['web'] })
+      if (installOptions?.select !== false) {
+        await options.saveSettings({ ...settings, dshVersion: normalized, launchExecutable: executable, launchArgs: ['web'] })
+      }
       options.emitProgress(progressFor(normalized, `DSH ${normalized} 已安装`, 'complete', 100))
       return read(true)
     }).catch(error => {

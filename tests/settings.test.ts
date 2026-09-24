@@ -1,12 +1,17 @@
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import os from 'node:os'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   adoptDetectedDsh,
+  createSettingsStore,
   defaultSettings,
   mergeStoredSettings,
   usesOnDemandDsh,
   validateSettings,
 } from '../electron/settings'
+import { readProfileMetadata, writeProfileMetadata } from '../electron/profile-service'
+import { managedDshExecutable } from '../electron/dsh-install'
 import type { AppSettings } from '../src/types'
 
 const baseSettings: AppSettings = {
@@ -19,6 +24,156 @@ const baseSettings: AppSettings = {
   webPort: 3080,
   openAfterLaunch: true,
 }
+
+const settingsRoots: string[] = []
+afterEach(async () => { await Promise.all(settingsRoots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
+
+async function settingsFixture() {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-settings-profile-'))
+  settingsRoots.push(root)
+  const defaults = defaultSettings({ homeDirectory: root, documentsDirectory: root })
+  const initial: AppSettings = { ...defaults, dshVersion: '0.1.0', launchExecutable: path.join(root, 'runtime', 'dsh'), launchArgs: ['web'] }
+  const filePath = path.join(root, 'settings.json')
+  await writeFile(filePath, JSON.stringify(initial), 'utf8')
+  const store = createSettingsStore({
+    filePath, createDefaults: () => defaults,
+    detectInstalledDsh: async () => ({ installed: false, executable: null, version: null, source: null }),
+  })
+  return { root, initial, filePath, store }
+}
+
+describe('Profile runtime version authority', () => {
+  it('prefers the selected Profile version over stale launcher settings on initial read', async () => {
+    const env = await settingsFixture()
+    await writeProfileMetadata(env.initial.dshHome, 'web', { dshVersion: '0.2.0' })
+    expect((await env.store.read()).dshVersion).toBe('0.2.0')
+    expect((await env.store.read()).launchExecutable).toBe(managedDshExecutable(path.join(env.initial.dshInstallPath, 'versions', '0.2.0')))
+    expect(JSON.parse(await readFile(env.filePath, 'utf8')).dshVersion).toBe('0.1.0')
+  })
+
+  it('does not create Profile directories or metadata during settings reads', async () => {
+    const env = await settingsFixture()
+    expect((await env.store.read()).dshVersion).toBe('0.1.0')
+    await expect(access(path.join(env.initial.dshHome, 'profiles', 'web'))).rejects.toThrow()
+    const packageDir = path.join(env.initial.dshHome, 'profiles', 'web')
+    await mkdir(packageDir, { recursive: true })
+    await writeFile(path.join(packageDir, 'package.json'), '{}')
+    const freshStore = createSettingsStore({
+      filePath: env.filePath, createDefaults: () => env.initial,
+      detectInstalledDsh: async () => ({ installed: false, executable: null, version: null, source: null }),
+    })
+    await freshStore.read()
+    await expect(access(path.join(packageDir, 'profile.yaml'))).rejects.toThrow()
+  })
+
+  it('persists explicit same-Profile version changes and keeps source/resource metadata', async () => {
+    const env = await settingsFixture()
+    await writeProfileMetadata(env.initial.dshHome, 'web', {
+      dshVersion: '0.2.0', description: 'keep description', version: '5.0.0',
+      source: { kind: 'github', repository: 'author/pack', commit: 'fixed' },
+      resources: { skills: [{ name: 'writer', format: 'flat', enabled: true }] },
+      exportRepository: { repository: 'user/export' },
+    })
+    const current = await env.store.read()
+    const saved = await env.store.save({ ...current, dshVersion: '0.3.0' })
+    expect(saved.dshVersion).toBe('0.3.0')
+    expect(await readProfileMetadata(env.initial.dshHome, 'web')).toMatchObject({
+      dshVersion: '0.3.0', description: 'keep description', version: '5.0.0',
+      source: { kind: 'github', repository: 'author/pack', commit: 'fixed' },
+      resources: { skills: [{ name: 'writer', format: 'flat', enabled: true }] },
+      exportRepository: { repository: 'user/export' },
+    })
+    await env.store.save({ ...saved, dshVersion: null })
+    expect((await readProfileMetadata(env.initial.dshHome, 'web')).dshVersion).toBeNull()
+  })
+
+  it('loads target Profile versions when switching and never overwrites either Profile with the previous selection', async () => {
+    const env = await settingsFixture()
+    await writeProfileMetadata(env.initial.dshHome, 'web', { dshVersion: '0.2.0' })
+    await writeProfileMetadata(env.initial.dshHome, 'desktop', { dshVersion: '0.3.0' })
+    const current = await env.store.read()
+    const switched = await env.store.save({ ...current, profileName: 'desktop' })
+    expect(switched.dshVersion).toBe('0.3.0')
+    expect(switched.launchExecutable).toBe(managedDshExecutable(path.join(env.initial.dshInstallPath, 'versions', '0.3.0')))
+    expect((await readProfileMetadata(env.initial.dshHome, 'web')).dshVersion).toBe('0.2.0')
+    expect((await readProfileMetadata(env.initial.dshHome, 'desktop')).dshVersion).toBe('0.3.0')
+    expect((await env.store.save({ ...switched, profileName: 'web' })).dshVersion).toBe('0.2.0')
+  })
+
+  it('honors automatic version selection and absent target metadata on switches', async () => {
+    const env = await settingsFixture()
+    await writeProfileMetadata(env.initial.dshHome, 'desktop', { dshVersion: null })
+    const switched = await env.store.save({ ...env.initial, profileName: 'desktop' })
+    expect(switched.dshVersion).toBeNull()
+    expect((await env.store.save({ ...switched, profileName: 'empty', dshVersion: '0.9.0' })).dshVersion).toBeNull()
+    await expect(access(path.join(env.initial.dshHome, 'profiles', 'empty'))).rejects.toThrow()
+  })
+
+  it('does not overwrite a newer Profile version during unrelated settings changes', async () => {
+    const env = await settingsFixture()
+    await writeProfileMetadata(env.initial.dshHome, 'web', { dshVersion: '0.2.0' })
+    const current = await env.store.read()
+    await writeProfileMetadata(env.initial.dshHome, 'web', { dshVersion: '0.4.0' })
+    expect((await env.store.save({ ...current, uiTheme: 'berry' })).dshVersion).toBe('0.4.0')
+    expect((await readProfileMetadata(env.initial.dshHome, 'web')).dshVersion).toBe('0.4.0')
+  })
+
+  it('loads metadata from a changed DSH_HOME instead of copying the previous home version', async () => {
+    const env = await settingsFixture()
+    const nextHome = path.join(env.root, 'other-home')
+    await writeProfileMetadata(env.initial.dshHome, 'web', { dshVersion: '0.2.0' })
+    await writeProfileMetadata(nextHome, 'web', { dshVersion: '0.5.0' })
+    const current = await env.store.read()
+    expect((await env.store.save({ ...current, dshHome: nextHome })).dshVersion).toBe('0.5.0')
+    expect((await readProfileMetadata(env.initial.dshHome, 'web')).dshVersion).toBe('0.2.0')
+  })
+
+  it('refreshes cached version and executable after current Profile metadata changes', async () => {
+    const env = await settingsFixture()
+    await writeProfileMetadata(env.initial.dshHome, 'web', { dshVersion: '0.2.0' })
+    await env.store.read()
+    await writeProfileMetadata(env.initial.dshHome, 'web', { dshVersion: 'v0.6.0' })
+    const refreshed = await env.store.read()
+    expect(refreshed.dshVersion).toBe('v0.6.0')
+    expect(refreshed.launchExecutable).toBe(managedDshExecutable(path.join(env.initial.dshInstallPath, 'versions', '0.6.0')))
+    expect(refreshed.launchArgs).toEqual(['web'])
+  })
+
+  it('does not inherit the previous pinned executable when switching to an automatic Profile', async () => {
+    const env = await settingsFixture()
+    await writeProfileMetadata(env.initial.dshHome, 'web', { dshVersion: '0.2.0' })
+    await writeProfileMetadata(env.initial.dshHome, 'desktop', { dshVersion: null })
+    const current = await env.store.read()
+    const automatic = await env.store.save({ ...current, profileName: 'desktop' })
+    expect(automatic.dshVersion).toBeNull()
+    expect(usesOnDemandDsh(automatic)).toBe(true)
+    expect(automatic.launchExecutable).not.toBe(current.launchExecutable)
+    expect((await readProfileMetadata(env.initial.dshHome, 'web')).dshVersion).toBe('0.2.0')
+  })
+
+  it('keeps custom launch commands in automatic mode but pins commands for versioned Profiles', async () => {
+    const env = await settingsFixture()
+    const custom = { ...env.initial, dshVersion: null, launchExecutable: path.join(env.root, 'custom-host'), launchArgs: ['custom-entry.js'] }
+    await writeFile(env.filePath, JSON.stringify(custom))
+    await writeProfileMetadata(env.initial.dshHome, 'web', { dshVersion: null })
+    const automatic = await env.store.read()
+    expect(automatic.launchExecutable).toBe(custom.launchExecutable)
+    expect(automatic.launchArgs).toEqual(custom.launchArgs)
+    const pinned = await env.store.save({ ...automatic, dshVersion: '0.7.0' })
+    expect(pinned.launchExecutable).toBe(managedDshExecutable(path.join(env.initial.dshInstallPath, 'versions', '0.7.0')))
+    expect(pinned.launchArgs).toEqual(['web'])
+  })
+
+  it('refreshes cached automatic selection when a Profile clears its pin', async () => {
+    const env = await settingsFixture()
+    await writeProfileMetadata(env.initial.dshHome, 'web', { dshVersion: '0.2.0' })
+    await env.store.read()
+    await writeProfileMetadata(env.initial.dshHome, 'web', { dshVersion: null })
+    const automatic = await env.store.read()
+    expect(automatic.dshVersion).toBeNull()
+    expect(usesOnDemandDsh(automatic)).toBe(true)
+  })
+})
 
 describe('defaultSettings', () => {
   it('prefers DSH_HOME from the environment', () => {
@@ -121,6 +276,13 @@ describe('validateSettings', () => {
 })
 
 describe('mergeStoredSettings', () => {
+  it('recovers an accidentally selected dependency directory without resetting other settings', () => {
+    const merged = mergeStoredSettings(baseSettings, { profileName: 'node_modules', webPort: 3090, uiTheme: 'berry' })
+    expect(merged.profileName).toBe('web')
+    expect(merged.webPort).toBe(3090)
+    expect(merged.uiTheme).toBe('berry')
+    expect(() => validateSettings({ ...baseSettings, profileName: 'node_modules' })).toThrow(/node_modules/)
+  })
   it('returns the defaults when nothing is stored', () => {
     expect(mergeStoredSettings(baseSettings, null)).toEqual(baseSettings)
   })

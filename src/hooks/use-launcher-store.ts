@@ -789,6 +789,18 @@ export function useLauncherStore() {
     return next
   }, [api])
 
+  const importStandalonePlugin = useCallback(async (): Promise<boolean> => {
+    const imported = await run('plugin-import-standalone', async () => {
+      const next = await api.importStandalonePlugin()
+      if (!next) return false
+      adoptProfile(next)
+      await refreshProfiles()
+      showToast({ kind: 'success', message: '独立插件已导入当前 Profile。' })
+      return true
+    })
+    return imported === true
+  }, [adoptProfile, api, refreshProfiles, run, showToast])
+
   const createProfile = useCallback(async (request: Parameters<LauncherApi['createProfile']>[0]) => {
     const next = await run(`profile-create:${request.name}`, () => api.createProfile(request), { success: `Profile「${request.name}」已创建。` })
     if (next) await refreshProfiles()
@@ -1085,6 +1097,7 @@ export function useLauncherStore() {
     uninstallPreset,
     reorderPlugins,
     uninstallPlugin,
+    importStandalonePlugin,
     trialPlugin,
     refreshPacks,
     refreshProfiles,

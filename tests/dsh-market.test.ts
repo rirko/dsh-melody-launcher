@@ -68,6 +68,71 @@ describe('dsh-market source rules', () => {
     expect(second.plugins[0]?.name).toBe('demo')
     expect(requests).toEqual(['https://awesome-dsh-plugin.com/plugins.json'])
     expect(progress.at(-1)).toBe('complete')
+    await service.load()
+    expect(requests).toHaveLength(1)
+    expect(progress).toEqual(['loading', 'complete'])
+    await service.load(true)
+    expect(requests).toHaveLength(2)
+    expect(progress).toEqual(['loading', 'complete', 'loading', 'complete'])
+  })
+
+  it('retains failed first reads until a manual retry', async () => {
+    let requests = 0
+    let online = false
+    const progress: string[] = []
+    const service = createDshMarketService({
+      readSettings: async () => marketSettings,
+      prepareNodeRuntime: async () => { throw new Error('not used') },
+      preparePnpmRuntime: async () => { throw new Error('not used') },
+      fetchImpl: async () => {
+        requests += 1
+        if (!online) throw new Error('offline')
+        return registryResponse([{ name: 'demo', owner: 'owner', url: 'https://github.com/owner/demo', category: 'plugin' }])
+      },
+      emitProgress: event => progress.push(event.phase),
+      emitOutput: () => undefined,
+    })
+    await expect(service.load()).rejects.toThrow('offline')
+    const firstAttemptRequests = requests
+    online = true
+    await expect(service.load()).rejects.toThrow('offline')
+    expect(requests).toBe(firstAttemptRequests)
+    expect(progress).toEqual(['loading', 'error'])
+    await expect(service.load(true)).resolves.toMatchObject({ count: 1 })
+    expect(requests).toBe(firstAttemptRequests + 1)
+    await service.load()
+    expect(requests).toBe(firstAttemptRequests + 1)
+  })
+
+  it('refreshes local Profile state and toggles without fetching the cached registry', async () => {
+    const { root, profileDir } = await tempProfile()
+    let requests = 0
+    let profileName = 'web'
+    const service = createDshMarketService({
+      readSettings: async () => ({ ...marketSettings, dshHome: root, profileName }),
+      prepareNodeRuntime: async () => { throw new Error('not used') },
+      preparePnpmRuntime: async () => { throw new Error('not used') },
+      fetchImpl: async () => {
+        requests += 1
+        return registryResponse([{ name: 'demo', owner: 'owner', url: 'https://github.com/owner/demo', category: 'plugin', npm: 'demo' }])
+      },
+      emitProgress: () => undefined,
+      emitOutput: () => undefined,
+    })
+    try {
+      expect((await service.load()).plugins[0].installed).toBe(false)
+      await writeFile(path.join(profileDir, 'package.json'), JSON.stringify({ dependencies: { demo: '1.0.0' } }))
+      expect((await service.load()).plugins[0]).toMatchObject({ installed: true, enabled: false })
+      await service.toggle('demo', true)
+      expect((await service.load()).plugins[0].enabled).toBe(true)
+      profileName = 'desktop'
+      expect((await service.load()).plugins[0].installed).toBe(false)
+      expect(requests).toBe(1)
+      await service.updates(true)
+      expect(requests).toBe(2)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   it('uninstalls locally without loading the remote market registry', async () => {

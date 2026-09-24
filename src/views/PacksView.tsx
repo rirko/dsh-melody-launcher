@@ -104,23 +104,7 @@ export function PacksView({
   installedSkills,
   installedApplications,
 }: PacksViewProps) {
-  const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
-  const [confirmingRemoval, setConfirmingRemoval] = useState<PackStatus | null>(null)
-  const selectedPack = useMemo(() => {
-    if (selectedPackId) {
-      const found = packs.find(pack => pack.id === selectedPackId)
-      if (found) return found
-    }
-    return packs.find(pack => pack.enabled) ?? packs[0] ?? null
-  }, [packs, selectedPackId])
-
-  const activeCount = packs.filter(pack => pack.enabled).length
-  const totalPlugins = packs.reduce((sum, pack) => sum + pack.plugins.length, 0)
   const refreshing = busy === 'pack-refresh'
-
-  const toggleSelect = (packId: string) => {
-    setSelectedPackId(current => current === packId ? null : packId)
-  }
 
   return (
     <div className="page packs-page">
@@ -141,9 +125,9 @@ export function PacksView({
       />
 
       <div className="stats-strip packs-stats" aria-label="Profile 概况">
-        <div><strong>{profiles.length || packs.length}</strong><span>Profile</span></div>
-        <div><strong>{profiles.filter(item => item.selected).length || activeCount}</strong><span>当前环境</span></div>
-        <div><strong>{profiles.length > 0 ? profiles.reduce((sum, item) => sum + item.pluginCount, 0) : totalPlugins}</strong><span>累计插件</span></div>
+        <div><strong>{profiles.length}</strong><span>Profile</span></div>
+        <div><strong>{profiles.filter(item => item.selected).length}</strong><span>当前环境</span></div>
+        <div><strong>{profiles.reduce((sum, item) => sum + item.pluginCount, 0)}</strong><span>累计插件</span></div>
       </div>
 
       {profiles.length > 0 && (
@@ -182,68 +166,8 @@ export function PacksView({
         </section>
       )}
 
-      {profiles.length === 0 && packs.length === 0 ? (
+      {profiles.length === 0 && (
         <EmptyPacks onCreate={onCreate} onImport={onImport} onImportRepository={onImportRepository} disabled={busy !== null} />
-      ) : profiles.length === 0 ? (
-        <div className="packs-layout">
-          <section className="packs-list-panel" aria-label="整合包列表">
-            {packs.map(pack => (
-              <PackRow
-                key={pack.id}
-                pack={pack}
-                selected={selectedPack?.id === pack.id}
-                busy={busy}
-                onSelect={() => toggleSelect(pack.id)}
-                onActivate={() => onActivate(pack.id)}
-                onDeactivate={onDeactivate}
-                onExport={() => onExport(pack.id)}
-                onRemove={() => setConfirmingRemoval(pack)}
-              />
-            ))}
-          </section>
-          <PackDetails
-            key={selectedPack?.id ?? 'none'}
-            pack={selectedPack}
-            profile={profile}
-            busy={busy}
-            onToggleItem={(packageName, enabled) => onToggleItem(selectedPack!.id, packageName, enabled)}
-            onRemoveItem={packageName => onRemoveItem(selectedPack!.id, packageName)}
-            onAddPlugins={packageNames => {
-              for (const packageName of packageNames) onAddPlugin(selectedPack!.id, packageName)
-            }}
-            installedPresets={installedPresets}
-            onAddPresets={presetNames => {
-              for (const presetName of presetNames) onAddPreset(selectedPack!.id, presetName)
-            }}
-            onTogglePreset={(presetName, enabled) => onTogglePreset(selectedPack!.id, presetName, enabled)}
-            onRemovePreset={presetName => onRemovePreset(selectedPack!.id, presetName)}
-            installedSkills={installedSkills}
-            onAddSkills={skillNames => {
-              for (const skillName of skillNames) onAddSkill(selectedPack!.id, skillName)
-            }}
-            onToggleSkill={(skillName, enabled) => onToggleSkill(selectedPack!.id, skillName, enabled)}
-            onRemoveSkill={skillName => onRemoveSkill(selectedPack!.id, skillName)}
-            installedApplications={installedApplications}
-            onAddApplications={addonIds => {
-              for (const addonId of addonIds) onAddApplication(selectedPack!.id, addonId)
-            }}
-            onToggleApplication={(addonId, enabled) => onToggleApplication(selectedPack!.id, addonId, enabled)}
-            onRemoveApplication={addonId => onRemoveApplication(selectedPack!.id, addonId)}
-          />
-        </div>
-      ) : null}
-
-      {confirmingRemoval && (
-        <RemovePackDialog
-          pack={confirmingRemoval}
-          busy={busy === `pack-remove:${confirmingRemoval.id}`}
-          onCancel={() => setConfirmingRemoval(null)}
-          onConfirm={() => {
-            const pack = confirmingRemoval
-            setConfirmingRemoval(null)
-            onRemove(pack.id)
-          }}
-        />
       )}
 
       <style>{packsStyle}</style>
@@ -255,8 +179,7 @@ function EmptyPacks({ onCreate, onImport, onImportRepository, disabled }: { onCr
   return (
     <div className="empty-state">
       <div className="empty-icon"><Package size={28} /></div>
-      <h2>还没有整合包</h2>
-      <p>整合包只保存插件清单、启用状态和加载顺序；插件统一安装在当前 Profile，可从这里或左侧菜单快速切换。</p>
+      <h2>还没有 Profile</h2>
       <div className="empty-state-actions">
       <button type="button" className="primary-command" onClick={onCreate} disabled={disabled}><PackagePlus size={17} />创建整合包</button>
       <button type="button" className="secondary-button accent" onClick={onImport} disabled={disabled}><Download size={17} />导入整合包</button>
@@ -960,6 +883,9 @@ function ProfileExportMenu({ profileName, busy, onExportProfile, onExport }: {
           </button>
           <button type="button" role="menuitem" disabled={anyExporting} onClick={() => selectMode('full')}>
             <span>全量导出</span><small>携带插件本体，适合离线导入</small>
+          </button>
+          <button type="button" role="menuitem" disabled={anyExporting || !onExportProfile} onClick={() => selectMode('plugin')}>
+            <span>导出为独立插件</span>
           </button>
           <button type="button" role="menuitem" disabled={anyExporting} onClick={() => selectMode('repository')}>
             <span>仓库化导出</span><small>同步到 GitHub Profile 仓库</small>

@@ -70,6 +70,7 @@ async function fixture() {
   }
   const saveSettings = vi.fn(async (next: AppSettings) => { settings = next; return settings })
   const manager = createPackManager({
+    unifiedProfiles: false,
     readSettings: async () => settings,
     saveSettings,
     ...paths,

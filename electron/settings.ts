@@ -1,9 +1,12 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { parse } from 'yaml'
 import { DEFAULT_PROFILE_NAME, DSH_PACKAGE_NAME } from '../src/constants'
 import type { AppSettings, DshInstallationStatus, NetworkSettings, UiTheme } from '../src/types'
 import { managedDshExecutable } from './dsh-install'
 import { isSafeProfileName } from './profile'
+import { PROFILE_METADATA_FILE, writeProfileMetadata } from './profile-service'
+import { dshVersionRoot } from './runtime-versions'
 
 /**
  * 启动器设置的唯一权威来源：默认值、校验、持久化与内存缓存。
@@ -122,7 +125,7 @@ export function samePath(left: string, right: string): boolean {
 /** 校验并归一化一份来自渲染层的设置。任何一项不合法都直接抛错。 */
 export function validateSettings(input: AppSettings): AppSettings {
   if (!input || typeof input !== 'object') throw new Error('设置格式无效。')
-  if (!isSafeProfileName(input.profileName)) throw new Error('配置名称只能包含字母、数字、点、横线或下划线。')
+  if (!isSafeProfileName(input.profileName)) throw new Error('配置名称只能包含字母、数字、点、横线或下划线，且不能使用 node_modules 等依赖目录名称。')
   if (!path.isAbsolute(input.dshInstallPath) || !path.isAbsolute(input.dshHome) || !path.isAbsolute(input.workspace)) {
     throw new Error('目录必须使用完整路径。')
   }
@@ -165,6 +168,9 @@ export function mergeStoredSettings(defaults: AppSettings, stored: Partial<AppSe
   return {
     ...defaults,
     ...stored,
+    profileName: typeof stored.profileName === 'string' && isSafeProfileName(stored.profileName)
+      ? stored.profileName
+      : defaults.profileName,
     dshVersion: stored.dshVersion == null ? null : validRuntimeVersion(stored.dshVersion) ? stored.dshVersion.trim() : null,
     nodeVersion: stored.nodeVersion == null ? null : validRuntimeVersion(stored.nodeVersion) ? stored.nodeVersion.trim() : null,
     activePackId: null,
@@ -215,33 +221,89 @@ export interface SettingsStoreOptions {
 export function createSettingsStore(options: SettingsStoreOptions): SettingsStore {
   let cache: AppSettings | null = null
 
-  return {
-    async read(): Promise<AppSettings> {
-      if (cache) return cache
-      const defaults = options.createDefaults()
-      let stored: Partial<AppSettings> | null = null
-      try {
-        stored = JSON.parse(await readFile(options.filePath, 'utf8')) as Partial<AppSettings>
-      } catch {
-        stored = null
-      }
-      cache = mergeStoredSettings(defaults, stored)
-      if (usesOnDemandDsh(cache)) {
-        cache = adoptDetectedDsh(cache, await options.detectInstalledDsh(cache))
-      }
-      return cache
-    },
+  async function profileDshVersion(settings: AppSettings): Promise<string | null | undefined> {
+    if (!isSafeProfileName(settings.profileName) || typeof settings.dshHome !== 'string' || !path.isAbsolute(settings.dshHome)) return undefined
+    let raw: string
+    try {
+      raw = await readFile(path.join(settings.dshHome, 'profiles', settings.profileName, PROFILE_METADATA_FILE), 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+      throw error
+    }
+    const metadata = parse(raw) as unknown
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) throw new Error(`Profile「${settings.profileName}」元数据格式无效。`)
+    const version = (metadata as Record<string, unknown>).dshVersion
+    return validRuntimeVersion(version) ? version.trim() : null
+  }
 
+  function isVersionedExecutable(executable: string, installPath: string): boolean {
+    const relative = path.relative(path.join(installPath, 'versions'), executable)
+    const version = relative.split(path.sep)[0]
+    return validRuntimeVersion(version) && samePath(executable, managedDshExecutable(dshVersionRoot(installPath, version)))
+  }
+
+  async function projectRuntime(settings: AppSettings, detectAutomatic = false, previousInstallPath?: string): Promise<AppSettings> {
+    if (settings.dshVersion && validRuntimeVersion(settings.dshVersion)) {
+      return {
+        ...settings,
+        launchExecutable: managedDshExecutable(dshVersionRoot(settings.dshInstallPath, settings.dshVersion)),
+        launchArgs: /^(?:dsh|dsh\.cmd|dsh\.exe)$/i.test(path.basename(settings.launchExecutable)) ? settings.launchArgs : ['web'],
+      }
+    }
+    let projected = settings
+    if (isVersionedExecutable(settings.launchExecutable, settings.dshInstallPath)
+      || (previousInstallPath && isVersionedExecutable(settings.launchExecutable, previousInstallPath))) {
+      const defaults = options.createDefaults()
+      projected = { ...settings, launchExecutable: defaults.launchExecutable, launchArgs: defaults.launchArgs }
+      detectAutomatic = true
+    }
+    if (detectAutomatic && usesOnDemandDsh(projected)) {
+      projected = adoptDetectedDsh(projected, await options.detectInstalledDsh(projected))
+    }
+    return projected
+  }
+
+  async function read(): Promise<AppSettings> {
+    if (cache) {
+      const profileVersion = await profileDshVersion(cache)
+      cache = await projectRuntime(profileVersion === undefined ? cache : { ...cache, dshVersion: profileVersion })
+      return cache
+    }
+    const defaults = options.createDefaults()
+    let stored: Partial<AppSettings> | null = null
+    try {
+      stored = JSON.parse(await readFile(options.filePath, 'utf8')) as Partial<AppSettings>
+    } catch {
+      stored = null
+    }
+    let loaded = mergeStoredSettings(defaults, stored)
+    const profileVersion = await profileDshVersion(loaded)
+    if (profileVersion !== undefined) loaded = { ...loaded, dshVersion: profileVersion }
+    cache = await projectRuntime(loaded, true)
+    return cache
+  }
+
+  return {
+    read,
     async save(input: AppSettings): Promise<AppSettings> {
-      const current = cache ?? input
       let next = validateSettings(input)
-      if (current.profileName !== next.profileName) next = { ...next, activePackId: null }
+      const current = cache ?? await read()
+      const profileChanged = current.profileName !== next.profileName || !samePath(current.dshHome, next.dshHome)
+      if (profileChanged) {
+        next = { ...next, dshVersion: await profileDshVersion(next) ?? null, activePackId: null }
+      } else if (Object.hasOwn(input, 'dshVersion') && next.dshVersion !== (current.dshVersion ?? null)) {
+        await writeProfileMetadata(next.dshHome, next.profileName, { dshVersion: next.dshVersion ?? null })
+      } else {
+        const profileVersion = await profileDshVersion(next)
+        next = { ...next, dshVersion: profileVersion === undefined ? current.dshVersion ?? null : profileVersion }
+      }
       // 用户改动了 DSH 本体安装目录，而启动命令仍指向旧目录里的可执行文件时，跟随切过去。
       const installPathChanged = !samePath(current.dshInstallPath, next.dshInstallPath)
       const usedPreviousManagedExecutable = samePath(next.launchExecutable, managedDshExecutable(current.dshInstallPath))
       if (installPathChanged && usedPreviousManagedExecutable) {
         next = { ...next, launchExecutable: managedDshExecutable(next.dshInstallPath), launchArgs: ['web'] }
       }
+      next = await projectRuntime(next, false, current.dshInstallPath)
       await mkdir(path.dirname(options.filePath), { recursive: true })
       await writeFile(options.filePath, `${JSON.stringify(next, null, 2)}\n`, 'utf8')
       cache = next

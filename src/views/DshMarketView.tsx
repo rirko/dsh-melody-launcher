@@ -1,35 +1,64 @@
 import { Check, ExternalLink, LoaderCircle, RefreshCw, Search, Star, Store, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLauncherApi } from '../api/client'
 import { PageHeading } from '../components/PageHeading'
+import { CatalogPagination } from '../components/CatalogPagination'
 import { formatStars } from '../lib/format'
-import type { DshMarketCatalog, DshMarketPlugin, DshMarketProgress } from '../types'
+import type { DshMarketCatalog, DshMarketPlugin, DshMarketProgress, ProfileState } from '../types'
 
 type Sort = 'stars' | 'updated' | 'name'
+const MARKET_PAGE_SIZE = 48
+
+function marketPluginKey(plugin: DshMarketPlugin): string {
+  return JSON.stringify([plugin.owner, plugin.name, plugin.url, plugin.npm])
+}
 
 interface DshMarketViewProps {
+  active?: boolean
+  profile?: ProfileState
   /** Market mutations write the active Profile; let the shared store refresh it. */
   onProfileChanged?: () => Promise<void> | void
 }
 
-export function DshMarketView({ onProfileChanged }: DshMarketViewProps) {
+export const DshMarketView = memo(function DshMarketView({ active = true, profile, onProfileChanged }: DshMarketViewProps) {
   const api = useLauncherApi()
   const [catalog, setCatalog] = useState<DshMarketCatalog | null>(null)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
   const [sort, setSort] = useState<Sort>('stars')
+  const [page, setPage] = useState(1)
+  const pageRoot = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(false)
   const [checkingUpdates, setCheckingUpdates] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [progress, setProgress] = useState<DshMarketProgress | null>(null)
+  const profileKey = useMemo(() => JSON.stringify([
+    profile?.profileDir,
+    profile?.initialized,
+    profile?.plugins.map(plugin => [plugin.packageName, plugin.version, plugin.enabled, plugin.declaredInProfile, plugin.repository, plugin.repositoryFullName])
+      .sort((left, right) => String(left[0]).localeCompare(String(right[0]))),
+  ]), [profile])
+  const latestProfileKey = useRef(profileKey)
+  latestProfileKey.current = profileKey
+  const attemptedProfileKey = useRef<string | null>(null)
+  const loadSequence = useRef(0)
 
-  const load = async () => {
+  const load = useCallback(async (force = false) => {
+    const key = latestProfileKey.current
+    attemptedProfileKey.current = key
+    const sequence = ++loadSequence.current
     setLoading(true)
     setError(null)
-    try { setCatalog(await api.loadDshMarket()) } catch (cause) { setError(cause instanceof Error ? cause.message : '无法读取 DSH Market') }
-    finally { setLoading(false) }
-  }
+    try {
+      const next = await api.loadDshMarket(force)
+      if (sequence === loadSequence.current && key === latestProfileKey.current) setCatalog(next)
+    } catch (cause) {
+      if (sequence === loadSequence.current && key === latestProfileKey.current) setError(cause instanceof Error ? cause.message : '无法读取 DSH Market')
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false)
+    }
+  }, [api])
 
   const checkUpdates = async () => {
     setCheckingUpdates(true)
@@ -39,12 +68,18 @@ export function DshMarketView({ onProfileChanged }: DshMarketViewProps) {
   }
 
   useEffect(() => {
-    void load()
+    // Visibility is not invalidation. Defer changed Profile reads until visible,
+    // and remember failed attempts too so tab switches cannot become retries.
+    if (active && !busy && attemptedProfileKey.current !== profileKey) void load()
+  }, [active, busy, profileKey, load])
+
+  useEffect(() => {
     return api.onDshMarketProgress(setProgress)
-  }, [])
+  }, [api])
 
   const visible = useMemo(() => {
-    const list = (catalog?.plugins ?? []).filter(plugin => {
+    const uniquePlugins = new Map((catalog?.plugins ?? []).map(plugin => [marketPluginKey(plugin), plugin]))
+    const list = [...uniquePlugins.values()].filter(plugin => {
       if (category === '__installed') {
         if (!plugin.installed) return false
       } else if (category !== 'all' && plugin.category !== category) return false
@@ -57,15 +92,26 @@ export function DshMarketView({ onProfileChanged }: DshMarketViewProps) {
         ? String(right.added).localeCompare(String(left.added))
         : left.name.localeCompare(right.name))
   }, [catalog, query, category, sort])
+  const pageCount = Math.max(1, Math.ceil(visible.length / MARKET_PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  const pagePlugins = useMemo(() => visible.slice((currentPage - 1) * MARKET_PAGE_SIZE, currentPage * MARKET_PAGE_SIZE), [visible, currentPage])
+
+  useEffect(() => { setPage(current => Math.min(current, pageCount)) }, [pageCount])
+
+  const changePage = (next: number) => {
+    setPage(next)
+    const scroller = pageRoot.current?.closest<HTMLElement>('[role="tabpanel"], .settings-content')
+    if (scroller) scroller.scrollTop = 0
+  }
 
   const mutate = async (plugin: DshMarketPlugin, action: 'install' | 'update' | 'uninstall' | 'toggle', enabled?: boolean) => {
-    setBusy(plugin.name)
+    setBusy(marketPluginKey(plugin))
     setError(null)
     try {
-      if (action === 'install') await api.installDshMarketPlugin(plugin.name)
-      else if (action === 'update') await api.updateDshMarketPlugin(plugin.name)
+      if (action === 'install') await api.installDshMarketPlugin(plugin.npm ?? plugin.name)
+      else if (action === 'update') await api.updateDshMarketPlugin(plugin.npm ?? plugin.name)
       else if (action === 'uninstall') await api.uninstallPlugin(plugin.npm ?? plugin.name, { purgeStore: true })
-      else await api.toggleDshMarketPlugin(plugin.name, enabled === true)
+      else await api.toggleDshMarketPlugin(plugin.npm ?? plugin.name, enabled === true)
       // The market service and startup-item manager share the same Profile on
       // disk, but their renderer state is otherwise independent. Refresh the
       // shared Profile before redrawing the market so both switches agree.
@@ -81,22 +127,27 @@ export function DshMarketView({ onProfileChanged }: DshMarketViewProps) {
   }
 
   const categories = Object.entries(catalog?.categories ?? {})
+  const pagination = catalog && visible.length > 0 ? <CatalogPagination
+    page={currentPage} pageCount={pageCount} visibleCount={pagePlugins.length}
+    loading={false} disabled={false} onPageChange={changePage} ariaLabel="市场插件分页"
+    summary={`共 ${visible.length} 个插件 · 当前页 ${pagePlugins.length} 个`}
+  /> : null
   return (
-    <div className="page dsh-market-page">
+    <div className="page dsh-market-page" ref={pageRoot}>
       <PageHeading
-        eyebrow="独立插件市场"
+        eyebrow="插件市场"
         title="DSH Market"
-        description="复用 dsh-market 的精选目录、安装、更新和启停逻辑。与资源市场完全独立。"
-        actions={<><button type="button" className="secondary-button" onClick={() => void checkUpdates()} disabled={loading || checkingUpdates}><RefreshCw size={14} className={checkingUpdates ? 'spin' : undefined} />检查更新</button><button type="button" className="secondary-button" onClick={() => void load()} disabled={loading || checkingUpdates}><RefreshCw size={14} className={loading ? 'spin' : undefined} />刷新目录</button></>}
+        description="DeepSeek Harness 精选插件目录"
+        actions={<><button type="button" className="secondary-button" onClick={() => void checkUpdates()} disabled={loading || checkingUpdates}><RefreshCw size={14} className={checkingUpdates ? 'spin' : undefined} />检查更新</button><button type="button" className="secondary-button" onClick={() => void load(true)} disabled={loading || checkingUpdates}><RefreshCw size={14} className={loading ? 'spin' : undefined} />刷新目录</button></>}
       />
       <div className="dsh-market-note">
         <span><Store size={14} /> 数据源：awesome-dsh-plugin.com/plugins.json</span>
         <span>{catalog ? `${catalog.count} 个精选插件 · 更新于 ${catalog.updated || '未知'}` : '正在读取目录'}</span>
       </div>
       <div className="dsh-market-toolbar">
-        <label className="dsh-market-search"><Search size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索名称、作者或描述" /></label>
-        <select value={category} onChange={event => setCategory(event.target.value)} aria-label="插件分类"><option value="all">全部分类</option><option value="__installed">已安装</option>{categories.map(([id, label]) => <option key={id} value={id}>{label.zh ?? label.en ?? id}</option>)}</select>
-        <select value={sort} onChange={event => setSort(event.target.value as Sort)} aria-label="排序"><option value="stars">星数最多</option><option value="updated">最近加入</option><option value="name">名称排序</option></select>
+        <label className="dsh-market-search"><Search size={15} /><input value={query} onChange={event => { setQuery(event.target.value); setPage(1) }} placeholder="搜索名称、作者或描述" /></label>
+        <select value={category} onChange={event => { setCategory(event.target.value); setPage(1) }} aria-label="插件分类"><option value="all">全部分类</option><option value="__installed">已安装</option>{categories.map(([id, label]) => <option key={id} value={id}>{label.zh ?? label.en ?? id}</option>)}</select>
+        <select value={sort} onChange={event => { setSort(event.target.value as Sort); setPage(1) }} aria-label="排序"><option value="stars">星数最多</option><option value="updated">最近加入</option><option value="name">名称排序</option></select>
       </div>
       {progress && progress.phase !== 'complete' && progress.phase !== 'error' && (
         <div className="dsh-market-progress">
@@ -108,14 +159,15 @@ export function DshMarketView({ onProfileChanged }: DshMarketViewProps) {
           {progress.percent !== null && <strong>{progress.percent}%</strong>}
         </div>
       )}
-      {error && <div className="error-banner"><span>{error}</span><button type="button" onClick={() => void load()}>重试</button></div>}
+      {error && <div className="error-banner"><span>{error}</span><button type="button" onClick={() => void load(true)}>重试</button></div>}
       {loading && catalog === null && <div className="empty-state"><LoaderCircle size={22} className="spin" /><span>正在读取 DSH Market 目录…</span></div>}
       {!loading && catalog !== null && visible.length === 0 && <div className="empty-state"><Search size={22} /><span>{category === '__installed' ? '当前 Profile 还没有已安装的精选插件。' : '没有匹配的精选插件。'}</span></div>}
+      {pagination}
       <div className="dsh-market-grid">
-        {visible.map(plugin => {
-          const isBusy = busy === plugin.name
+        {pagePlugins.map(plugin => {
+          const isBusy = busy === marketPluginKey(plugin)
           return (
-            <article key={`${plugin.owner}/${plugin.name}`} className="dsh-market-card">
+            <article key={marketPluginKey(plugin)} className="dsh-market-card">
               <div className="dsh-market-card-head"><div><h2>{plugin.name}</h2><span>{plugin.owner}</span></div><span className="dsh-market-stars"><Star size={13} />{formatStars(plugin.stars)}</span></div>
               <div className="dsh-market-meta"><span>{plugin.category}</span>{plugin.npm ? <code>npm</code> : <code>GitHub</code>}{plugin.installed && <b className={plugin.enabled ? 'market-enabled' : 'market-disabled'}>{plugin.enabled ? '已启用' : '未启用'}</b>}</div>
               <p>{plugin.description.zh ?? plugin.description.en ?? '暂无描述'}</p>
@@ -124,6 +176,7 @@ export function DshMarketView({ onProfileChanged }: DshMarketViewProps) {
           )
         })}
       </div>
+      {pageCount > 1 && <div className="catalog-pagination-bottom">{pagination}</div>}
     </div>
   )
-}
+})

@@ -700,8 +700,8 @@ export function DiscoverView({
   return (
     <div className="page discover-page catalog-page">
       <PageHeading
-        eyebrow="DSH MARKET"
-        title="DSH 资源市场"
+        eyebrow="GITHUB REPOSITORIES"
+        title="GitHub 资源仓库"
         description={`统一浏览 GitHub 中 ${topicTotals.plugin.toLocaleString('zh-CN')} 个 Plugin 和 ${topicTotals.application.toLocaleString('zh-CN')} 个应用候选；安装前仍会按仓库内容识别其中的 Skill。`}
       />
 

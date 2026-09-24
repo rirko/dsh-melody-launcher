@@ -1,4 +1,4 @@
-export type ViewName = 'plugins' | 'discover' | 'dsh-market' | 'environment' | 'packs' | 'github'
+export type ViewName = 'plugins' | 'discover' | 'environment' | 'packs' | 'github'
 export type RuntimeDrawerMode = 'hidden' | 'half' | 'expanded'
 export type WindowMode = 'launcher' | 'manager'
 export type UiTheme = 'forest' | 'ocean' | 'berry' | 'graphite'
@@ -305,6 +305,9 @@ export interface ProfileSummary {
   id: string
   name: string
   description: string
+  version?: string
+  resources?: ProfileResources
+  exportRepository?: { repository: string; branch?: string }
   dshVersion: string | null
   source: ProfileSourceMetadata | null
   createdAt: string
@@ -318,10 +321,21 @@ export interface ProfileSummary {
   missingDependencies: string[]
   hasNodeModules: boolean
   selected: boolean
+  packName?: string
+  distributionKind?: 'standard-profile' | 'meta-repo' | 'distribution'
+  dshSourceVersion?: string | null
+  importWarnings?: string[]
   importState?: 'complete' | 'partial' | 'failed'
   importFailures?: string[]
   /** Number of plugins installed by the most recent import operation. */
   importedPluginCount?: number
+}
+
+/** Non-plugin resources owned by a Profile; plugin state remains in package.json. */
+export interface ProfileResources {
+  presets?: PackInstalledPreset[]
+  skills?: PackInstalledSkill[]
+  applications?: PackInstalledApplication[]
 }
 
 export interface ProfileCreateRequest {
@@ -331,7 +345,7 @@ export interface ProfileCreateRequest {
   cloneFrom?: string
 }
 
-export type ProfileExportMode = 'light' | 'full' | 'repository'
+export type ProfileExportMode = 'light' | 'full' | 'repository' | 'plugin'
 export interface ProfileExportOptions {
   repositoryPrivate?: boolean
 }
@@ -1210,13 +1224,14 @@ export interface LauncherApi {
   refreshCatalogIndex(): Promise<CatalogIndexEntry[]>
   analyzeCatalogRepository(fullName: string, defaultBranch: string, repositoryUpdatedAt?: string): Promise<CatalogRepositoryAnalysis>
   importCatalogUrl(url: string): Promise<CatalogImportResult>
-  loadDshMarket(): Promise<DshMarketCatalog>
+  loadDshMarket(force?: boolean): Promise<DshMarketCatalog>
   installDshMarketPlugin(name: string, profileName?: string, exactVersion?: string): Promise<DshMarketInstalledPlugin[]>
   updateDshMarketPlugin(name: string, profileName?: string): Promise<DshMarketInstalledPlugin[]>
   uninstallDshMarketPlugin(name: string, profileName?: string): Promise<DshMarketInstalledPlugin[]>
   toggleDshMarketPlugin(name: string, enabled: boolean): Promise<DshMarketInstalledPlugin[]>
   checkDshMarketUpdates(force?: boolean): Promise<Record<string, DshMarketUpdateStatus>>
   installPlugin(request: string | PluginInstallRequest): Promise<RepositoryInstallResult>
+  importStandalonePlugin(): Promise<ProfileState | null>
   uninstallPlugin(packageName: string, options?: PluginUninstallOptions): Promise<ProfileState>
   trialPlugin(packageName: string, profileName?: string): Promise<PluginTrialResult>
   readPluginTrials(): Promise<PluginTrialResult[]>

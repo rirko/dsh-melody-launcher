@@ -8,6 +8,8 @@ import { requiresNodeRuntime, resolveNodeExecutable, type NodeRuntime } from './
 import { isSafeProfileName, pathExists } from './profile'
 import { formatCommandLine, spawnCommand, withExecutableDirectoryOnPath } from './process'
 import { buildNetworkEnvironment } from './proxy'
+import { assertStandalonePluginRuntime } from './standalone-plugin-runtime'
+import { inspectStandaloneNodeRuntime } from './standalone-plugin-native'
 import {
   detectDshCredentialsFormat,
   isLegacyCredentialsFormatError,
@@ -280,8 +282,16 @@ export function createRuntimeController(options: RuntimeControllerOptions): Runt
     let executable = replacement?.executable ?? settings.launchExecutable
     let environment = runtimeEnv(settings, process.env)
     let launchArgs = replacement?.args ?? settings.launchArgs
+    let preparedNode: Promise<NodeRuntime> | undefined
+    const prepareNode = () => preparedNode ??= options.prepareNodeRuntime()
+    await assertStandalonePluginRuntime(settings.dshHome, settings.profileName, settings.dshVersion ?? null, replacement !== null, async () => {
+      if (!requiresNodeRuntime(executable, launchArgs)) {
+        throw new Error('无法验证自定义启动命令使用的 Node ABI，请使用启动器选定的 Node 运行时启动原生独立插件。')
+      }
+      return inspectStandaloneNodeRuntime((await prepareNode()).node)
+    })
     if (requiresNodeRuntime(executable, launchArgs)) {
-      const nodeRuntime = await options.prepareNodeRuntime()
+      const nodeRuntime = await prepareNode()
       executable = resolveNodeExecutable(executable, nodeRuntime)
       environment = withExecutableDirectoryOnPath(nodeRuntime.node, environment)
     }

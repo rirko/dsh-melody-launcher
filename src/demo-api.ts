@@ -50,7 +50,6 @@ let demoSettings: AppSettings = {
   dshInstallPath: 'C:\\Users\\demo\\AppData\\Roaming\\dsh-launcher\\dsh-runtime',
   dshHome: 'C:\\Users\\demo\\.dsh',
   profileName: 'web',
-  activePackId: 'pack-web-basic',
   workspace: 'C:\\Users\\demo\\Projects',
   launchExecutable: 'C:\\Program Files\\nodejs\\npx.cmd',
   launchArgs: ['--yes', '@deepseek-ai/dsh', 'web'],
@@ -867,53 +866,56 @@ export const demoApi: LauncherApi = {
   chooseLauncherBackground: async () => 'background-1756800000000.png',
   clearLauncherBackground: async () => undefined,
   readProfile: async () => profile(),
-  listProfiles: async () => [{
-    id: demoSettings.profileName,
-    name: demoSettings.profileName,
-    description: '浏览器演示 Profile',
-    dshVersion: demoSettings.dshVersion ?? '0.1.0-rc.7',
-    source: { kind: 'local' as const },
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: new Date().toISOString(),
-    profileDir: `${demoSettings.dshHome}\\profiles\\${demoSettings.profileName}`,
-    initialized: true,
-    pluginCount: profile().dependencyCount,
-    enabledPluginCount: profile().plugins.filter(plugin => !plugin.builtin && plugin.enabled).length,
-    disabledPluginCount: profile().disabledCount,
-    missingDependencies: [],
-    hasNodeModules: true,
-    selected: true,
-  }],
-  createProfile: async request => {
-    if (request.name === demoSettings.profileName) throw new Error(`Profile「${request.name}」已存在。`)
+  listProfiles: async () => [...new Set(['web', demoSettings.profileName, ...demoPacks.map(pack => pack.id)])].map(id => {
+    const pack = demoPacks.find(item => item.id === id)
+    const enabledCount = pack ? pack.plugins.filter(plugin => plugin.enabled).length : profile().plugins.filter(plugin => !plugin.builtin && plugin.enabled).length
+    const pluginCount = pack ? pack.plugins.length : profile().dependencyCount
     return {
+      id,
+      name: pack?.name ?? id,
+      description: pack?.description ?? '浏览器演示 Profile',
+      dshVersion: pack?.dshVersion ?? demoSettings.dshVersion ?? '0.1.0-rc.7',
+      source: { kind: 'local' as const },
+      createdAt: pack?.installedAt ?? '2026-01-01T00:00:00.000Z',
+      updatedAt: pack?.updatedAt ?? new Date().toISOString(),
+      profileDir: `${demoSettings.dshHome}\\profiles\\${id}`,
+      initialized: true,
+      pluginCount,
+      enabledPluginCount: enabledCount,
+      disabledPluginCount: pluginCount - enabledCount,
+      missingDependencies: [],
+      hasNodeModules: pluginCount > 0,
+      selected: id === demoSettings.profileName,
+    }
+  }),
+  createProfile: async request => {
+    if ((await demoApi.listProfiles()).some(item => item.id === request.name)) throw new Error(`Profile「${request.name}」已存在。`)
+    const source = request.cloneFrom ? await demoApi.readProfileMetadata(request.cloneFrom) : null
+    const sourcePack = demoPacks.find(item => item.id === request.cloneFrom)
+    const plugins = request.cloneFrom
+      ? sourcePack?.plugins.map(plugin => ({ ...plugin })) ?? demoPlugins.filter(plugin => !plugin.builtin).map(plugin => ({ packageName: plugin.packageName, enabled: plugin.enabled }))
+      : []
+    const now = new Date().toISOString()
+    demoPacks.push({
       id: request.name,
       name: request.name,
       description: request.description ?? '',
-      dshVersion: request.dshVersion ?? demoSettings.dshVersion ?? null,
-      source: { kind: 'local' as const },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      profileDir: `${demoSettings.dshHome}\\profiles\\${request.name}`,
-      initialized: true,
-      pluginCount: 0,
-      enabledPluginCount: 0,
-      disabledPluginCount: 0,
-      missingDependencies: [],
-      hasNodeModules: false,
-      selected: false,
-    }
+      version: '1.0.0',
+      dshVersion: request.dshVersion ?? source?.dshVersion ?? demoSettings.dshVersion ?? null,
+      source: 'created', enabled: false, state: 'complete', plugins,
+      installedAt: now, updatedAt: now,
+    })
+    return demoApi.readProfileMetadata(request.name)
   },
-  cloneProfile: async (sourceName, targetName, description) => {
-    const result = await demoApi.createProfile({ name: targetName, cloneFrom: sourceName, description })
-    return { ...result, pluginCount: profile().dependencyCount, enabledPluginCount: profile().dependencyCount }
-  },
+  cloneProfile: async (sourceName, targetName, description) => demoApi.createProfile({ name: targetName, cloneFrom: sourceName, description }),
   switchProfile: async (profileName, _options) => {
-    demoSettings = { ...demoSettings, profileName, activePackId: undefined }
+    const target = await demoApi.readProfileMetadata(profileName)
+    demoSettings = { ...demoSettings, profileName, dshVersion: target.dshVersion, activePackId: null }
     return demoSettings
   },
   deleteProfile: async profileName => {
     if (profileName === demoSettings.profileName) throw new Error('当前 Profile 不能删除。')
+    demoPacks = demoPacks.filter(pack => pack.id !== profileName)
   },
   readProfileMetadata: async profileName => {
     const list = await demoApi.listProfiles()
@@ -921,7 +923,7 @@ export const demoApi: LauncherApi = {
     if (!found) throw new Error(`Profile「${profileName}」不存在。`)
     return found
   },
-  exportProfile: async profileName => `C:\\Users\\demo\\Desktop\\${profileName}.zip`,
+  exportProfile: async (profileName, mode) => `C:\\Users\\demo\\Desktop\\${mode === 'plugin' ? `dsh-suite-${profileName}-${demoPacks.find(pack => pack.id === profileName)?.version ?? '1.0.0'}.dsh-plugin.zip` : `${profileName}.zip`}`,
   importProfile: async (_filePath, options) => demoApi.createProfile({ name: options?.name ?? 'imported-profile' }),
   analyzeProfileRepository: async url => {
     const parsed = parseGitHubImportUrl(url)
@@ -1058,7 +1060,7 @@ export const demoApi: LauncherApi = {
     return demoDshMarketCatalog()
   },
   installDshMarketPlugin: async name => {
-    const plugin = demoDshMarketPlugins.find(item => item.name === name)
+    const plugin = demoDshMarketPlugins.find(item => item.name === name || item.npm === name)
     if (!plugin) throw new Error('插件不在 dsh-market 精选目录中。')
     dshMarketProgressListeners.forEach(listener => listener({ name, phase: 'downloading', percent: 52, message: '正在下载插件及依赖' }))
     await wait(500)
@@ -1067,7 +1069,7 @@ export const demoApi: LauncherApi = {
     return demoDshMarketPlugins.filter(item => item.installed)
   },
   updateDshMarketPlugin: async name => {
-    const plugin = demoDshMarketPlugins.find(item => item.name === name)
+    const plugin = demoDshMarketPlugins.find(item => item.name === name || item.npm === name)
     if (!plugin?.installed) throw new Error('插件尚未安装，不能更新。')
     dshMarketProgressListeners.forEach(listener => listener({ name, phase: 'verifying', percent: 86, message: '正在检查插件更新' }))
     await wait(450)
@@ -1084,7 +1086,7 @@ export const demoApi: LauncherApi = {
     return demoDshMarketPlugins.filter(item => item.installed)
   },
   toggleDshMarketPlugin: async (name, enabled) => {
-    const plugin = demoDshMarketPlugins.find(item => item.name === name)
+    const plugin = demoDshMarketPlugins.find(item => item.name === name || item.npm === name)
     if (!plugin?.installed) throw new Error('插件尚未安装。')
     plugin.enabled = enabled
     syncDemoPluginStateFromMarket(plugin)
@@ -1129,6 +1131,19 @@ export const demoApi: LauncherApi = {
       installedProfileName: analysis?.targets[0].profileName,
       packageName: analysis?.targets[0].packageName,
     }
+  },
+  importStandalonePlugin: async () => {
+    const suite: ManagedPlugin = {
+      packageName: 'dsh-suite-demo', displayName: 'Demo Suite', description: '自包含复合插件',
+      version: '1.0.0', enabled: true, builtin: false, locked: false, compatible: true,
+      declaredInProfile: true, actualSource: 'local', order: null,
+    }
+    demoPlugins = renumber([...demoPlugins.filter(plugin => plugin.packageName !== suite.packageName), suite])
+    demoPacks = demoPacks.map(pack => pack.id !== demoSettings.profileName ? pack : {
+      ...pack,
+      plugins: [...pack.plugins.filter(plugin => plugin.packageName !== suite.packageName), { packageName: suite.packageName, enabled: true }],
+    })
+    return profile()
   },
   uninstallPlugin: async (packageName, _options) => {
     demoPlugins = renumber(demoPlugins.filter(plugin => plugin.packageName !== packageName))
@@ -1439,7 +1454,7 @@ export const demoApi: LauncherApi = {
     demoAiSessions = demoAiSessions.filter(item => item.id !== sessionId)
     emitDemoSession({ kind: 'deleted', sessionId })
   },
-  listPacks: async () => demoPacks.map(pack => ({ ...pack, plugins: pack.plugins.map(plugin => ({ ...plugin })) })),
+  listPacks: async () => demoPacks.map(pack => ({ ...pack, enabled: pack.id === demoSettings.profileName, plugins: pack.plugins.map(plugin => ({ ...plugin })) })),
   createPack: async request => {
     const now = new Date().toISOString()
     const id = `pack-${request.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled'}`
@@ -1450,7 +1465,7 @@ export const demoApi: LauncherApi = {
       version: '1.0.0',
       dshVersion: request.dshVersion ?? demoSettings.dshVersion ?? '0.1.0-rc.7',
       source: 'created',
-      enabled: true,
+      enabled: id === demoSettings.profileName,
       state: 'complete',
       plugins: request.packageNames.map(packageName => ({ packageName, enabled: true })),
       ...(request.presetNames?.length ? { presets: request.presetNames.map(name => ({ name, enabled: true })) } : {}),
@@ -1486,16 +1501,11 @@ export const demoApi: LauncherApi = {
   activatePack: async packId => {
     const pack = demoPacks.find(item => item.id === packId)
     if (!pack) throw new Error(`未找到整合包：${packId}`)
-    demoPacks = demoPacks.map(item => ({ ...item, enabled: item.id === packId }))
-    demoSettings = { ...demoSettings, activePackId: packId }
-    return demoSettings
+    return demoApi.switchProfile(packId)
   },
-  deactivatePack: async () => {
-    demoPacks = demoPacks.map(item => ({ ...item, enabled: false }))
-    demoSettings = { ...demoSettings, activePackId: null }
-    return demoSettings
-  },
+  deactivatePack: async () => demoSettings,
   removePack: async packId => {
+    if (packId === demoSettings.profileName) throw new Error('当前 Profile 不能删除。')
     const before = demoPacks.length
     demoPacks = demoPacks.filter(item => item.id !== packId)
     return { removed: before - demoPacks.length }

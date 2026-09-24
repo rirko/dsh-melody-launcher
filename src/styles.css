@@ -2140,6 +2140,8 @@ input:focus-visible {
 
 .runtime-drawer-hidden .runtime-drawer-handle {
   width: 100%;
+  overflow: hidden;
+  isolation: isolate;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   background: var(--workspace-bg);
@@ -2263,6 +2265,30 @@ input:focus-visible {
   display: grid;
   place-items: center;
   color: var(--muted);
+}
+
+.runtime-drawer-hidden .runtime-drawer-handle-progress {
+  inset: 0;
+  z-index: 0;
+  width: auto;
+  height: auto;
+  border-radius: inherit;
+  background: transparent;
+  pointer-events: none;
+}
+
+.runtime-drawer-hidden .runtime-drawer-handle-progress span {
+  border-radius: 0;
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.runtime-drawer-hidden .runtime-drawer-handle-copy {
+  position: relative;
+  z-index: 1;
+}
+
+.runtime-drawer-hidden .runtime-drawer-handle-chevron {
+  z-index: 1;
 }
 
 .runtime-drawer-content {
@@ -7130,6 +7156,50 @@ input:focus-visible {
 }
 
 /* ---- DSH Market (独立于资源市场) ---- */
+.resource-market-host { height: 100%; min-height: 0; }
+.resource-market-view {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.resource-market-view > [role='tabpanel'] { min-height: 0; overflow: auto; }
+.resource-market-tabs {
+  display: flex;
+  width: min(1380px, calc(100% - 60px));
+  margin: 0 auto;
+  padding-top: 12px;
+  gap: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.resource-market-tabs button {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 42px;
+  align-items: center;
+  padding: 8px 0;
+  gap: 7px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  background: transparent;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+.resource-market-tabs button:first-child { flex-shrink: 0; }
+.resource-market-tabs button svg { flex-shrink: 0; }
+.resource-market-tabs button span { overflow-wrap: anywhere; }
+.resource-market-tabs button:hover { color: var(--ink); }
+.resource-market-tabs button[aria-selected='true'] { border-bottom-color: var(--accent); color: var(--accent); font-weight: 700; }
+.resource-market-tabs button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+.resource-market-view > [role='tabpanel'] > .page { min-height: 0; padding-top: 20px; }
+@media (max-width: 860px) {
+  .resource-market-tabs { width: calc(100% - 28px); gap: 14px; }
+}
+
 .dsh-market-page { min-height: 0; overflow: auto; }
 .dsh-market-note { display: flex; min-height: 34px; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 0 11px; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); background: var(--surface-soft); font-size: 10px; }
 .dsh-market-note span { display: inline-flex; align-items: center; gap: 6px; }

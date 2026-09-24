@@ -74,6 +74,8 @@ import { createSettingsStore, defaultSettings, type SettingsStore } from './sett
 import { createTray, type TrayController } from './tray'
 import { recoverLegacyCredentials } from './dsh-credentials-compat'
 import { createNonstandardPackService, type NonstandardPackService } from './nonstandard-pack'
+import { repairStandalonePluginLinks } from './standalone-plugin-links'
+import { inspectStandaloneNodeRuntime } from './standalone-plugin-native'
 
 /**
  * 应用入口与装配根。
@@ -156,6 +158,16 @@ function createServices(): Services {
   })
 
   let settings: SettingsStore
+
+  const resolveInstalledNativeRuntime = async () => {
+    const current = await settings.read()
+    const nodeRuntime = (!current.nodeVersion ? findSystemNodeRuntime() : null)
+      ?? await findManagedNodeRuntime(managedNodeRoot, current.nodeVersion)
+    if (!nodeRuntime) {
+      throw new Error(`请先在运行时管理中安装${current.nodeVersion ? ` Node ${current.nodeVersion}` : '并选择 Node'}，原生依赖检测不会自动下载运行时。`)
+    }
+    return inspectStandaloneNodeRuntime(nodeRuntime.node)
+  }
 
   /**
    * 准备 Node.js 运行环境，并把下载进度写进日志。
@@ -248,6 +260,15 @@ function createServices(): Services {
     isRuntimeRunning: () => runtime.isRunning(),
     fillMissingDependencies: async (profileName, missing) => {
       const current = await settings.read()
+      const standaloneLinks = await repairStandalonePluginLinks(current.dshHome, profileName, missing)
+      if (standaloneLinks.length > 0) {
+        events.output('plugin', 'info', `已离线恢复 ${standaloneLinks.length} 个独立复合插件链接。`)
+        missing = missing.filter(name => !standaloneLinks.includes(name))
+      }
+      if (missing.length === 0) {
+        if (current.dshHome !== (await settings.read()).dshHome) throw new Error('DSH_HOME 在补齐依赖期间发生变化。')
+        return
+      }
       const receipts = await readPluginReceipts(pluginReceiptsPath)
       const pluginStoreRoot = path.join(userData, 'plugin-store')
       const profileRoot = path.join(current.dshHome, 'profiles')
@@ -411,6 +432,7 @@ function createServices(): Services {
   installer = createInstaller({
     readSettings: () => settings.read(),
     saveSettings: next => settings.save(next),
+    nativeRuntime: resolveInstalledNativeRuntime,
     prepareNodeRuntime: onProgress => prepareNodeRuntime('plugin', onProgress),
     preparePnpmRuntime: (nodeRuntime, onProgress) => preparePnpmRuntime('plugin', nodeRuntime, onProgress),
     pluginSourceRoot,
@@ -489,7 +511,7 @@ function createServices(): Services {
     pluginSourceRoot,
     ensureDshVersion: async version => {
       const environment = await runtimeVersions.read(false)
-      if (!environment.dshInstalled.some(item => item.version === version)) await runtimeVersions.installDsh(version)
+      if (!environment.dshInstalled.some(item => item.version === version)) await runtimeVersions.installDsh(version, { select: false })
     },
     emitOutput: (level, text) => events.output('runtime', level, text),
   })
@@ -594,25 +616,26 @@ function createServices(): Services {
   }
 
   const packInstaller: InstallInstaller = {
-    async installPluginTarget(target) {
+    async installPluginTarget(target, profileOverride) {
       if (target.source === 'local-directory') {
         await installPackLocalDirectory(target)
         return
       }
       if (!target.repository) throw new Error('缺少来源仓库，无法安装。')
       // 真实 installer 按 analysis.targets 的 id 定位，id 形如 `<packageName>:<subdir|.>`。
-      const targetId = target.subdirectory ? `${target.packageName}:${target.subdirectory}` : `${target.packageName}:.`
+      const targetId = target.targetId ?? (target.subdirectory ? `${target.packageName}:${target.subdirectory}` : `${target.packageName}:.`)
       const request: {
         repository: string
         defaultBranch: string
         targetId: string
         commit?: string
         version?: string
-      } = { repository: target.repository, defaultBranch: 'main', targetId }
+        source?: 'npm' | 'github'
+      } = { repository: target.repository, defaultBranch: target.defaultBranch ?? 'main', targetId, ...(target.source === 'npm' || target.source === 'github' ? { source: target.source } : {}) }
       // 转发整合包声明的 pin：github 用固定 commit，npm 用固定 version（0.0.0 是占位符，不转发）。
       if (target.source === 'github' && target.commit) request.commit = target.commit
       if (target.source === 'npm' && target.version && target.version !== '0.0.0') request.version = target.version
-      await installer.installPluginTarget(request, target.profileName)
+      await installer.installPluginTarget(request, profileOverride ?? target.profileName)
     },
     installNpmPackage: (request, profileOverride) => installer.installNpmPackage(request, profileOverride),
     remove: (packageName, profileName) => installer.remove(packageName, profileName),
@@ -632,6 +655,7 @@ function createServices(): Services {
   packManager = createPackManager({
     readSettings: () => settings.read(),
     saveSettings: next => settings.save(next),
+    nativeRuntime: resolveInstalledNativeRuntime,
     registryPath: path.join(userData, 'packs.json'),
     manifestRoot: path.join(userData, 'pack-manifests'),
     snapshotRoot: path.join(userData, 'pack-snapshots'),
@@ -645,6 +669,7 @@ function createServices(): Services {
     isRuntimeRunning: () => runtime.isRunning(),
     isInstallerBusy: () => installer.isBusy(),
     unifiedProfiles: true,
+    profiles: profileService,
   })
 
   const launcherUpdater = createLauncherUpdater({

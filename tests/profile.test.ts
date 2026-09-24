@@ -283,6 +283,10 @@ describe('external input validation', () => {
   it('accepts normal names and rejects command-like input', () => {
     expect(isSafeProfileName('web-dev_2')).toBe(true)
     expect(isSafeProfileName('../web')).toBe(false)
+    expect(isSafeProfileName('node_modules')).toBe(false)
+    expect(isSafeProfileName('NODE_MODULES')).toBe(false)
+    expect(isSafeProfileName('node_modules.')).toBe(false)
+    expect(isSafeProfileName('my-node_modules')).toBe(true)
     expect(isSafeRepositoryName('owner/dsh-plugin')).toBe(true)
     expect(isSafeRepositoryName('owner/repo && whoami')).toBe(false)
     expect(isSafePackageName('@scope/plugin-name')).toBe(true)

@@ -4,6 +4,7 @@ import path from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { ManagedPlugin, ProfileState } from '../src/types'
 import { readPluginReceipts } from './plugin-receipts'
+import { ensureStandalonePluginLink, findStandalonePluginDirectories, isStandalonePluginReference, resolveStandalonePluginDirectory } from './standalone-plugin-links'
 
 interface PackageManifest {
   name?: string
@@ -129,19 +130,22 @@ function dependencyNames(manifest: PackageManifest): Set<string> {
   return new Set(dependencyEntries(manifest).map(([name]) => name))
 }
 
-function receiptSpecifier(packageName: string, receipt: Awaited<ReturnType<typeof readPluginReceipts>>[number]): string | null {
+async function receiptSpecifier(dshHome: string, packageName: string, receipt: Awaited<ReturnType<typeof readPluginReceipts>>[number]): Promise<string | null> {
   if (receipt.source === 'npm') return receipt.version ? `${packageName}@${receipt.version}` : packageName
   if (receipt.source === 'github' || receipt.source === 'archive-subdirectory' || receipt.source === 'release') {
     const repository = repositoryFullNameFromSpecifier(receipt.repository)
     if (repository) return `github:${repository}${receipt.commit ? `#${receipt.commit}` : ''}`
   }
-  if (receipt.source === 'local-directory' && receipt.repository.startsWith('file:')) return receipt.repository
+  if (receipt.source === 'local-directory' && /^(file|link):/.test(receipt.repository)) {
+    const standalone = await resolveStandalonePluginDirectory(dshHome, packageName, receipt.repository)
+    return standalone ? `link:${standalone}` : receipt.repository
+  }
   return null
 }
 
 function preferSpecifier(existing: string | undefined, candidate: string): string {
   if (!existing || existing.trim() === '*' || existing.trim() === 'latest') return candidate
-  if (candidate.startsWith('file:') && !existing.startsWith('file:')) return candidate
+  if (/^(file|link):/.test(candidate) && !/^(file|link):/.test(existing)) return candidate
   return existing
 }
 
@@ -197,7 +201,7 @@ async function collectPluginInventory(
   for (const receipt of receipts) {
     if (!isSafePackageName(receipt.packageName)) continue
     names.add(receipt.packageName)
-    const specifier = receiptSpecifier(receipt.packageName, receipt)
+    const specifier = await receiptSpecifier(dshHome, receipt.packageName, receipt)
     if (specifier) specifiers.set(receipt.packageName, preferSpecifier(specifiers.get(receipt.packageName), specifier))
   }
 
@@ -260,8 +264,8 @@ async function resolveDependencyManifest(
   if (direct) return direct
 
   const candidates: string[] = []
-  if (typeof specifier === 'string' && specifier.startsWith('file:')) {
-    const rawPath = specifier.slice('file:'.length)
+  if (typeof specifier === 'string' && /^(file|link):/.test(specifier)) {
+    const rawPath = specifier.slice(specifier.indexOf(':') + 1)
     candidates.push(path.resolve(path.isAbsolute(rawPath) ? rawPath : path.join(profileDir, rawPath)))
   }
 
@@ -472,13 +476,27 @@ export async function togglePlugin(
     if (!enabled) return bundles.filter(name => name !== packageName)
     return bundles
   }, pluginReceiptsPath, async manifest => {
-    if (!enabled || dependencyNames(manifest).has(packageName) || CORE_BUNDLES.has(packageName)) return
+    if (!enabled || CORE_BUNDLES.has(packageName)) return
+    const existingSpecifier = dependencyEntries(manifest).find(([name]) => name === packageName)?.[1]
+    if (existingSpecifier) {
+      if (isStandalonePluginReference(dshHome, packageName, existingSpecifier, profilePaths(dshHome, profileName).profileDir)) {
+        const standalone = await resolveStandalonePluginDirectory(dshHome, packageName, existingSpecifier, profilePaths(dshHome, profileName).profileDir)
+        if (!standalone) throw new Error(`Standalone plugin body is missing or invalid: ${packageName}`)
+        await ensureStandalonePluginLink(dshHome, profileName, packageName, standalone)
+      }
+      return
+    }
     const receipts = pluginReceiptsPath
       ? await readPluginReceipts(pluginReceiptsPath).catch(() => [])
       : []
     const inventory = await collectPluginInventory(dshHome, profileName, receipts)
     const specifier = inventory.specifiers.get(packageName)
     if (!specifier) throw new Error('插件来源不可用，请先从资源市场或整合包安装后再启用。')
+    if (isStandalonePluginReference(dshHome, packageName, specifier, profilePaths(dshHome, profileName).profileDir)) {
+      const standalone = await resolveStandalonePluginDirectory(dshHome, packageName, specifier, profilePaths(dshHome, profileName).profileDir)
+      if (!standalone) throw new Error(`Standalone plugin body is missing or invalid: ${packageName}`)
+      await ensureStandalonePluginLink(dshHome, profileName, packageName, standalone)
+    }
     manifest.dependencies = { ...(manifest.dependencies ?? {}), [packageName]: specifier }
   })
 }
@@ -748,6 +766,10 @@ export async function removeUnusedSharedPluginBodies(dshHome: string, packageNam
     await rm(packageRoot, { recursive: true, force: true })
     removed = true
   }
+  for (const directory of await findStandalonePluginDirectories(dshHome, packageName)) {
+    await rm(directory, { recursive: true, force: true })
+    removed = true
+  }
   return removed
 }
 
@@ -775,7 +797,10 @@ export async function pathExists(target: string): Promise<boolean> {
 }
 
 export function isSafeProfileName(value: string): boolean {
-  return /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(value)
+  return typeof value === 'string'
+    && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(value)
+    // Dependency directories are never environments, even with legacy metadata.
+    && value.replace(/\.+$/, '').toLowerCase() !== 'node_modules'
 }
 
 export function isSafeRepositoryName(value: string): boolean {

@@ -759,7 +759,7 @@ export interface ProfileSnapshot {
 }
 
 /** 快照只覆盖这些清单文件，不碰 node_modules（体积过大）。 */
-const SNAPSHOT_MANIFEST_NAMES = ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml']
+const SNAPSHOT_MANIFEST_NAMES = ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', 'profile.yaml']
 
 type PackageManifestRecord = Record<string, unknown>
 

@@ -137,6 +137,7 @@ function makeManager(
 ) {
   const emitEvent = vi.fn()
   const manager = createPackManager({
+    unifiedProfiles: false,
     readSettings: store.readSettings,
     saveSettings: store.saveSettings,
     registryPath: env.registryPath,
@@ -660,6 +661,54 @@ describe.skip('legacy importPack tests（独立 Profile 语义已废弃）', () 
 // ---------------------------------------------------------------------------
 
 describe('analyzeImport', () => {
+  it.each([
+    ['standalone manifest', 'renamed.zip', {
+      'standalone.json': JSON.stringify({ format: 'dsh-standalone-plugin', schemaVersion: 1 }),
+      'package.json': JSON.stringify({ name: 'outer-suite', version: '1.0.0' }),
+      'private/packages/p00000/package.json': JSON.stringify({ name: 'private-plugin', version: '1.0.0' }),
+    }],
+    ['package marker', 'also-renamed.zip', {
+      'package.json': JSON.stringify({ name: 'outer-suite', version: '1.0.0', dsh: { standalone: { schemaVersion: 1 } } }),
+      'private/packages/p00000/package.json': JSON.stringify({ name: 'private-plugin', version: '1.0.0' }),
+    }],
+    ['wrapped marker with a Profile manifest', 'wrapped.dsh-plugin.zip', {
+      'wrapper/package.json': JSON.stringify({ name: 'outer-suite', version: '1.0.0', dsh: { standalone: { schemaVersion: 1 } } }),
+      'wrapper/dsh-profile.yaml': 'name: impostor\nversion: 1.0.0\ndshVersion: 0.1.0-rc.7\nplugins: []\n',
+      'wrapper/private/packages/p00000/package.json': JSON.stringify({ name: 'private-plugin', version: '1.0.0' }),
+    }],
+  ] as const)('rejects a standalone %s in both ordinary import entry points', async (_description, fileName, entries) => {
+    const env = await makeEnv()
+    const installer = makeInstallerStub()
+    const store = makeSettings(env.dshHome)
+    const { manager } = makeManager(env, installer, store)
+    const zipPath = path.join(env.root, fileName)
+    await writeFile(zipPath, rawZip(entries))
+
+    await expect(manager.analyzeImport(zipPath)).rejects.toThrow(/插件页.*导入独立插件/)
+    await expect(manager.importPack(zipPath)).rejects.toThrow(/插件页.*导入独立插件/)
+    expect(manager.isBusy()).toBe(false)
+    expect(installer.installPluginTarget).not.toHaveBeenCalled()
+    expect(installer.installSkillLocal).not.toHaveBeenCalled()
+    expect(installer.installPresetLocal).not.toHaveBeenCalled()
+    expect(store.saveSettings).not.toHaveBeenCalled()
+    expect(await readdir(path.join(env.dshHome, 'profiles'))).toEqual([])
+    expect(await readPackRegistry(env.registryPath)).toEqual([])
+  })
+
+  it('uses archive contents rather than the standalone-looking filename to classify an ordinary pack', async () => {
+    const env = await makeEnv()
+    const installer = makeInstallerStub()
+    const { manager } = makeManager(env, installer, makeSettings(env.dshHome))
+    const zipPath = path.join(env.root, 'ordinary.dsh-plugin.zip')
+    await writeFile(zipPath, rawZip({
+      'plugin/package.json': JSON.stringify({ name: 'ordinary-plugin', version: '1.0.0' }),
+      'plugin/index.js': 'export {}',
+    }))
+    expect((await manager.analyzeImport(zipPath)).items).toEqual([
+      { packageName: 'ordinary-plugin', available: true, offline: true },
+    ])
+  })
+
   it('有 body 的包：按 bodyPackageNames 列出，offline = true', async () => {
     const env = await makeEnv()
     const stub = makeInstallerStub()

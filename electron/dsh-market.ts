@@ -192,6 +192,7 @@ export function createDshMarketService(options: DshMarketOptions) {
   let catalogCache: Registry | null = null
   let catalogValidator: string | null = null
   let registryLoading: Promise<Registry> | null = null
+  let registryError: Error | null = null
   let updatesCache: { at: number; data: Record<string, DshMarketUpdateStatus> } | null = null
   let active = false
   /** 「注册表条目名 → 实际 npm 包名」映射：git workspace 聚合包回退安装后登记，
@@ -202,9 +203,14 @@ export function createDshMarketService(options: DshMarketOptions) {
     options.emitProgress({ name, phase, message, percent })
   }
 
-  async function loadRegistry(): Promise<Registry> {
+  async function loadRegistry(force = false): Promise<Registry> {
     if (registryLoading) return registryLoading
+    // Keep registry data (or the initial failure) for this launcher session.
+    // Local Profile reads must not trigger network requests or download logs.
+    if (!force && catalogCache) return catalogCache
+    if (!force && registryError) throw registryError
 
+    progress('', 'loading', '正在读取 dsh-market 精选目录')
     const request = (async (): Promise<Registry> => {
       const headers: Record<string, string> = { accept: 'application/json', 'user-agent': 'dsh-melody-launcher/dsh-market' }
       if (catalogValidator) headers['if-none-match'] = catalogValidator
@@ -225,7 +231,14 @@ export function createDshMarketService(options: DshMarketOptions) {
     })()
     registryLoading = request
     try {
-      return await request
+      const registry = await request
+      registryError = null
+      progress('', 'complete', 'DSH Market 目录读取完成', 100)
+      return registry
+    } catch (error) {
+      registryError = error instanceof Error ? error : new Error(String(error))
+      progress('', 'error', registryError.message, null)
+      throw registryError
     } finally {
       if (registryLoading === request) registryLoading = null
     }
@@ -248,9 +261,8 @@ export function createDshMarketService(options: DshMarketOptions) {
     return { map, records }
   }
 
-  async function buildCatalog(profileNameOverride?: string): Promise<DshMarketCatalog> {
-    progress('', 'loading', '正在读取 dsh-market 精选目录')
-    const registry = await loadRegistry()
+  async function buildCatalog(profileNameOverride?: string, force = false): Promise<DshMarketCatalog> {
+    const registry = await loadRegistry(force)
     const loadedSettings = await options.readSettings()
     const settings = profileNameOverride ? { ...loadedSettings, profileName: profileNameOverride } : loadedSettings
     const installed = await readInstalled(settings)
@@ -602,7 +614,7 @@ export function createDshMarketService(options: DshMarketOptions) {
 
   async function checkUpdates(force = false): Promise<Record<string, DshMarketUpdateStatus>> {
     if (!force && updatesCache && Date.now() - updatesCache.at < 30 * 60_000) return updatesCache.data
-    const registry = await loadRegistry()
+    const registry = await loadRegistry(force)
     const settings = await options.readSettings()
     const installed = await readInstalled(settings)
     const result: Record<string, DshMarketUpdateStatus> = {}
@@ -642,19 +654,10 @@ export function createDshMarketService(options: DshMarketOptions) {
 
   return {
     isBusy: () => active,
-    load: async (): Promise<DshMarketCatalog> => {
-      try {
-        const catalog = await buildCatalog()
-        // Reading the catalog must stay local and fast. Remote npm/GitHub update
-        // checks are intentionally triggered only by the explicit "检查更新"
-        // action, otherwise a slow registry can hold the whole Market page open.
-        const result = applyUpdateStatuses(catalog, updatesCache?.data ?? {})
-        progress('', 'complete', 'DSH Market 目录读取完成', 100)
-        return result
-      } catch (error) {
-        progress('', 'error', error instanceof Error ? error.message : 'DSH Market 目录读取失败', null)
-        throw error
-      }
+    load: async (force = false): Promise<DshMarketCatalog> => {
+      const catalog = await buildCatalog(undefined, force)
+      // Remote npm/GitHub update checks require the explicit check-updates action.
+      return applyUpdateStatuses(catalog, updatesCache?.data ?? {})
     },
     install: (name: string, profileName?: string, exactVersion?: string | null) => mutate(name, 'install', profileName, exactVersion),
     update: (name: string, profileName?: string) => mutate(name, 'update', profileName),

@@ -1,5 +1,5 @@
 import { AppWindow, ChevronRight, CircleStop, Download, Folder, KeyRound, Layers3, LoaderCircle, Maximize2, Minus, Package, Play, X } from 'lucide-react'
-import type { CredentialStatus, GitHubAuthStatus, InstalledApplicationAddon, LauncherUpdateStatus, PackStatus, ProfileSummary, RuntimeState } from '../types'
+import type { CredentialStatus, GitHubAuthStatus, InstalledApplicationAddon, LauncherUpdateStatus, ProfileSummary, RuntimeState } from '../types'
 
 /** 管理界面顶栏：品牌、当前配置与运行状态、全局动作。 */
 
@@ -15,9 +15,7 @@ interface AppHeaderProps {
   activeRuntimeReplacement: InstalledApplicationAddon | null
   launcherUpdate: LauncherUpdateStatus | null
   showPackSwitcher: boolean
-  packs: PackStatus[]
   profiles?: ProfileSummary[]
-  activePackId: string | null | undefined
   packSwitcherDisabled: boolean
   profileActiveCount: number
   profileDisabledCount: number
@@ -27,8 +25,7 @@ interface AppHeaderProps {
   onGitHubAccount: () => void
   onToggleRuntime: () => void
   onUpdate: () => void
-  onPackChange: (packId: string) => void
-  onProfileChange?: (profileName: string) => void
+  onProfileChange: (profileName: string) => void
   onOpenProfileDirectory: () => void
   onMinimize: () => void
   onToggleMaximize: () => void
@@ -47,9 +44,7 @@ export function AppHeader({
   activeRuntimeReplacement,
   launcherUpdate,
   showPackSwitcher,
-  packs,
   profiles = [],
-  activePackId,
   packSwitcherDisabled,
   profileActiveCount,
   profileDisabledCount,
@@ -59,7 +54,6 @@ export function AppHeader({
   onGitHubAccount,
   onToggleRuntime,
   onUpdate,
-  onPackChange,
   onProfileChange,
   onOpenProfileDirectory,
   onMinimize,
@@ -102,14 +96,12 @@ export function AppHeader({
               <span>Profile / 整合包</span>
               <select
                 aria-label="切换 Profile"
-                value={profiles.length > 0 ? profileName : (activePackId ?? '')}
+                value={profileName}
                 disabled={packSwitcherDisabled}
-                onChange={event => profiles.length > 0 && onProfileChange ? onProfileChange(event.target.value) : onPackChange(event.target.value)}
+                onChange={event => onProfileChange(event.target.value)}
               >
-                {profiles.length > 0
-                  ? profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.name}</option>)
-                  : <option value="">默认配置</option>}
-                {profiles.length === 0 && packs.map(pack => <option key={pack.id} value={pack.id}>{pack.name}</option>)}
+                {!profiles.some(profile => profile.id === profileName) && <option value={profileName}>{profileName}</option>}
+                {profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
               </select>
             </label>
             <div className="header-management-stats" aria-label="配置概况">

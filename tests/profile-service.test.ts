@@ -1,8 +1,8 @@
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { consolidatePluginPool, createProfile, createProfileService, deleteProfile, ensureProfileCoreBundles, listProfiles, migrateLegacyPacks, switchProfile } from '../electron/profile-service'
+import { consolidatePluginPool, createProfile, createProfileService, deleteProfile, ensureProfileCoreBundles, listProfiles, migrateLegacyPacks, readProfileMetadata, switchProfile, writeProfileMetadata } from '../electron/profile-service'
 import { defaultSettings } from '../electron/settings'
 import { readPackRegistry, upsertPackRecord } from '../electron/pack-registry'
 import { readPluginReceipts, recordPluginInstall } from '../electron/plugin-receipts'
@@ -32,6 +32,33 @@ async function fixture() {
 }
 
 describe('Profile service', () => {
+  it('excludes dependency folders even with legacy Profile metadata or a stored selection', async () => {
+    const env = await fixture()
+    const dependencyDir = path.join(env.dshHome, 'profiles', 'node_modules')
+    await mkdir(dependencyDir)
+    await listProfiles(env.options)
+    await expect(access(path.join(dependencyDir, 'profile.yaml'))).rejects.toThrow()
+    const legacyMetadata = 'name: node_modules\nsource:\n  kind: local\n'
+    await writeFile(path.join(dependencyDir, 'profile.yaml'), legacyMetadata)
+    await env.options.saveSettings({ ...env.getSettings(), profileName: 'node_modules' })
+    expect((await listProfiles(env.options)).map(item => item.id)).toEqual(['web'])
+    await expect(readFile(path.join(dependencyDir, 'profile.yaml'), 'utf8')).resolves.toBe(legacyMetadata)
+  })
+
+  it('blocks creating, switching, cloning and deleting dependency directories without touching their contents', async () => {
+    const env = await fixture()
+    const dependencyDir = path.join(env.dshHome, 'profiles', 'node_modules')
+    await mkdir(dependencyDir)
+    const sentinel = path.join(dependencyDir, 'keep.txt')
+    await writeFile(sentinel, 'dependency data')
+    const service = createProfileService(env.options)
+    await expect(service.create({ name: 'node_modules' })).rejects.toThrow(/node_modules/)
+    await expect(service.switch('node_modules')).rejects.toThrow(/node_modules/)
+    await expect(service.clone('web', 'NODE_MODULES')).rejects.toThrow(/node_modules/)
+    await expect(service.remove('node_modules')).rejects.toThrow(/node_modules/)
+    await expect(readFile(sentinel, 'utf8')).resolves.toBe('dependency data')
+  })
+
   it('creates, clones, lists, switches and deletes independent Profile directories', async () => {
     const env = await fixture()
     await createProfile(env.options, { name: 'alpha', description: 'Alpha', dshVersion: '0.1.0-rc.7' })
@@ -70,6 +97,153 @@ describe('Profile service', () => {
     expect(result.migrated).toBe(1)
     await expect(readFile(path.join(env.dshHome, 'profiles', 'pack-legacy', 'package.json'), 'utf8')).resolves.toContain('@demo/plugin')
     await expect(access(`${manifestRoot}.legacy.bak`)).resolves.toBeUndefined()
+  })
+
+  it('preserves authoritative Profile fields while migrating previously untracked resources', async () => {
+    const env = await fixture()
+    await createProfile(env.options, { name: 'alpha', description: 'current description', dshVersion: '0.2.0' })
+    await writeProfileMetadata(env.dshHome, 'alpha', {
+      version: '2.0.0', source: { kind: 'github', repository: 'current/repo', commit: 'current-commit' },
+      importState: 'complete', importFailures: [],
+    })
+    const manifestPath = path.join(env.dshHome, 'profiles', 'alpha', 'package.json')
+    const originalManifest = await readFile(manifestPath, 'utf8')
+    const originalMetadata = await readProfileMetadata(env.dshHome, 'alpha')
+    await upsertPackRecord(env.options.registryPath, {
+      id: 'alpha', name: 'Legacy Alpha', description: 'stale', version: '1.0.0', dshVersion: '0.1.0', source: 'manifest',
+      installedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), state: 'failed',
+      plugins: [{ packageName: '@legacy/plugin', enabled: true }],
+      failures: [{ packageName: '@legacy/plugin', reason: 'old failure' }],
+      presets: [{ name: 'agent', enabled: false }], skills: [{ name: 'writer', format: 'flat', enabled: true }],
+      applications: [{ id: 'desktop', name: 'Desktop', enabled: false }],
+    })
+    await migrateLegacyPacks(env.options)
+    expect(await readProfileMetadata(env.dshHome, 'alpha')).toMatchObject({
+      ...originalMetadata,
+      packName: 'Legacy Alpha',
+      resources: {
+        presets: [{ name: 'agent', enabled: false }], skills: [{ name: 'writer', format: 'flat', enabled: true }],
+        applications: [{ id: 'desktop', name: 'Desktop', enabled: false }],
+      },
+    })
+    await expect(readFile(manifestPath, 'utf8')).resolves.toBe(originalManifest)
+  })
+
+  it('retains existing Profile resource ownership rather than replaying legacy resources', async () => {
+    const env = await fixture()
+    await createProfile(env.options, { name: 'alpha' })
+    await writeProfileMetadata(env.dshHome, 'alpha', {
+      version: '2.0.0', packName: 'Current', importState: 'complete', importFailures: [],
+      resources: { skills: [], presets: [], applications: [] },
+    })
+    const metadataPath = path.join(env.dshHome, 'profiles', 'alpha', 'profile.yaml')
+    const before = await readFile(metadataPath, 'utf8')
+    await upsertPackRecord(env.options.registryPath, {
+      id: 'alpha', name: 'Stale', description: 'old', version: '1.0.0', source: 'manifest',
+      installedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), state: 'complete', plugins: [],
+      skills: [{ name: 'deleted-skill', format: 'flat', enabled: true }],
+    })
+    expect((await migrateLegacyPacks(env.options)).migrated).toBe(0)
+    await expect(readFile(metadataPath, 'utf8')).resolves.toBe(before)
+  })
+
+  it('archives repeated legacy files without recreating a previously deleted Profile', async () => {
+    const env = await fixture()
+    const record = {
+      id: 'alpha', name: 'Alpha', description: 'legacy', version: '1.0.0', source: 'manifest' as const,
+      installedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), state: 'partial' as const,
+      plugins: [], failures: [{ packageName: '@demo/plugin', reason: 'missing' }],
+      skills: [{ name: 'writer', format: 'flat' as const, enabled: true }],
+    }
+    await upsertPackRecord(env.options.registryPath, record)
+    await writePackManifest(env.options.manifestRoot, 'alpha', { name: 'Alpha', description: '', version: '1.0.0', plugins: [] })
+    await migrateLegacyPacks(env.options)
+    expect(await readProfileMetadata(env.dshHome, 'alpha')).toMatchObject({
+      version: '1.0.0', importState: 'partial', importFailures: ['@demo/plugin: missing'],
+      resources: { skills: [{ name: 'writer', format: 'flat', enabled: true }] },
+    })
+    await deleteProfile(env.options, 'alpha')
+    await upsertPackRecord(env.options.registryPath, record)
+    await writePackManifest(env.options.manifestRoot, 'alpha', { name: 'Alpha', description: '', version: '1.0.0', plugins: [] })
+    const result = await migrateLegacyPacks(env.options)
+    expect(result).toEqual({ migrated: 0, backupPath: `${env.options.registryPath}.legacy.bak.1` })
+    await expect(access(`${env.options.registryPath}.legacy.bak`)).resolves.toBeUndefined()
+    await expect(access(`${env.options.manifestRoot}.legacy.bak.1`)).resolves.toBeUndefined()
+    await expect(access(env.options.registryPath)).rejects.toThrow()
+    await expect(access(env.options.manifestRoot)).rejects.toThrow()
+    await expect(access(path.join(env.dshHome, 'profiles', 'alpha'))).rejects.toThrow()
+    expect(await migrateLegacyPacks(env.options)).toEqual({ migrated: 0, backupPath: null })
+  })
+
+  it('preserves Profile resource and export metadata across updates and clones', async () => {
+    const env = await fixture()
+    await createProfile(env.options, { name: 'alpha' })
+    await writeProfileMetadata(env.dshHome, 'alpha', {
+      version: '3.0.0', resources: { skills: [{ name: 'writer', format: 'bundle', enabled: false }] },
+      source: { kind: 'github', repository: 'author/source', commit: 'origin' },
+      exportRepository: { repository: 'user/export', branch: 'main' },
+    })
+    await writeProfileMetadata(env.dshHome, 'alpha', { description: 'updated' })
+    const metadata = await readProfileMetadata(env.dshHome, 'alpha')
+    expect(metadata).toMatchObject({ version: '3.0.0', exportRepository: { repository: 'user/export', branch: 'main' } })
+    await createProfile(env.options, { name: 'beta', cloneFrom: 'alpha' })
+    const clone = await readProfileMetadata(env.dshHome, 'beta')
+    expect(clone.resources).toEqual(metadata.resources)
+    expect(clone.version).toBe('3.0.0')
+    expect(clone.exportRepository).toBeUndefined()
+  })
+
+  it('migrates registry and manifest-only Profiles together without changing the selected Profile', async () => {
+    const env = await fixture()
+    await env.options.saveSettings({ ...env.getSettings(), activePackId: 'alpha' })
+    await upsertPackRecord(env.options.registryPath, {
+      id: 'alpha', name: 'Alpha', description: 'active legacy pack', version: '1.0.0', source: 'manifest',
+      installedAt: '2025-01-01T00:00:00.000Z', updatedAt: new Date().toISOString(), state: 'complete', plugins: [],
+    })
+    await writePackManifest(env.options.manifestRoot, 'beta', { name: 'Beta', description: 'manifest-only', version: '2.0.0', plugins: [] })
+    expect((await migrateLegacyPacks(env.options)).migrated).toBe(2)
+    expect(env.getSettings()).toMatchObject({ profileName: 'web', activePackId: null })
+    expect(await readProfileMetadata(env.dshHome, 'web')).toMatchObject({ packName: 'Alpha', createdAt: '2025-01-01T00:00:00.000Z' })
+    expect(await readProfileMetadata(env.dshHome, 'beta')).toMatchObject({ packName: 'Beta', version: '2.0.0' })
+    await expect(access(path.join(env.dshHome, 'profiles', 'alpha'))).rejects.toThrow()
+  })
+
+  it('recovers old publishing destinations only for Profiles with a recorded export', async () => {
+    const env = await fixture()
+    await createProfile(env.options, { name: 'alpha' })
+    await writeProfileMetadata(env.dshHome, 'alpha', {
+      source: { kind: 'github', repository: 'author/source', branch: 'main' },
+    })
+    expect((await readProfileMetadata(env.dshHome, 'alpha')).exportRepository).toBeUndefined()
+    await writeProfileMetadata(env.dshHome, 'alpha', { exportedAt: '2026-01-01T00:00:00.000Z' })
+    expect((await readProfileMetadata(env.dshHome, 'alpha')).exportRepository).toEqual({ repository: 'author/source', branch: 'main' })
+    await writeProfileMetadata(env.dshHome, 'alpha', { exportRepository: { repository: 'user/new-export' } })
+    expect((await readProfileMetadata(env.dshHome, 'alpha')).exportRepository).toEqual({ repository: 'user/new-export' })
+  })
+
+  it('keeps complete metadata visible while atomic updates run', async () => {
+    const env = await fixture()
+    await createProfile(env.options, { name: 'alpha', dshVersion: '0.1.0' })
+    await Promise.all([
+      (async () => {
+        for (let index = 0; index < 20; index += 1) await writeProfileMetadata(env.dshHome, 'alpha', { dshVersion: index % 2 ? '0.1.0' : '0.2.0' })
+      })(),
+      (async () => {
+        for (let index = 0; index < 50; index += 1) expect(['0.1.0', '0.2.0']).toContain((await readProfileMetadata(env.dshHome, 'alpha')).dshVersion)
+      })(),
+    ])
+    expect((await readdir(path.join(env.dshHome, 'profiles', 'alpha'))).some(name => name.endsWith('.tmp'))).toBe(false)
+  })
+
+  it('removes temporary metadata after a failed atomic replacement without removing the target', async () => {
+    const env = await fixture()
+    const directory = path.join(env.dshHome, 'profiles', 'broken')
+    const metadataDirectory = path.join(directory, 'profile.yaml')
+    await mkdir(metadataDirectory, { recursive: true })
+    await writeFile(path.join(metadataDirectory, 'keep.txt'), 'keep')
+    await expect(writeProfileMetadata(env.dshHome, 'broken', { dshVersion: '0.1.0' })).rejects.toThrow()
+    expect(await readdir(directory)).toEqual(['profile.yaml'])
+    await expect(readFile(path.join(metadataDirectory, 'keep.txt'), 'utf8')).resolves.toBe('keep')
   })
 
   it('blocks deleting the selected Profile', async () => {
@@ -215,10 +389,13 @@ describe('Profile service', () => {
       declaredInProfile: false,
     })
     expect(desktop?.missingDependencies).toEqual([])
+    expect(desktop).toMatchObject({ pluginCount: 0, enabledPluginCount: 0, disabledPluginCount: 0 })
+    expect(summaries.find(item => item.id === 'web')).toMatchObject({ pluginCount: 1, enabledPluginCount: 0, disabledPluginCount: 1 })
 
     await togglePlugin(env.dshHome, 'desktop', '@demo/plugin', true)
     const activatedManifest = JSON.parse(await readFile(path.join(env.dshHome, 'profiles', 'desktop', 'package.json'), 'utf8')) as { dependencies?: Record<string, string> }
     expect(activatedManifest.dependencies?.['@demo/plugin']).toBe('1.0.0')
+    expect((await listProfiles(env.options)).find(item => item.id === 'desktop')).toMatchObject({ pluginCount: 1, enabledPluginCount: 1, disabledPluginCount: 0 })
   })
 
   it('运行时核心包即使写入旧 Profile dependencies 也不计为缺失插件', async () => {
@@ -350,5 +527,12 @@ describe('Profile service', () => {
     await deleteProfile(env.options, 'alpha')
     expect(await readPackRegistry(env.options.registryPath)).toEqual([])
     await expect(access(path.join(env.options.manifestRoot, 'alpha.yaml'))).rejects.toThrow()
+  })
+
+  it('does not create a legacy registry when deleting a Profile', async () => {
+    const env = await fixture()
+    await createProfile(env.options, { name: 'alpha' })
+    await deleteProfile(env.options, 'alpha')
+    await expect(access(env.options.registryPath)).rejects.toThrow()
   })
 })

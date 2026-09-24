@@ -16,7 +16,7 @@ import type { PackAnalysis, PackAnalysisItem, PackInstallResult } from '../../ty
  * 三种形态：
  *  - preview    导入流程的清单勾选（create 跳过）
  *  - installing 流式日志 + item 级进度
- *  - done/error 结果汇总 + 还原快照 / 启用整合包
+ *  - done/error 结果汇总 + 还原快照 / 切换 Profile
  */
 
 export interface PackInstallDialogProps {
@@ -29,7 +29,7 @@ export interface PackInstallDialogProps {
   /** 当前任务的快照事件已到达（更精确）；store 侧的 packHasSnapshot 兜底。 */
   hasSnapshot: boolean
   packSnapshotsAvailable?: boolean
-  /** 一次性的还原快照 / 启用整合包动作是否忙碌。 */
+  /** 一次性的还原快照 / 切换 Profile 动作是否忙碌。 */
   busy: boolean
   /** raw 扫描导入时由用户在预览中编辑包名（仅该来源需要）；name 缺省表示用派生名。 */
   onConfirmImport: (selectedItems: string[], name?: string) => void
@@ -188,7 +188,7 @@ export function PackInstallDialog({
               </button>
               {result?.id && (
                 <button type="button" className="secondary-button accent" disabled={busy} onClick={() => onActivate(result!.id)}>
-                  <CircleCheck size={16} />启用整合包
+                  <CircleCheck size={16} />切换到此 Profile
                 </button>
               )}
               <button type="button" className="primary-command" onClick={onClose}><CircleCheck size={16} />关闭</button>

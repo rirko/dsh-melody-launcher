@@ -1,5 +1,5 @@
-import { Cpu, GitFork, Layers3, Package, PanelLeftClose, PanelLeftOpen, Settings, ShoppingBag, Sparkles } from 'lucide-react'
-import type { PackStatus, ProfileState, ProfileSummary, RuntimeState, ViewName } from '../types'
+import { Cpu, GitFork, Layers3, Package, PanelLeftClose, PanelLeftOpen, Settings, Sparkles } from 'lucide-react'
+import type { ProfileState, RuntimeState, ViewName } from '../types'
 
 /** 管理界面左侧导航与当前 Profile 摘要。 */
 
@@ -15,23 +15,16 @@ interface SideNavigationProps {
   profile: ProfileState
   runtime: RuntimeState
   profileName: string
-  packs: PackStatus[]
-  profiles?: ProfileSummary[]
-  activePackId: string | null | undefined
   collapsed: boolean
-  profileMutationLocked: boolean
-  onPackChange: (packId: string) => void
-  onProfileChange?: (profileName: string) => void
   onToggleCollapsed: () => void
   onSettings: () => void
   onChange: (view: ViewName) => void
 }
 
-export function SideNavigation({ view, profile, runtime, profileName, packs, profiles = [], activePackId, collapsed, profileMutationLocked, onPackChange, onProfileChange, onToggleCollapsed, onSettings, onChange }: SideNavigationProps) {
+export function SideNavigation({ view, profile, runtime, profileName, collapsed, onToggleCollapsed, onSettings, onChange }: SideNavigationProps) {
   const entries: NavigationEntry[] = [
     { id: 'plugins', label: '启动项管理', icon: Layers3, count: profile.plugins.length },
     { id: 'discover', label: '资源市场', icon: Sparkles },
-    { id: 'dsh-market', label: 'DSH Market', icon: ShoppingBag },
     { id: 'packs', label: 'Profile / 整合包', icon: Package },
     { id: 'github', label: 'GitHub', icon: GitFork },
     { id: 'environment', label: '运行环境', icon: Cpu },

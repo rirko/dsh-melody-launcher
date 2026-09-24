@@ -41,6 +41,17 @@ const PRESET_BODIES_PREFIX = 'preset-bodies/'
 
 /** 标准包清单读取上限（清单本身很小，给一个安全余量即可）。 */
 const MAX_MANIFEST_BYTES = 1 * 1024 * 1024
+const STANDALONE_PLUGIN_IMPORT_ERROR = '这是独立复合插件，不能作为普通整合包导入。请前往“插件页 → 导入独立插件”。'
+
+function hasStandalonePluginMarker(packageText: string): boolean {
+  try {
+    const manifest = JSON.parse(packageText) as { dsh?: unknown } | null
+    return Boolean(manifest?.dsh && typeof manifest.dsh === 'object'
+      && Object.prototype.hasOwnProperty.call(manifest.dsh, 'standalone'))
+  } catch {
+    return false
+  }
+}
 
 /** 流式打开时的“宽松探测”限额：只防极端条目数/路径风险，体积限制交给后续严格检查。 */
 const LOOSE_PATH_LIMITS = {
@@ -512,6 +523,18 @@ export function openLooseZipFromPath(filePath: string): Promise<OpenZipPath> {
 export async function findManifestInArchiveFromPath(filePath: string): Promise<string | null> {
   const handle = await openLooseZipFromPath(filePath)
   try {
+    // Identify the artifact by root metadata before standard/raw classification.
+    // Renaming the ZIP or adding a Profile manifest must not expose its private packages.
+    for (const entry of handle.entries) {
+      if (entry.isDirectory) continue
+      const safe = safeArchivePath(entry.entryName)
+      if (!safe) continue
+      const rel = relForEntry(safe, handle.stripRoot).toLowerCase()
+      if (rel === 'standalone.json') throw new Error(STANDALONE_PLUGIN_IMPORT_ERROR)
+      if (rel === 'package.json' && hasStandalonePluginMarker((await handle.readEntryData(entry, MAX_MANIFEST_BYTES)).toString('utf8'))) {
+        throw new Error(STANDALONE_PLUGIN_IMPORT_ERROR)
+      }
+    }
     for (const entry of handle.entries) {
       if (entry.isDirectory) continue
       const safe = safeArchivePath(entry.entryName)

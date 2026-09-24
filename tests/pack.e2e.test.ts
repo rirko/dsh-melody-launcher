@@ -94,6 +94,7 @@ type SettingsStore = ReturnType<typeof makeSettingsStore>
 function makeManager(env: Env, installer: InstallInstaller, store: SettingsStore) {
   const emitEvent = vi.fn()
   const manager = createPackManager({
+    unifiedProfiles: false,
     readSettings: store.readSettings,
     saveSettings: store.saveSettings,
     registryPath: env.registryPath,

@@ -1,4 +1,4 @@
-import { Check, Download, Folder, Globe, ImagePlus, LoaderCircle, Palette, RotateCcw, Settings, X } from 'lucide-react'
+import { Check, Folder, Globe, ImagePlus, LoaderCircle, Palette, RotateCcw, Settings, X } from 'lucide-react'
 import { useState } from 'react'
 import { useLauncherApi } from '../../api/client'
 import type { AppSettings, UiTheme } from '../../types'
@@ -10,8 +10,6 @@ interface SettingsDialogProps {
   busy: boolean
   onClose: () => void
   onSave: (settings: AppSettings) => void
-  /** 一键下载并启用官方推荐整合包（DSH Web UI）。 */
-  onDownloadRecommendedWebUi?: () => void
 }
 
 const UI_THEMES: Array<{ id: UiTheme; label: string }> = [
@@ -21,7 +19,7 @@ const UI_THEMES: Array<{ id: UiTheme; label: string }> = [
   { id: 'graphite', label: '石墨' },
 ]
 
-export function SettingsDialog({ settings, busy, onClose, onSave, onDownloadRecommendedWebUi }: SettingsDialogProps) {
+export function SettingsDialog({ settings, busy, onClose, onSave }: SettingsDialogProps) {
   const api = useLauncherApi()
   const [draft, setDraft] = useState(settings)
   // 参数在界面上是一整行文本，保存时才切成数组。
@@ -97,8 +95,6 @@ export function SettingsDialog({ settings, busy, onClose, onSave, onDownloadReco
           <label className="check-field"><Globe size={15} /><small>直连 GitHub 不稳时，可配置代理或 GitHub 镜像后重试 DSH Market 安装；npm 安装始终优先镜像。</small></label>
           <div className="form-section divided"><h3>下载限制</h3><p>资源市场 Skill 仓库超过体积上限时停止安装，避免误装超大仓库；上调上限时，解压体积与文件数防线会同步放宽。</p></div>
           <label className="form-field"><span>Skill 压缩包上限（MB）</span><input type="number" min={16} max={2048} step={1} value={draft.skillMaxArchiveMb ?? 64} onChange={event => { const parsed = Number(event.target.value); setDraft({ ...draft, skillMaxArchiveMb: event.target.value === '' || !Number.isFinite(parsed) ? undefined : parsed }) }} /><small>16–2048；默认 64。保存后对下一次安装生效。</small></label>
-          <div className="form-section divided"><h3>官方推荐</h3><p>一键安装官方推荐的「DSH Web UI」全家桶整合包，获得更佳使用体验。</p></div>
-          {onDownloadRecommendedWebUi && <div className="recommended-action-row"><button type="button" className="primary-command" disabled={busy} onClick={onDownloadRecommendedWebUi}><Download size={16} />下载官方推荐整合包 DSH Web UI</button><small>可能与您已安装的其它插件冲突，建议首次尝试只启用这一个插件（可在启动项管理中调整）。</small></div>}
         </div>
         <footer><button type="button" className="secondary-button" onClick={onClose}>取消</button><button type="button" className="primary-command" disabled={busy} onClick={() => onSave({ ...draft, launchArgs: argsText.trim().split(/\s+/).filter(Boolean) })}>{busy ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}保存设置</button></footer>
       </section>
