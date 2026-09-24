@@ -103,8 +103,8 @@ describe('standalone plugin links', () => {
   it('recognizes relative link and file references but rejects unmanaged paths and invalid layouts', async () => {
     const directory = await seedBody()
     const profile = await seedProfile('web')
-    expect(await resolveStandalonePluginDirectory(home, PACKAGE, `link:${path.relative(profile, directory)}`, profile)).toBe(directory)
-    expect(await resolveStandalonePluginDirectory(home, PACKAGE, `file:${directory}`)).toBe(directory)
+    expect(await resolveStandalonePluginDirectory(home, PACKAGE, `link:${path.relative(profile, directory)}`, profile)).toBe(await realpath(directory))
+    expect(await resolveStandalonePluginDirectory(home, PACKAGE, `file:${directory}`)).toBe(await realpath(directory))
     expect(isStandalonePluginReference(home, PACKAGE, path.join(standalonePluginPackageRoot(home, PACKAGE), '1.0.0'))).toBe(false)
     expect(await resolveStandalonePluginDirectory(home, PACKAGE, home)).toBeNull()
     expect(() => standalonePluginPackageRoot(home, '../outside')).toThrow()
@@ -179,7 +179,7 @@ describe('standalone plugin links', () => {
     const enabled = await togglePlugin(home, 'web', PACKAGE, true, receipts)
     expect(enabled.activeBundles).toEqual([PACKAGE])
     const manifest = JSON.parse(await readFile(path.join(home, 'profiles', 'web', 'package.json'), 'utf8'))
-    expect(manifest.dependencies[PACKAGE]).toBe(`link:${directory}`)
+    expect(manifest.dependencies[PACKAGE]).toBe(`link:${await realpath(directory)}`)
     expect(await realpath(linkPath('web'))).toBe(await realpath(directory))
     expect(await readFile(path.join(desktop, 'package.json'), 'utf8')).toBe(before)
     expect((await readProfile(home, 'desktop', receipts)).activeBundles).toEqual([])
@@ -218,7 +218,7 @@ describe('standalone plugin links', () => {
     const { service } = profileService()
 
     await service.remove('alpha')
-    expect(await resolveStandalonePluginDirectory(home, PACKAGE, directory)).toBe(directory)
+    expect(await resolveStandalonePluginDirectory(home, PACKAGE, directory)).toBe(await realpath(directory))
     expect((await readPluginReceipts(path.join(home, 'receipts.json'))).map(item => item.profileName)).toEqual(['beta'])
 
     await service.remove('beta')
@@ -243,7 +243,7 @@ describe('standalone plugin links', () => {
     await seedProfile('alpha', directory)
     await writeFile(path.join(web, 'package.json'), '{ invalid')
     await profileService().service.remove('alpha')
-    expect(await resolveStandalonePluginDirectory(home, PACKAGE, directory)).toBe(directory)
+    expect(await resolveStandalonePluginDirectory(home, PACKAGE, directory)).toBe(await realpath(directory))
   })
 
   it('clones standalone declarations and repairs independent links offline on switch', async () => {
