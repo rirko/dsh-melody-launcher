@@ -95,9 +95,12 @@ async function patchFile(layer: StandalonePatchLayer): Promise<string> {
     if (typeof manifest.dsh?.bundle?.patch !== 'string') fail(layer.packageName, 'package.json 未声明有效的 dsh.bundle.patch。')
     declared = manifest.dsh.bundle.patch
   }
+  // 越界检查用 realpath 的规范形式；传给 resolver 的保持声明时的原始路径，
+  // 因为 sourceDirectory 可能是 8.3 短名而 realpath 会换写法，调用方需要一致的形式。
   const root = await realpath(layer.sourceDirectory)
-  const file = await realpath(path.resolve(layer.sourceDirectory, declared))
-  const relative = path.relative(root, file)
+  const file = path.resolve(layer.sourceDirectory, declared)
+  const canonical = await realpath(file)
+  const relative = path.relative(root, canonical)
   if (!relative || relative.startsWith(`..${path.sep}`) || relative === '..' || path.isAbsolute(relative)) fail(layer.packageName, '补丁文件位于插件本体之外。')
   return file
 }

@@ -34,24 +34,28 @@ function referenceDirectory(reference: string, baseDirectory: string): string | 
 export function isStandalonePluginReference(dshHome: string, packageName: string, reference: string, baseDirectory = dshHome): boolean {
   const directory = referenceDirectory(reference, baseDirectory)
   if (!directory || !safePackageName(packageName)) return false
-  return samePath(path.dirname(directory), standalonePluginPackageRoot(dshHome, packageName))
-    && /^[a-f0-9]{64}$/i.test(path.basename(directory))
+  if (!/^[a-f0-9]{64}$/i.test(path.basename(directory))) return false
+  // 只比较 dshHome 之后的形式无关后缀：dshHome 与 reference 可能一边是 8.3 短名（RUNNER~1）
+  // 一边是 realpath 长名（runneradmin），完整路径的字符串比较会误判。规范形式由
+  // resolveStandalonePluginDirectory 的 realpath 校验兜底。
+  const suffix = path.sep + path.join(STANDALONE_PLUGIN_DIRECTORY, ...packageName.split('/'))
+  return path.dirname(directory).toLowerCase().endsWith(suffix.toLowerCase())
 }
 
 /** Only launcher-owned, content-addressed bodies with an explicit marker qualify. */
 export async function resolveStandalonePluginDirectory(dshHome: string, packageName: string, reference: string, baseDirectory = dshHome): Promise<string | null> {
-  if (!isStandalonePluginReference(dshHome, packageName, reference, baseDirectory)) return null
-  const directory = referenceDirectory(reference, baseDirectory)!
+  const directory = referenceDirectory(reference, baseDirectory)
+  if (!directory || !isStandalonePluginReference(dshHome, packageName, reference, baseDirectory)) return null
   try {
     const canonicalHome = await realpath(dshHome)
-    const expected = path.join(canonicalHome, STANDALONE_PLUGIN_DIRECTORY, ...packageName.split('/'), path.basename(directory))
+    const expectedRoot = path.join(canonicalHome, STANDALONE_PLUGIN_DIRECTORY, ...packageName.split('/'))
     const canonical = await realpath(directory)
-    if (!samePath(canonical, expected) || !(await lstat(directory)).isDirectory()) return null
-    const manifestPath = path.join(directory, 'package.json')
+    if (!samePath(path.dirname(canonical), expectedRoot) || !(await lstat(canonical)).isDirectory()) return null
+    const manifestPath = path.join(canonical, 'package.json')
     if ((await lstat(manifestPath)).isSymbolicLink()) return null
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { name?: unknown; dsh?: { standalone?: { schemaVersion?: unknown } } }
     if (manifest.name !== packageName || manifest.dsh?.standalone?.schemaVersion !== 1) return null
-    return directory
+    return canonical
   } catch {
     return null
   }
@@ -70,8 +74,10 @@ export async function findStandalonePluginDirectories(dshHome: string, packageNa
 }
 
 /** This only materializes the outer package link; private dependencies remain untouched. */
-export async function ensureStandalonePluginLink(dshHome: string, profileName: string, packageName: string, directory: string): Promise<void> {
+export async function ensureStandalonePluginLink(rawDshHome: string, profileName: string, packageName: string, directory: string): Promise<void> {
   assertProfileName(profileName)
+  // dshHome 可能以 8.3 短名形式传入；先规范化，避免与 realpath 过的路径做字符串比较时误判。
+  const dshHome = await realpath(rawDshHome)
   const source = await resolveStandalonePluginDirectory(dshHome, packageName, directory)
   if (!source) throw new Error(`Standalone plugin body is missing or invalid: ${packageName}`)
   const profileDirectory = path.resolve(dshHome, 'profiles', profileName)
@@ -105,8 +111,10 @@ export async function ensureStandalonePluginLink(dshHome: string, profileName: s
   await symlink(source, target, process.platform === 'win32' ? 'junction' : 'dir')
 }
 
-export async function repairStandalonePluginLinks(dshHome: string, profileName: string, packageNames: readonly string[]): Promise<string[]> {
+export async function repairStandalonePluginLinks(rawDshHome: string, profileName: string, packageNames: readonly string[]): Promise<string[]> {
   assertProfileName(profileName)
+  // 与 ensureStandalonePluginLink 相同：先规范化 dshHome，再派生其余路径。
+  const dshHome = await realpath(rawDshHome)
   const profileDirectory = path.resolve(dshHome, 'profiles', profileName)
   const manifest = JSON.parse(await readFile(path.join(profileDirectory, 'package.json'), 'utf8')) as Record<string, unknown>
   const repaired: string[] = []
