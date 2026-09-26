@@ -9,6 +9,7 @@
   <repository name="esengine/DeepSeek-Reasonix" branch="main-v2" updated="2026-08-22T08:59:23Z" tags="skill"/>
   <repository name="Nagi-ovo/dsh-ads" branch="main" updated="2026-08-19T05:33:25Z" tags="plugin"/>
   <repository name="xiaobright/dsh-anchored-standard" branch="main" updated="2026-08-22T07:14:10Z" tags="invalid"/>
+  <repository name="zhou1736948757-cpu/dsh-auto-continue" branch="main" updated="2026-08-25T08:36:40Z" tags="plugin"/>
   <repository name="omdsh-dev/DSH-better-sidebar" branch="main" updated="2026-08-19T03:54:07Z" tags="plugin"/>
   <repository name="Leawind/dsh-minecraft-dev" branch="main" updated="2026-08-15T19:30:41Z" tags="skill"/>
   <repository name="whiteguo233/dsh-openbiliclaw" branch="main" updated="2026-08-23T08:33:26Z" tags="plugin,skill"/>
