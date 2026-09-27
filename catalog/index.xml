@@ -6,18 +6,40 @@
   <repository name="titanwings/colleague-skill" branch="dot-skill" updated="2026-08-22T09:07:42Z" tags="skill"/>
   <repository name="chuspeeism/dashi-taskboard" branch="main" updated="2026-08-19T02:41:16Z" tags="skill"/>
   <repository name="anywhere-labs/deepseek-harness-desktop" branch="master" updated="2026-08-22T09:09:48Z" tags="skill,runtime"/>
+  <repository name="Opr4Mp3r/deepseek-harness-plugin-from-scratch" branch="main" updated="2026-09-12T00:39:34Z" tags="plugin"/>
   <repository name="esengine/DeepSeek-Reasonix" branch="main-v2" updated="2026-08-22T08:59:23Z" tags="skill"/>
+  <repository name="qq247505/DeepSeek-VisionPlus" branch="main" updated="2026-09-09T10:27:30Z" tags="plugin"/>
   <repository name="Nagi-ovo/dsh-ads" branch="main" updated="2026-08-19T05:33:25Z" tags="plugin"/>
   <repository name="xiaobright/dsh-anchored-standard" branch="main" updated="2026-08-22T07:14:10Z" tags="invalid"/>
   <repository name="omdsh-dev/DSH-better-sidebar" branch="main" updated="2026-08-19T03:54:07Z" tags="plugin"/>
+  <repository name="WZZNNE/DSH-CyberWorkStation" branch="main" updated="2026-09-24T03:33:30Z" tags="plugin"/>
+  <repository name="PerryLink/dsh-github" branch="main" updated="2026-09-25T01:49:50Z" tags="plugin"/>
+  <repository name="KannaKuron/dsh-ide-git" branch="main" updated="2026-09-26T08:36:00Z" tags="plugin"/>
+  <repository name="pengkodam/dsh-lab" branch="main" updated="2026-08-16T00:40:48Z" tags="plugin"/>
+  <repository name="uckkk/dsh-mandarin-grade" branch="main" updated="2026-08-20T00:33:06Z" tags="plugin"/>
   <repository name="Leawind/dsh-minecraft-dev" branch="main" updated="2026-08-15T19:30:41Z" tags="skill"/>
+  <repository name="longmiaoo/dsh-native-browser" branch="main" updated="2026-09-15T11:04:16Z" tags="plugin"/>
   <repository name="whiteguo233/dsh-openbiliclaw" branch="main" updated="2026-08-23T08:33:26Z" tags="plugin,skill"/>
+  <repository name="slywalker2006/dsh-passwords" branch="main" updated="2026-09-25T14:36:18Z" tags="plugin"/>
   <repository name="HuanLinOTO/dsh-plugin-anti-ads" branch="master" updated="2026-08-17T02:18:27Z" tags="plugin"/>
-  <repository name="yjh051108/dsh-routing-suite" branch="main" updated="2026-08-22T09:05:29Z" tags="plugin,preset"/>
+  <repository name="lijx122/dsh-plugin-auth-guard" branch="main" updated="2026-09-11T16:40:06Z" tags="plugin"/>
+  <repository name="PerryLink/dsh-plugin-certification" branch="main" updated="2026-09-24T18:46:10Z" tags="invalid"/>
+  <repository name="863683348/dsh-plugin-education" branch="main" updated="2026-09-12T14:35:54Z" tags="plugin"/>
+  <repository name="Gan-lang/dsh-project-handbook" branch="main" updated="2026-09-12T05:25:24Z" tags="plugin"/>
+  <repository name="yjh051108/dsh-routing-suite" branch="main" updated="2026-09-27T13:42:26Z" tags="plugin"/>
+  <repository name="poplarity/dsh-science-workbench" branch="main" updated="2026-09-24T09:24:36Z" tags="plugin"/>
+  <repository name="ChenChen913/dsh-security-doctor" branch="main" updated="2026-09-12T14:36:15Z" tags="plugin"/>
+  <repository name="chunfenxiazhi-collab/dsh-stability-audit" branch="master" updated="2026-09-12T14:38:35Z" tags="plugin"/>
+  <repository name="YZDame/dsh-suhuang-scroll" branch="main" updated="2026-08-25T15:23:01Z" tags="plugin"/>
+  <repository name="yjh051108/dsh-super-injector" branch="main" updated="2026-09-25T13:30:44Z" tags="plugin"/>
+  <repository name="yumimanji/dsh-ui-spec" branch="main" updated="2026-09-12T00:39:33Z" tags="plugin"/>
+  <repository name="zhengjy01/dsh-updater" branch="main" updated="2026-09-13T14:32:53Z" tags="plugin"/>
   <repository name="zhu1090093659/dsh-web-ui" branch="dev" updated="2026-08-22T09:02:17Z" tags="plugin,skill"/>
+  <repository name="runcat-tommy/dsh-windows-c-cleanup" branch="main" updated="2026-09-17T02:42:16Z" tags="plugin"/>
+  <repository name="Sutera-Diffusus/dsh-windows-notify" branch="main" updated="2026-08-16T16:56:39Z" tags="plugin"/>
   <repository name="edison7009/EchoBird" branch="main" updated="2026-08-22T08:47:29Z" tags="invalid"/>
   <repository name="EverMind-AI/EverOS" branch="main" updated="2026-08-22T08:40:58Z" tags="plugin,skill"/>
-  <repository name="Devin-AXIS/iPolloWork" branch="main" updated="2026-08-22T09:06:22Z" tags="plugin,skill"/>
+  <repository name="Devin-AXIS/iPolloWork" branch="main" updated="2026-09-27T14:39:37Z" tags="plugin"/>
   <repository name="Tiger3807861189/J-Space-Cognition-Suite-V3.6" branch="main" updated="2026-08-22T09:08:24Z" tags="skill"/>
   <repository name="walkinglabs/learn-harness-engineering" branch="main" updated="2026-08-22T09:04:01Z" tags="skill"/>
   <repository name="MemTensor/MemOS" branch="main" updated="2026-08-22T09:09:32Z" tags="skill"/>
