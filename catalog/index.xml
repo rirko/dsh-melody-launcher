@@ -46,6 +46,7 @@
   <repository name="violetdream/dsh-officecli" branch="main" updated="2026-09-20T15:52:54Z" tags="plugin"/>
   <repository name="xiazhi88/dsh-onecompany" branch="main" updated="2026-09-22T02:55:42Z" tags="plugin"/>
   <repository name="whiteguo233/dsh-openbiliclaw" branch="main" updated="2026-08-23T08:33:26Z" tags="plugin,skill"/>
+  <repository name="xiaobbl/dsh-opencode-go-model-list" branch="main" updated="2026-09-27T02:51:46Z" tags="plugin"/>
   <repository name="kevin-luo/dsh-org-panel" branch="main" updated="2026-09-22T02:56:07Z" tags="plugin"/>
   <repository name="HuanLinOTO/dsh-plugin-anti-ads" branch="master" updated="2026-08-17T02:18:27Z" tags="plugin"/>
   <repository name="HuanLinOTO/dsh-plugin-better-sidebar-plugin-office" branch="master" updated="2026-09-19T09:00:14Z" tags="plugin"/>
