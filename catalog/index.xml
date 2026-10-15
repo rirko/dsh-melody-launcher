@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <dsh-catalog schema="1">
+  <repository name="EthanYoQ/AI-Novel-Writer" branch="master" updated="2026-10-15T02:48:22Z" tags="plugin,skill"/>
   <repository name="tt-a1i/archify" branch="main" updated="2026-08-22T08:47:45Z" tags="plugin,skill"/>
   <repository name="awesome-dsh-plugin/awesome-dsh-plugin" branch="main" updated="2026-08-22T09:01:55Z" tags="skill"/>
   <repository name="freestylefly/awesome-gpt-image-2" branch="main" updated="2026-09-03T01:43:28Z" tags="skill"/>
@@ -13,6 +14,7 @@
   <repository name="Leawind/dsh-minecraft-dev" branch="main" updated="2026-08-15T19:30:41Z" tags="skill"/>
   <repository name="whiteguo233/dsh-openbiliclaw" branch="main" updated="2026-08-23T08:33:26Z" tags="plugin,skill"/>
   <repository name="HuanLinOTO/dsh-plugin-anti-ads" branch="master" updated="2026-08-17T02:18:27Z" tags="plugin"/>
+  <repository name="sdfsd85fds74f9d8/dsh-plugin-wallpaper-engine-Yun" branch="main" updated="2026-10-14T00:24:42Z" tags="plugin"/>
   <repository name="yjh051108/dsh-routing-suite" branch="main" updated="2026-10-15T01:53:55Z" tags="plugin"/>
   <repository name="zhu1090093659/dsh-web-ui" branch="dev" updated="2026-08-22T09:02:17Z" tags="plugin,skill"/>
   <repository name="tearslee/dsh-workbuddy2api" branch="main" updated="2026-10-10T11:18:01Z" tags="plugin"/>
