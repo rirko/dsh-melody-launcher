@@ -55,12 +55,23 @@ export interface CredentialStatus {
 
 export type CustomApiProtocol = 'openai-completions' | 'openai-responses' | 'anthropic-messages'
 
+export interface CustomApiModel {
+  id: string
+  name?: string
+  contextWindow?: number
+  maxOutputTokens?: number
+  input: Array<'text' | 'image'>
+  reasoningEfforts: Record<string, string | null>
+}
+
 export interface CustomApiProvider {
   route: string
   displayName: string
   baseUrl: string
   protocol: CustomApiProtocol
   modelIds: string[]
+  models?: CustomApiModel[]
+  defaultModel?: string | null
   credentialName: string | null
   hasApiKey: boolean
 }
@@ -72,6 +83,7 @@ export interface CustomApiProviderInput {
   baseUrl: string
   protocol: CustomApiProtocol
   modelIds: string[]
+  models?: CustomApiModel[]
   /** 编辑时留空表示保留现有密钥；新建时留空表示该服务无需鉴权。 */
   apiKey?: string
 }
@@ -189,8 +201,6 @@ export interface CatalogRepositoryResult {
   defaultBranch: string
   kind: 'repository' | 'dsh'
   candidateTypes: CatalogCandidateType[]
-  /** 市场内置（featured）条目，列表顶部固定展示。 */
-  featured?: boolean
 }
 
 export type PluginInstallability = 'ready' | 'choice' | 'dynamic' | 'application' | 'invalid'
@@ -659,6 +669,7 @@ export type InstallQueueKind =
   | 'application'
   | 'pack-create'
   | 'pack-import'
+  | 'official-pack'
   | 'dsh-market'
   | 'skill-market-install'
   | 'skill-market-install-by-name'
@@ -674,6 +685,8 @@ export interface InstallQueueJobInputs {
   application: ApplicationInstallRequest
   'pack-create': PackCreateRequest
   'pack-import': { path: string; items?: string[]; name?: string }
+  /** 官方默认整合包：要获取的包版本号。 */
+  'official-pack': string
   'dsh-market': { action: 'install' | 'update'; name: string; profileName?: string; exactVersion?: string }
   'skill-market-install': { repository: string; target: SkillInstallTarget }
   'skill-market-install-by-name': { sourceRepository: string; skillId: string }
@@ -787,7 +800,7 @@ export interface AiInstallResult {
 
 // ===================== 整合包（Pack）管理 =====================
 
-export type PackSource = 'created' | 'zip' | 'manifest' | 'raw'
+export type PackSource = 'created' | 'zip' | 'manifest' | 'raw' | 'snapshot'
 
 export interface PackPluginEntry {
   packageName: string
@@ -970,11 +983,33 @@ export interface PackInstalledApplication {
   enabled: boolean
 }
 
+export interface OfficialPackRelease {
+  /**
+   * 官方包版本号。新命名 = 适配的 DSH 版本 + 序号（如 0.1.5-rc.2.1）；
+   * 旧命名就是启动器版本（如 0.1.1），与 DSH 版本无关。
+   */
+  version: string
+  /**
+   * 该包适配的 DSH 版本（取自 Release 正文的构建元信息，或版本号命名里的编码）。
+   * null = 两处都读不到（旧命名的历史资产）——界面显示「未标注」。
+   */
+  dshVersion: string | null
+  assetName: string
+  /** 资产下载地址（主进程下载用；渲染层不需要它）。 */
+  assetUrl: string
+  /** 资产字节数；GitHub 没给时为 0。 */
+  size: number
+  releaseTag: string
+  publishedAt: string | null
+}
+
 export interface PackStatus {
   id: string
   name: string
   description: string
   version: string
+  /** 来源为官方默认整合包时的包版本号（「已下载」徽标用）。 */
+  officialVersion?: string
   /** 当前整合包要求的 DSH 版本；旧注册表记录可能为空。 */
   dshVersion: string | null
   source: PackSource
@@ -1150,6 +1185,13 @@ export interface DshMarketUpdateStatus {
   updateAvailable: boolean
 }
 
+export interface OfficialPackDownloadProgress {
+  received: number
+  total: number | null
+  /** 正在使用的下载源（镜像域名或「GitHub 直连」），用于界面回显。 */
+  source: string
+}
+
 export interface DshMarketProgress {
   name: string
   phase: 'loading' | 'checking' | 'resolving' | 'downloading' | 'building' | 'verifying' | 'complete' | 'error'
@@ -1165,7 +1207,8 @@ export interface PluginUninstallOptions {
   purgeStore?: boolean
 }
 
-export interface LauncherApi {
+export interface LauncherApi {
+
   getSettings(): Promise<AppSettings>
   saveSettings(settings: AppSettings): Promise<AppSettings>
   detectDshInstallation(): Promise<DshInstallationStatus>
@@ -1190,6 +1233,7 @@ export interface LauncherApi {
   listCustomApiProviders(): Promise<CustomApiProvider[]>
   saveCustomApiProvider(input: CustomApiProviderInput): Promise<CustomApiProvider[]>
   removeCustomApiProvider(route: string): Promise<CustomApiProvider[]>
+  syncCustomApiProviders(): Promise<CustomApiProvider[]>
   probeApiConnectivity(target: ApiProbeTarget): Promise<ApiProbeResult>
   getGitHubAuthStatus(): Promise<GitHubAuthStatus>
   loginGitHubWithToken(token: string): Promise<GitHubAuthStatus>
@@ -1280,6 +1324,9 @@ export interface LauncherApi {
   approveAiSession(sessionId: string, requestId: string, allow: boolean): Promise<boolean>
   rollbackAiSession(sessionId: string): Promise<{ restored: number; profileName: string }>
   deleteAiSession(sessionId: string): Promise<void>
+  listOfficialPackVersions(): Promise<OfficialPackRelease[]>
+  installOfficialPackVersion(version: string): Promise<boolean>
+  onOfficialPackProgress(listener: (progress: OfficialPackDownloadProgress) => void): () => void
   listPacks(): Promise<PackStatus[]>
   createPack(request: PackCreateRequest): Promise<PackInstallResult>
   analyzePackImport(path: string): Promise<PackAnalysis>

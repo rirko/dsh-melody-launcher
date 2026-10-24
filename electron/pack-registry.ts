@@ -23,6 +23,8 @@ export interface PackRecord {
   version: string
   /** 当前整合包要求的 DSH 精确版本；旧注册表记录可能缺省。 */
   dshVersion?: string
+  /** 来源为官方默认整合包时的包版本号（用于「已下载」徽标与一键恢复）。 */
+  officialVersion?: string
   source: PackSource
   installedAt: string
   updatedAt: string
@@ -114,6 +116,7 @@ export function toPackStatus(record: PackRecord, activePackId: string | null | u
     description: record.description,
     version: record.version,
     dshVersion: record.dshVersion ?? null,
+    officialVersion: record.officialVersion,
     source: record.source,
     enabled: record.id === activePackId,
     state: record.state,

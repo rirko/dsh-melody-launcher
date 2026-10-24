@@ -103,6 +103,13 @@ export function WheelchairMode({ store, flip, onImportPack, onOpenLauncherUpdate
             busy={store.busy}
             profileMutationLocked={profileMutationLocked}
             installProgress={store.installProgress}
+            officialVersions={store.officialVersions}
+            officialVersionsBusy={store.officialVersionsBusy}
+            officialVersionsError={store.officialVersionsError}
+            onLoadOfficialVersions={force => { void store.loadOfficialVersions(force) }}
+            officialPackProgress={store.officialPackProgress}
+            installingOfficialVersion={store.installingOfficialVersion}
+            onInstallOfficialPackVersion={version => store.installOfficialPackVersion(version)}
             onRefresh={() => {
               void store.refreshProfile()
               void store.refreshSecondaryResources()

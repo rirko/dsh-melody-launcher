@@ -25,7 +25,7 @@ import type {
   LauncherUpdateProgress,
   LauncherUpdateStatus,
   ManagedPlugin,
-  PackStatus,
+  OfficialPackRelease, OfficialPackDownloadProgress, PackStatus,
   ProfileSummary,
   PluginTrialResult,
   PresetInstallResult,
@@ -95,6 +95,12 @@ export function useLauncherStore() {
   const catalogProgressLogState = useRef<Record<string, string>>({})
   const [selectedPlugin, setSelectedPlugin] = useState<string | null>(null)
   const [packs, setPacks] = useState<PackStatus[]>([])
+  // 官方整合包版本目录（Release 资产列表）；error 非空表示这次读取失败。
+  const [officialVersions, setOfficialVersions] = useState<OfficialPackRelease[] | null>(null)
+  const [officialVersionsBusy, setOfficialVersionsBusy] = useState(false)
+  const [officialVersionsError, setOfficialVersionsError] = useState<string | null>(null)
+  const [officialPackProgress, setOfficialPackProgress] = useState<OfficialPackDownloadProgress | null>(null)
+  const [installingOfficialVersion, setInstallingOfficialVersion] = useState<string | null>(null)
   const [profiles, setProfiles] = useState<ProfileSummary[]>([])
   const [packSnapshotsAvailable, setPackSnapshotsAvailable] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -272,6 +278,7 @@ export function useLauncherStore() {
       api.onRuntimeState(setRuntime),
       api.onInstallProgress(handleInstallProgress),
       api.onInstallQueue(setInstallQueue),
+      api.onOfficialPackProgress(setOfficialPackProgress),
       api.onCatalogAnalysisProgress(handleCatalogAnalysisProgress),
       api.onDshMarketProgress(progress => {
         // 市场的插件级操作（安装/更新/卸载）与目录同步一样，只写日志行，
@@ -668,6 +675,15 @@ export function useLauncherStore() {
     return true
   }, [api, run])
 
+  const syncCustomApi = useCallback(async (): Promise<boolean> => {
+    const providers = await run(BUSY.credential, () => api.syncCustomApiProviders(), {
+      success: '已从当前 Profile 同步 DSH 模型配置。',
+    })
+    if (!providers) return false
+    setCustomApiProviders(providers)
+    return true
+  }, [api, run])
+
   const removeCustomApi = useCallback(async (route: string): Promise<boolean> => {
     const providers = await run(BUSY.credential, () => api.removeCustomApiProvider(route), {
       success: `自定义 API「${route}」已删除。`,
@@ -782,6 +798,44 @@ export function useLauncherStore() {
     })
     if (next) setPacks(next)
   }, [api, run, showToast])
+
+  // 官方整合包版本列表：失败不弹 toast（堆叠里有专门的重试位），只在面板里显示。
+  const loadOfficialVersions = useCallback(async (force = false) => {
+    if (officialVersionsBusy) return
+    if (!force && officialVersions) return
+    setOfficialVersionsBusy(true)
+    setOfficialVersionsError(null)
+    try {
+      const next = await api.listOfficialPackVersions()
+      setOfficialVersions(next)
+    } catch (error) {
+      setOfficialVersionsError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setOfficialVersionsBusy(false)
+    }
+  }, [api, officialVersions, officialVersionsBusy])
+
+  // 获取官方整合包：进安装队列排队（下载 + 快照导入），完成 Promise 在任务结算时兑现。
+  const installOfficialPackVersion = useCallback(async (version: string): Promise<boolean> => {
+    if (installingOfficialVersion) return false
+    setInstallingOfficialVersion(version)
+    try {
+      const result = await run(`official-pack:${version}`, () => api.installOfficialPackVersion(version), {
+        onError: error => showToast({ kind: 'error', message: errorText(error) }),
+      })
+      const outcome = (result as { outcome?: string } | undefined)?.outcome
+      if (outcome === 'present') {
+        showToast({ kind: 'success', message: `官方整合包 ${version} 已经在本地了。` })
+      } else if (outcome === 'imported') {
+        showToast({ kind: 'success', message: `官方整合包 ${version} 已导入，可在整合包列表切换启用。` })
+      }
+      await refreshPacks()
+      return outcome === 'imported' || outcome === 'present'
+    } finally {
+      setInstallingOfficialVersion(null)
+      setOfficialPackProgress(null)
+    }
+  }, [api, installingOfficialVersion, refreshPacks, run, showToast])
 
   const refreshProfiles = useCallback(async () => {
     const next = await api.listProfiles()
@@ -1037,6 +1091,13 @@ export function useLauncherStore() {
     selectedPlugin,
     selected: profile?.plugins.find(plugin => plugin.packageName === selectedPlugin) ?? null,
     packs,
+    officialVersions,
+    officialVersionsBusy,
+    officialVersionsError,
+    loadOfficialVersions,
+    officialPackProgress,
+    installingOfficialVersion,
+    installOfficialPackVersion,
     profiles,
     packSnapshotsAvailable,
     busy,
@@ -1074,6 +1135,7 @@ export function useLauncherStore() {
     saveApiKey,
     clearApiKey,
     saveCustomApi,
+    syncCustomApi,
     removeCustomApi,
     probeApi,
     pauseQueue,

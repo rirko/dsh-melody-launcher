@@ -83,6 +83,8 @@ describe('Profile selection authority', () => {
       runtimeEnvironment: null, installedSkills: [], installedPresets: [],
       packs: [{ id: 'legacy-pack', name: 'Legacy', plugins: [], state: 'complete' } as unknown as PackStatus],
       busy: null, profileMutationLocked: false, installProgress: null,
+      officialVersions: [], officialVersionsBusy: false, officialVersionsError: null, onLoadOfficialVersions: vi.fn(),
+      officialPackProgress: null, installingOfficialVersion: null, onInstallOfficialPackVersion: vi.fn(),
       onRefresh: vi.fn(), onImportPack: vi.fn(), onInstallDshVersion: vi.fn(), onSelectDshVersion: vi.fn(),
       onRemoveDshVersion: vi.fn(), onTogglePlugin: vi.fn(), onToggleSkill: vi.fn(), onTogglePreset: vi.fn(),
       onSkillInstalled: vi.fn(), onProfileChanged: vi.fn(), onActivatePack: vi.fn(), onDeactivatePack: vi.fn(),

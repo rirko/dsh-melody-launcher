@@ -39,6 +39,7 @@ import type {
 } from '../src/types'
 import { assertMeaningfulPackName, assertPackDshVersion, buildManifestFromReceipts, isValidPackDshVersion, normalizePackDshVersion, packProfileName, parsePackManifest } from './pack-manifest'
 import { extractPackBodiesFromPath, extractPresetBodiesFromPath, findManifestInArchiveFromPath, inspectPackZipFromPath } from './pack-zip'
+import { describeSnapshotZip, extractSnapshot, SNAPSHOT_FORMAT_VERSION } from './pack-snapshot'
 import { validateFullArchive } from './profile-repository-import'
 import { cleanPackNameHint, extractRawPluginBodiesFromPath, extractRawPresetSourcesFromPath, extractRawSkillSourcesFromPath, scanRawPackZipFromPath, type ExtractByteBudget } from './pack-scan'
 import { buildPackExportToFile } from './pack-export'
@@ -62,7 +63,7 @@ import { readPresetReceipts, type PresetInstallReceipt } from './preset-receipts
 import { readSkillReceipts, type SkillInstallReceipt } from './skill-receipts'
 import { createProfileSnapshot, restoreProfileSnapshot, type ProfileSnapshot } from './ai-install'
 import { isSafePackageName, isSafeProfileName, removePluginFromProfile, reorderPlugins, repositoryFullNameFromSpecifier } from './profile'
-import { deleteProfile, ensureProfileCoreBundles, ensureProfileWorkspaceConfig, readProfileMetadata, switchProfile, writeProfileMetadata, type ProfileService } from './profile-service'
+import { deleteProfile, ensureProfileCoreBundles, ensureProfileWorkspaceConfig, prepareProfileDependencies, readProfileMetadata, switchProfile, writeProfileMetadata, type ProfileService } from './profile-service'
 import { readPackManifest, removePackManifest, writePackManifest } from './pack-manifest-store'
 
 /** 扩展 PluginInstallTarget：携带 GitHub 仓库名，供 github / npm 源重建安装目标。 */
@@ -125,7 +126,7 @@ export interface PackManagerOptions {
   dshHome?: string
   /** 新运行态：把每个整合包 id materialize 为 Profile。 */
   unifiedProfiles?: boolean
-  profiles?: Pick<ProfileService, 'switch' | 'remove'>
+  profiles?: Pick<ProfileService, 'switch' | 'remove'> & Partial<Pick<ProfileService, 'prepare'>>
 }
 
 export interface PackManager {
@@ -511,7 +512,8 @@ export function createPackManager(options: PackManagerOptions): PackManager {
           description: metadata.description,
           version: metadata.version ?? '1.0.0',
           ...(metadata.dshVersion ? { dshVersion: metadata.dshVersion } : {}),
-          source: metadata.source?.kind === 'import' && metadata.source.format === 'zip' ? 'zip' : metadata.source?.kind === 'import' && metadata.source.format === 'yaml' ? 'manifest' : 'created',
+          ...(metadata.officialPackVersion ? { officialVersion: metadata.officialPackVersion } : {}),
+          source: metadata.source?.kind === 'import' && metadata.source.format === 'zip' ? 'zip' : metadata.source?.kind === 'import' && metadata.source.format === 'yaml' ? 'manifest' : metadata.source?.kind === 'import' && metadata.source.format === 'distribution' ? 'snapshot' : 'created',
           installedAt: metadata.createdAt,
           updatedAt: metadata.updatedAt,
           state: metadata.importState ?? 'complete',
@@ -550,6 +552,7 @@ export function createPackManager(options: PackManagerOptions): PackManager {
       description: record.description,
       version: record.version,
       dshVersion: record.dshVersion ?? null,
+      officialPackVersion: record.officialVersion ?? null,
       importState: record.state,
       importFailures: (record.failures ?? []).map(item => item.packageName ? `${item.packageName}：${item.reason}` : item.reason),
       resources: { presets: record.presets ?? [], skills: record.skills ?? [], applications: record.applications ?? [] },
@@ -700,6 +703,14 @@ export function createPackManager(options: PackManagerOptions): PackManager {
           // Only explicitly selected plugins become dependencies of the new
           // Profile. The shared inventory remains available without cloning it.
           await applyPluginSet(packId, record.plugins, record.plugins.map(item => item.packageName))
+          try {
+            options.emitEvent({ kind: 'status', message: `正在准备 Profile「${packId}」的插件依赖…` })
+            if (options.profiles?.prepare) await options.profiles.prepare(packId)
+            else await prepareProfileDependencies({ ...options, dshHome }, packId)
+          } catch (error) {
+            await saveRecord({ ...record, state: 'failed', failures: [{ packageName: '', reason: asErrorMessage(error) }] })
+            throw error
+          }
         }
         await saveRecord(record)
         await writeRecordManifest(record)
@@ -892,6 +903,90 @@ export function createPackManager(options: PackManagerOptions): PackManager {
           }
           await saveRecord(record)
           await writeRecordManifest(record, manifest)
+          options.emitEvent({ kind: 'done', result })
+          return result
+        }
+        // ---- 快照分支（序曲官方包格式）：家目录镜像 + node_modules 随包，解开即用。----
+        // 探测是轻量的（只读元数据与 profile.yaml），非快照包立刻落回下面的清单/raw 分支。
+        let snapshot: ReturnType<typeof describeSnapshotZip> = null
+        try {
+          snapshot = describeSnapshotZip(filePath)
+        } catch {
+          // 不是合法 zip（或读取失败）：落回清单/raw 分支处理。
+        }
+        if (snapshot) {
+          if (snapshot.meta && snapshot.meta.format !== SNAPSHOT_FORMAT_VERSION) {
+            throw new Error(`快照包格式版本不受支持（${snapshot.meta.format}）。`)
+          }
+          const existing = await readRecords()
+          const dshHome = await getDshHome()
+          const nameHint = (importOptions?.name ?? '').trim() || snapshot.profileId || cleanPackNameHint(path.basename(filePath)) || ''
+          if (!nameHint) throw new Error('无法确定整合包名称，请在预览中手动命名。')
+          const packId = await resolveImportedProfileId(packProfileName(nameHint), dshHome, existing, importOptions)
+          const displayName = (importOptions?.name ?? '').trim() || `快照整合包 ${nameHint}`
+          options.emitEvent({ kind: 'status', message: `正在解压快照整合包「${displayName}」…` })
+          // 统一 Profile 模型：先全量解到共享家目录卷上的 staging（隐私剔除 + profile 目录改名），
+          // 再只把 profiles/<新id> 归位进共享家目录；顶层 settings.yaml 等个人条目永不落盘。
+          const staging = await mkdtemp(path.join(dshHome, '.pack-raw-staging-'))
+          skillStaging = staging
+          const extract = await extractSnapshot(filePath, staging, {
+            newId: packId,
+            onProgress: (done, total) => {
+              if (done % 200 === 0 || done === total) options.emitEvent({ kind: 'phase', phase: `解压快照包 ${done}/${total}` })
+            },
+          })
+          const stagedProfile = path.join(staging, 'profiles', packId)
+          const targetProfile = path.join(dshHome, 'profiles', packId)
+          await rm(targetProfile, { recursive: true, force: true })
+          await mkdir(path.dirname(targetProfile), { recursive: true })
+          await cp(stagedProfile, targetProfile, { recursive: true })
+          // 快照顶层技能（如官方包的 Office 技能组）：逐个走启动器安装管线登记，可开关、可随包清理。
+          const installedSkills: PackInstalledSkill[] = []
+          const stagedSkills = path.join(staging, 'skills')
+          const skillEntries = await readdir(stagedSkills, { withFileTypes: true }).catch(() => [])
+          for (const entry of skillEntries) {
+            if (!entry.isDirectory()) continue
+            const sourceDir = path.join(stagedSkills, entry.name)
+            const hasBundleLayout = existsSync(path.join(sourceDir, 'SKILL.md'))
+            await options.installer.installSkillLocal(dshHome, { name: entry.name, format: hasBundleLayout ? 'bundle' : 'flat', sourceDir })
+            installedSkills.push({ name: entry.name, format: hasBundleLayout ? 'bundle' : 'flat', enabled: true })
+          }
+          // 包内自带工具（如官方包的 tools/officecli）：缺才补，不覆盖既有版本。
+          const stagedTools = path.join(staging, 'tools')
+          const targetTools = path.join(dshHome, 'tools')
+          const toolEntries = await readdir(stagedTools, { withFileTypes: true }).catch(() => [])
+          for (const entry of toolEntries) {
+            const sourceDir = path.join(stagedTools, entry.name)
+            const targetDir = path.join(targetTools, entry.name)
+            if (!existsSync(targetDir)) await cp(sourceDir, targetDir, { recursive: true }).catch(() => undefined)
+          }
+          // profile package.json 里的非核心依赖 = 随包本体已就位的插件（无需联网）。
+          const profilePackage = JSON.parse(await readFile(path.join(targetProfile, 'package.json'), 'utf8').catch(() => '{}')) as {
+            dependencies?: Record<string, unknown>
+            dsh?: { profile?: { bundles?: string[] } }
+          }
+          const pluginNames = Object.keys(profilePackage.dependencies ?? {}).filter(name => !name.startsWith('@deepseek-ai/dsh-'))
+          const failures: { packageName: string; reason: string }[] = []
+          if (extract.longPaths.length > 0) {
+            failures.push({ packageName: '(长路径)', reason: `${extract.longPaths.length} 个条目路径过长被跳过，例如 ${extract.longPaths[0]}` })
+          }
+          const result = buildInstallResult(packId, pluginNames, failures)
+          const record: PackRecord = {
+            id: packId,
+            name: displayName,
+            description: snapshot.description,
+            version: '1.0.0',
+            dshVersion: snapshot.dshVersion ?? undefined,
+            source: 'snapshot',
+            installedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            state: result.state,
+            plugins: pluginNames.map(packageName => ({ packageName, enabled: true })),
+            skills: installedSkills.length > 0 ? installedSkills : undefined,
+            failures: result.failures.length > 0 ? result.failures : undefined,
+          }
+          await saveRecord(record)
+          options.emitEvent({ kind: 'status', message: `快照整合包「${displayName}」已导入，可在列表里切换启用。` })
           options.emitEvent({ kind: 'done', result })
           return result
         }

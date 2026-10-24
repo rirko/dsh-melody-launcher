@@ -4,13 +4,13 @@ import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promis
 import path from 'node:path'
 import { IPC, IPC_EVENTS, IPC_WHEELCHAIR } from '../src/constants'
 import type { AiSessionCreateInput,
-  SkillInstallTarget, ApplicationInstallRequest, AppSettings, ApiProbeTarget, CustomApiProviderInput, PackCreateRequest, PluginInstallRequest, PresetInstallRequest, SkillInstallRequest, WindowMode, ProfileRepositoryImportMode, PackPluginEntry, NonstandardPackImportPreview, PluginUninstallOptions } from '../src/types'
+  SkillInstallTarget, ApplicationInstallRequest, AppSettings, ApiProbeTarget, CustomApiProviderInput, OfficialPackRelease, PackCreateRequest, PluginInstallRequest, PresetInstallRequest, SkillInstallRequest, WindowMode, ProfileRepositoryImportMode, PackPluginEntry, NonstandardPackImportPreview, PluginUninstallOptions } from '../src/types'
 import type { ApiProbeService } from './api-probe'
 import type { ApplicationAddonManager } from './application-addons'
 import type { RecommendedWebUiService } from './recommended-web-ui'
 import { isWindowMode } from './app-window'
 import { clearDeepSeekApiKey, getDeepSeekCredentialStatus, setDeepSeekApiKey } from './credentials'
-import { listCustomApiProviders, removeCustomApiProvider, saveCustomApiProvider } from './custom-api'
+import { listCustomApiProviders, removeCustomApiProvider, saveCustomApiProvider, syncCustomApiProviders } from './custom-api'
 import { listCopilotModels } from './copilot-api'
 import { searchCatalogRepositories, type DiscoverySort } from './discovery'
 import { importCatalogFromUrl } from './github-import'
@@ -81,6 +81,8 @@ export interface IpcDependencies {
   nonstandardPack: NonstandardPackService
   apiProbe: ApiProbeService
   installQueue: InstallQueue
+  /** 官方整合包：版本目录 + 获取流程（换源下载 → 快照导入 → 盖版本戳）。 */
+  officialPack: { listVersions(): Promise<OfficialPackRelease[]>; install(version: string): Promise<{ outcome: string; message?: string }> }
   /** 轮椅模式三卡服务（PR #94 纯新增模块，原版实现零改动）。 */
   deepSeekBalance: DeepSeekBalanceService
   dshUsageService: DshUsageService
@@ -225,16 +227,20 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   })
   ipcMain.handle(IPC.customApiList, async () => {
     const current = await settings.read()
-    return listCustomApiProviders(current.dshHome)
+    return listCustomApiProviders(current.dshHome, current.profileName)
   })
   ipcMain.handle(IPC.customApiSave, async (_event, input: CustomApiProviderInput) => {
     const current = await settings.read()
-    return saveCustomApiProvider(current.dshHome, input)
+    return saveCustomApiProvider(current.dshHome, input, current.profileName)
+  })
+  ipcMain.handle(IPC.customApiSync, async () => {
+    const current = await settings.read()
+    return syncCustomApiProviders(current.dshHome, current.profileName)
   })
   ipcMain.handle(IPC.customApiRemove, async (_event, route: string) => {
     if (typeof route !== 'string') throw new Error('自定义 API 路由格式无效。')
     const current = await settings.read()
-    return removeCustomApiProvider(current.dshHome, route)
+    return removeCustomApiProvider(current.dshHome, route, current.profileName)
   })
   ipcMain.handle(IPC.customApiTest, async (_event, target: ApiProbeTarget) => {
     if (!target || typeof target !== 'object') throw new Error('API 检测目标无效。')
@@ -917,7 +923,7 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   })
   ipcMain.handle(IPC.aiSessionsModels, async () => {
     const current = await settings.read()
-    return listCopilotModels(current.dshHome)
+    return listCopilotModels(current.dshHome, current.profileName)
   })
   ipcMain.handle(IPC.aiSessionsSetModel, (_event, payload: { sessionId: string; model?: string | null }) => {
     if (!payload || typeof payload.sessionId !== 'string') throw new Error('Copilot 会话无效。')
@@ -958,6 +964,13 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   }
 
   ipcMain.handle(IPC.packsList, () => packManager.listPacks())
+
+  ipcMain.handle(IPC.officialPackVersions, () => deps.officialPack.listVersions())
+  ipcMain.handle(IPC.officialPackInstall, async (_event, version: unknown) => {
+    if (typeof version !== 'string' || !version.trim()) throw new Error('官方整合包版本号无效。')
+    // 与普通整合包导入一致：进安装队列排队（下载百 MB 级 + 解压导入，耗时较长）。
+    return installQueue.enqueue('official-pack', `获取官方整合包 ${version.trim()}`, version.trim())
+  })
 
   ipcMain.handle(IPC.packsCreate, async (_event, request: PackCreateRequest) => {
     if (!request || typeof request !== 'object') throw new Error('请求格式无效。')

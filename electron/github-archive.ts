@@ -1,8 +1,21 @@
 import { get as httpsGet } from 'node:https'
+import { GITHUB_MIRROR_PRESETS } from '../src/constants'
 
 export function applyGitHubMirror(url: string, mirror?: string): string {
   const trimmed = mirror?.trim().replace(/[\/]+$/, '')
   return trimmed ? `${trimmed}/${url}` : url
+}
+
+/** 内置公共 GitHub 镜像前缀（按顺序尝试；镜像用自己的出口读同一份数据）。 */
+export const GITHUB_PUBLIC_MIRRORS: readonly string[] = GITHUB_MIRROR_PRESETS
+
+/** GitHub 资源候选链：用户配置的镜像优先 → 直连 → 内置公共镜像。 */
+export function githubCandidateUrls(url: string, mirror?: string): string[] {
+  const list: string[] = []
+  if (mirror?.trim()) list.push(applyGitHubMirror(url, mirror))
+  list.push(url)
+  for (const prefix of GITHUB_PUBLIC_MIRRORS) list.push(`${prefix}${url}`)
+  return list
 }
 
 export function githubArchiveUrl(repository: string, revision: string, mirror?: string): string {

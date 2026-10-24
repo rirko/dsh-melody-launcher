@@ -7,6 +7,15 @@ export const DSH_REPOSITORY = 'deepseek-ai/deepseek-harness'
 /** 启动器自身的 GitHub 仓库。自更新检测以它的 Release 页为准。 */
 export const LAUNCHER_REPOSITORY = 'rirko/dsh-melody-launcher'
 
+/**
+ * 官方默认整合包的发布仓库（序曲独立发布线）。官方包以 Release 资产
+ * `official-pack-v<版本>.zip` 挂在该仓库下，启动器只消费不发布。
+ */
+export const LAUNCHER_RELEASE_REPOSITORY = 'Miyazawai/DSH-Melody-Launcher-Overture'
+
+/** 内置公共 GitHub 镜像前缀（按顺序尝试；镜像用自己的出口读同一份数据）。 */
+export const GITHUB_MIRROR_PRESETS = ['https://gh-proxy.com/', 'https://ghfast.top/', 'https://ghproxy.net/'] as const
+
 /** DSH 本体的 npm 包名。检测与安装都以它为准。 */
 export const DSH_PACKAGE_NAME = '@deepseek-ai/dsh'
 
@@ -56,6 +65,7 @@ export const IPC = {
   customApiList: 'custom-api:list',
   customApiSave: 'custom-api:save',
   customApiRemove: 'custom-api:remove',
+  customApiSync: 'custom-api:sync',
   customApiTest: 'custom-api:test',
   githubAuthStatus: 'github-auth:status',
   githubAuthTokenLogin: 'github-auth:token-login',
@@ -136,6 +146,8 @@ export const IPC = {
   installQueueCancel: 'install-queue:cancel',
   installQueueClearFinished: 'install-queue:clear-finished',
   packsList: 'packs:list',
+  officialPackVersions: 'official-pack:versions',
+  officialPackInstall: 'official-pack:install',
   packsCreate: 'packs:create',
   packsAnalyzeImport: 'packs:analyze-import',
   packsImport: 'packs:import',
@@ -181,6 +193,7 @@ export const IPC_EVENTS = {
   aiInstallEvent: 'ai:install-event',
   aiSessionEvent: 'ai-session:event',
   packProgress: 'packs:progress',
+  officialPackProgress: 'official-pack:progress',
 } as const
 
 // —— PR #94 轮椅模式 IPC 通道增量（追加式合并）——

@@ -11,7 +11,7 @@ import { upsertPackRecord } from '../electron/pack-registry'
 import { buildPackZip, inspectPackZip } from '../electron/pack-zip'
 import { recordPluginInstall } from '../electron/plugin-receipts'
 import { readProfile, removePluginFromProfile, reorderPlugins, togglePlugin } from '../electron/profile'
-import { readProfileMetadata, writeProfileMetadata } from '../electron/profile-service'
+import { createProfileService, readProfileMetadata, writeProfileMetadata } from '../electron/profile-service'
 import { defaultSettings } from '../electron/settings'
 
 const roots: string[] = []
@@ -101,8 +101,23 @@ async function fixture() {
     togglePreset: async () => [],
     remove: vi.fn(async (packageName, profileName) => removePluginFromProfile(dshHome, profileName ?? settings.profileName, packageName)),
   }
+  const prepare = vi.fn(async (profileName: string, missing: string[]) => {
+    const manifest = await readPackage(profileName)
+    for (const packageName of missing) {
+      const version = manifest.dependencies[packageName]
+      await writePlugin(path.join(dshHome, 'profiles', profileName, 'node_modules', ...packageName.split('/')), packageName, version)
+    }
+  })
+  const profiles = createProfileService({
+    dshHome,
+    readSettings: async () => settings,
+    saveSettings: async next => { settings = next; return settings },
+    pluginReceiptsPath: paths.pluginReceiptsPath,
+    fillMissingDependencies: prepare,
+  })
   const manager = createPackManager({
     ...paths,
+    profiles,
     readSettings: async () => settings,
     saveSettings: async next => { settings = next; return settings },
     installer,
@@ -112,7 +127,7 @@ async function fixture() {
     isInstallerBusy: () => false,
   })
   await writeProfile('web', {}, [])
-  return { root, paths, manager, installer, writeProfile, readPackage, receipt, beforeInstall, getSettings: () => settings }
+  return { root, paths, manager, installer, prepare, writeProfile, readPackage, receipt, beforeInstall, getSettings: () => settings }
 }
 
 const incoming: PackManifest = {
@@ -324,9 +339,28 @@ describe('unified Profile is the pack configuration authority', () => {
     await expect(env.readPackage('desktop')).resolves.toEqual(siblingBefore)
     expect(env.installer.installNpmPackage).not.toHaveBeenCalled()
     expect(env.installer.installPluginTarget).not.toHaveBeenCalled()
+    expect(env.prepare).toHaveBeenCalledWith(result.id, expect.arrayContaining(['disabled', 'enabled', 'shared']))
     expect(env.getSettings().profileName).toBe('web')
+    await expect(env.manager.activatePack(result.id)).resolves.toMatchObject({ profileName: result.id })
+    expect(env.prepare).toHaveBeenCalledOnce()
     await expect(access(env.paths.registryPath)).rejects.toThrow()
     await expect(access(env.paths.manifestRoot)).rejects.toThrow()
+  })
+
+  it('keeps the new Profile retryable but never reports completion when dependency preparation fails', async () => {
+    const env = await fixture()
+    await env.writeProfile('web', { selected: '1.0.0' }, ['selected'])
+    const sourceBefore = await env.readPackage('web')
+    env.prepare.mockRejectedValueOnce(new Error('ERR_PNPM_FETCH_403: dependency unavailable'))
+    await expect(env.manager.createPack({ name: 'Broken', packageNames: ['selected'] })).rejects.toThrow('ERR_PNPM_FETCH_403')
+    expect(env.manager.isBusy()).toBe(false)
+    expect(env.getSettings().profileName).toBe('web')
+    await expect(env.readPackage('web')).resolves.toEqual(sourceBefore)
+    expect((await env.readPackage('pack-broken')).dsh.profile.bundles).toContain('selected')
+    expect(await readProfileMetadata(env.paths.dshHome, 'pack-broken')).toMatchObject({
+      importState: 'failed', importFailures: [expect.stringContaining('ERR_PNPM_FETCH_403')],
+    })
+    await expect(env.manager.activatePack('pack-broken')).resolves.toMatchObject({ profileName: 'pack-broken' })
   })
 
   it.each(['preview selection', 'default selection'] as const)('imports mixed lightweight ZIP bodies and remote plugins with %s', async selection => {
