@@ -137,7 +137,7 @@ DSH 进程、Profile、本地运行时、GitHub、Node/pnpm
 - **DSH 运行时**：`dsh-install.ts`、`dsh-update.ts`、`runtime.ts`、`node-runtime.ts`
 - **Profile 与插件**：`profile.ts`、`installer.ts`、`plugin-install.ts`、`plugin-catalog.ts`、`plugin-source.ts`、`plugin-receipts.ts`、`plugin-trial.ts`
 - **Skill、预设和应用加载项**：`skill-catalog.ts`、`skill-format.ts`、`skill-install.ts`、`preset-install.ts`、`application-catalog.ts`、`application-addons.ts`、`linked-components.ts`
-- **资源发现与共享索引**：`discovery.ts`、`catalog-analysis.ts`、`catalog-index.ts`、`catalog-sync.ts`、`meta-repo-catalog.ts`、`featured.ts`
+- **资源发现与共享索引**：`discovery.ts`、`catalog-analysis.ts`、`catalog-index.ts`、`catalog-sync.ts`、`meta-repo-catalog.ts`
 - **整合包**：`pack.ts`、`pack-scan.ts`、`pack-zip.ts`、`pack-manifest.ts`、`pack-manifest-store.ts`、`pack-registry.ts`、`pack-orchestration.ts`、`pack-export.ts`
 - **AI 与 Copilot**：`ai-install.ts`、`acp-client.ts`、`ai-repository-source.ts`、`copilot-sessions.ts`
 - **GitHub 与更新**：`github-auth.ts`、`github-import.ts`、`github-archive.ts`、`launcher-update.ts`

@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   BookOpen,
   Check,
+  ChevronDown,
   Cpu,
   Download,
   ExternalLink,
@@ -46,6 +47,8 @@ import type {
   InstalledSkill,
   InstallProgress,
   ManagedPlugin,
+  OfficialPackDownloadProgress,
+  OfficialPackRelease,
   PackStatus,
   ProfileState,
   RuntimeEnvironmentState,
@@ -75,6 +78,13 @@ interface SettingsPanelsProps {
   busy: string | null
   profileMutationLocked: boolean
   installProgress: InstallProgress | null
+  officialVersions: OfficialPackRelease[] | null
+  officialVersionsBusy: boolean
+  officialVersionsError: string | null
+  onLoadOfficialVersions: (force?: boolean) => void
+  officialPackProgress: OfficialPackDownloadProgress | null
+  installingOfficialVersion: string | null
+  onInstallOfficialPackVersion: (version: string) => Promise<boolean>
   onRefresh: () => void
   onImportPack: () => void
   onInstallDshVersion: (version: string) => Promise<boolean>
@@ -106,6 +116,13 @@ export function SettingsPanels({
   busy,
   profileMutationLocked,
   installProgress,
+  officialVersions,
+  officialVersionsBusy,
+  officialVersionsError,
+  onLoadOfficialVersions,
+  officialPackProgress,
+  installingOfficialVersion,
+  onInstallOfficialPackVersion,
   onRefresh,
   onImportPack,
   onInstallDshVersion,
@@ -183,6 +200,13 @@ export function SettingsPanels({
               packs={packs}
               activePack={activePack}
               busy={locked}
+              officialVersions={officialVersions}
+              officialVersionsBusy={officialVersionsBusy}
+              officialVersionsError={officialVersionsError}
+              onLoadOfficialVersions={onLoadOfficialVersions}
+              officialPackProgress={officialPackProgress}
+              installingOfficialVersion={installingOfficialVersion}
+              onInstallOfficialPackVersion={onInstallOfficialPackVersion}
               onRefresh={onRefresh}
               onImport={onImportPack}
               onActivate={id => { void onActivatePack(id) }}
@@ -806,6 +830,13 @@ function SettingsPacks({
   packs,
   activePack,
   busy,
+  officialVersions,
+  officialVersionsBusy,
+  officialVersionsError,
+  onLoadOfficialVersions,
+  officialPackProgress,
+  installingOfficialVersion,
+  onInstallOfficialPackVersion,
   onRefresh,
   onImport,
   onActivate,
@@ -815,12 +846,27 @@ function SettingsPacks({
   packs: PackStatus[]
   activePack: PackStatus | null
   busy: boolean
+  officialVersions: OfficialPackRelease[] | null
+  officialVersionsBusy: boolean
+  officialVersionsError: string | null
+  onLoadOfficialVersions: (force?: boolean) => void
+  officialPackProgress: OfficialPackDownloadProgress | null
+  installingOfficialVersion: string | null
+  onInstallOfficialPackVersion: (version: string) => Promise<boolean>
   onRefresh: () => void
   onImport: () => void
   onActivate: (packId: string) => void
   onExport: (packId: string) => void
   onRemove: (packId: string) => void
 }) {
+  // 官方整合包堆叠：折叠时只显示标题行，展开读取 Release 版本目录。
+  const [officialOpen, setOfficialOpen] = useState(false)
+  const formatBytes = (bytes: number): string => {
+    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
+    if (bytes >= 1024 * 1024) return `${Math.round(bytes / 1024 / 1024)} MB`
+    if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
+    return `${bytes} B`
+  }
   return (
     <div className="settings-panel">
       <div className="settings-panel-heading">
@@ -833,6 +879,86 @@ function SettingsPacks({
       <div className="settings-hint">整合包是一整套「DSH 版本 + 插件 + 技能 + 预设 + 配置」；导入时若机器上没有配套的 DSH 版本会自动下载，并与其它环境隔离。</div>
       {packs.length === 0 && <div className="settings-empty">还没有任何整合包；可导入他人分享的 .zip，或到「完整管理界面」里创建一个。</div>}
       <div className="settings-list">
+        {/* 官方整合包：折叠成一个堆叠入口，展开是发布仓库 Release 上的各版本默认整合包（最新版即推荐版本）。
+            下载导入依赖快照格式兼容层，接入前按钮保持禁用。 */}
+        <div className={`settings-official-stack ${officialOpen ? 'open' : ''}`}>
+          <button
+            type="button"
+            className="settings-official-head"
+            aria-expanded={officialOpen}
+            onClick={() => {
+              const next = !officialOpen
+              setOfficialOpen(next)
+              if (next) onLoadOfficialVersions(false)
+            }}
+          >
+            <Package size={15} className="settings-official-icon" />
+            <span className="settings-official-copy">
+              <strong>官方整合包</strong>
+              <span>来自序曲发布线的官方默认整合包，一键获取开箱即用的完整环境</span>
+            </span>
+            <ChevronDown size={16} className="settings-official-chevron" />
+          </button>
+          {officialOpen && (
+            <div className="settings-official-versions">
+              {officialVersionsBusy && <div className="settings-empty"><LoaderCircle className="spin" size={16} />正在读取官方整合包版本…</div>}
+              {!officialVersionsBusy && officialVersionsError && (
+                <div className="settings-empty settings-official-error">
+                  <span>{officialVersionsError}</span>
+                  <button type="button" className="secondary-button" onClick={() => onLoadOfficialVersions(true)}>重试</button>
+                </div>
+              )}
+              {!officialVersionsBusy && !officialVersionsError && (officialVersions?.length ?? 0) === 0 && (
+                <div className="settings-empty">Release 上还没有官方整合包。</div>
+              )}
+              {(officialVersions ?? []).map(item => {
+                const installed = packs.some(pack => pack.officialVersion === item.version)
+                const installing = installingOfficialVersion === item.version
+                const percent = officialPackProgress && installing && officialPackProgress.total
+                  ? Math.min(100, Math.round(officialPackProgress.received * 100 / officialPackProgress.total))
+                  : null
+                return (
+                  <div key={item.version} className="settings-official-row">
+                    <span className="settings-official-row-copy">
+                      <span className="settings-official-title-line">
+                        <strong>{item.version}</strong>
+                        {officialVersions && item === officialVersions[0] && <span className="settings-pack-badge settings-official-recommended-badge">推荐</span>}
+                        {installed && <span className="settings-pack-badge settings-pack-official-badge"><Check size={11} />已下载</span>}
+                      </span>
+                      <span className="settings-official-meta">
+                        {[
+                          item.dshVersion ? `适配 DSH ${item.dshVersion}` : '适配 DSH 未标注',
+                          item.publishedAt ? item.publishedAt.slice(0, 10) : null,
+                          item.size > 0 ? formatBytes(item.size) : null,
+                        ].filter(Boolean).join(' · ')}
+                      </span>
+                      {installing && (
+                        <span className="settings-official-progress" role="progressbar" aria-valuenow={percent ?? undefined}>
+                          <span className="settings-official-progress-bar" style={{ width: `${percent ?? 4}%` }} />
+                          <span className="settings-official-progress-copy">
+                            {percent !== null ? `${percent}%` : '准备下载…'}
+                            {officialPackProgress?.total ? ` · ${formatBytes(officialPackProgress.received)} / ${formatBytes(officialPackProgress.total)}` : ''}
+                            {officialPackProgress ? ` · ${officialPackProgress.source}` : ''}
+                          </span>
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={busy || installingOfficialVersion !== null}
+                      title={installed ? '再导入一份（新包会加「(2)」后缀）' : '下载并导入这个版本'}
+                      onClick={() => { void onInstallOfficialPackVersion(item.version) }}
+                    >
+                      {installing ? <LoaderCircle size={13} className="spin" /> : <Download size={13} />}
+                      {installed ? '再下载' : '下载'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
         {packs.map(pack => {
           const isActive = activePack?.id === pack.id
           const itemCount = pack.plugins.length

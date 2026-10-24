@@ -4427,17 +4427,6 @@ input:focus-visible {
   font-weight: 750;
 }
 
-.featured-badge {
-  flex: 0 0 auto;
-  padding: 2px 6px;
-  border: 1px solid #cbbdf0;
-  border-radius: 4px;
-  color: #7c5cd6;
-  background: #f5f0ff;
-  font-size: 9px;
-  font-weight: 750;
-}
-
 .repository-analysis-badge {
   flex: 0 0 auto;
   padding: 2px 6px;
@@ -5629,6 +5618,22 @@ input:focus-visible {
   flex-direction: column;
   gap: 2px;
 }
+
+.custom-api-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.custom-api-model-list { display: grid; gap: 2px; margin-top: 4px; }
+.custom-model-editor { display: grid; gap: 8px; }
+.custom-model-editor-heading { display: flex; align-items: center; justify-content: space-between; }
+.custom-model-row { display: grid; grid-template-columns: minmax(130px, 1.3fr) minmax(110px, 1fr) minmax(100px, 1fr) minmax(110px, 1fr) minmax(120px, 1fr) auto; gap: 8px; align-items: center; }
+.custom-model-inputs { display: flex; gap: 8px; white-space: nowrap; }
+.custom-model-inputs label { display: inline-flex; gap: 4px; align-items: center; }
+.custom-model-hint { color: var(--muted-text); }
 
 .custom-api-heading strong,
 .custom-api-form-title strong {

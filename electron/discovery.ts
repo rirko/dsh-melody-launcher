@@ -3,7 +3,6 @@ import type {
   CatalogRepositoryResult,
 } from '../src/types'
 import { isDshRepository } from './dsh-install'
-import { FEATURED_REPOSITORIES, prependFeatured } from './featured'
 
 /** GitHub Plugin / Skill 统一目录检索。解析与映射是纯函数，网络调用单独一层。 */
 
@@ -180,34 +179,6 @@ function failureWarning(type: CatalogCandidateType, reason: unknown): string {
   return `${sourceLabel}检索失败：${message}`
 }
 
-async function loadFeaturedRepositories(fetchImpl: typeof fetch): Promise<CatalogRepositoryResult[]> {
-  return Promise.all(FEATURED_REPOSITORIES.map(async repository => {
-    try {
-      const response = await fetchImpl(`https://api.github.com/repos/${repository.fullName}`, {
-        headers: {
-          Accept: 'application/vnd.github+json',
-          'User-Agent': 'DSH-Launcher',
-          'X-GitHub-Api-Version': '2022-11-28',
-        },
-      })
-      if (!response.ok) return repository
-      const item = await response.json() as Partial<GitHubRepositoryItem>
-      if (item.full_name?.toLowerCase() !== repository.fullName.toLowerCase()) return repository
-      return {
-        ...repository,
-        stars: typeof item.stargazers_count === 'number' ? item.stargazers_count : repository.stars,
-        sizeKb: typeof item.size === 'number' ? item.size : repository.sizeKb,
-        language: item.language ?? repository.language,
-        updatedAt: item.updated_at ?? repository.updatedAt,
-        topics: item.topics ?? repository.topics,
-        defaultBranch: item.default_branch ?? repository.defaultBranch,
-      }
-    } catch {
-      return repository
-    }
-  }))
-}
-
 /**
  * 资源市场只从 Plugin 与应用加载项 topic 获取候选。Skill 不作为独立来源，
  * 但统一仓库分析器仍会检查候选仓库中的 Skill 组件。
@@ -220,9 +191,6 @@ export async function searchCatalogRepositories(
 ): Promise<DiscoveryResponse> {
   const normalizedPage = Math.min(CATALOG_MAX_PAGE, Math.max(1, Math.floor(Number(page) || 1)))
   const targetCount = normalizedPage * CATALOG_PAGE_SIZE
-  const featuredPromise = normalizedPage === 1
-    ? loadFeaturedRepositories(fetchImpl)
-    : Promise.resolve(FEATURED_REPOSITORIES)
   const [pluginResult, applicationResult] = await Promise.allSettled([
     searchRepositoryPrefix(query, sort, targetCount, PLUGIN_TOPIC, fetchImpl),
     searchRepositoryPrefix(query, sort, targetCount, APPLICATION_TOPIC, fetchImpl),
@@ -251,13 +219,10 @@ export async function searchCatalogRepositories(
   const sortedRepositories = [...repositories.values()].sort(repositoryOrder(sort))
   const pageStart = (normalizedPage - 1) * CATALOG_PAGE_SIZE
   const pageRepositories = sortedRepositories.slice(pageStart, pageStart + CATALOG_PAGE_SIZE)
-  const featuredRepositories = await featuredPromise
   const totalAvailable = [pluginFound?.totalCount, applicationFound?.totalCount]
     .reduce<number>((sum, total) => sum + Math.min(total ?? 0, GITHUB_SEARCH_RESULT_LIMIT), 0)
   return {
-    repositories: normalizedPage === 1
-      ? prependFeatured(pageRepositories, featuredRepositories)
-      : pageRepositories,
+    repositories: pageRepositories,
     topicTotals: {
       plugin: pluginFound?.totalCount ?? 0,
       skill: 0,

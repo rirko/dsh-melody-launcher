@@ -297,6 +297,40 @@ describe('Profile service', () => {
     expect(repairs).toEqual([['@demo/plugin']])
   })
 
+  it('keeps the selected Profile unchanged and exposes automatic repair failures', async () => {
+    const env = await fixture()
+    await createProfile(env.options, { name: 'alpha' })
+    await writeFile(path.join(env.dshHome, 'profiles', 'alpha', 'package.json'), JSON.stringify({
+      name: 'dsh-profile-alpha', dependencies: { '@demo/plugin': '1.0.0' }, dsh: { profile: { bundles: ['@demo/plugin'] } },
+    }))
+    const sibling = path.join(env.dshHome, 'profiles', 'web', 'node_modules', '@demo', 'plugin')
+    await mkdir(sibling, { recursive: true })
+    await writeFile(path.join(sibling, 'package.json'), JSON.stringify({ name: '@demo/plugin', version: '1.0.0' }))
+    let repairs = 0
+    const service = createProfileService({
+      ...env.options,
+      fillMissingDependencies: async () => {
+        repairs += 1
+        throw new Error('ERR_PNPM_NO_OFFLINE_META: @demo/core')
+      },
+    })
+    await expect(service.switch('alpha')).rejects.toThrow('ERR_PNPM_NO_OFFLINE_META: @demo/core')
+    expect(repairs).toBe(1)
+    expect(env.getSettings().profileName).toBe('web')
+  })
+
+  it('does not fetch missing remote dependencies without confirmation', async () => {
+    const env = await fixture()
+    await createProfile(env.options, { name: 'alpha' })
+    await writeFile(path.join(env.dshHome, 'profiles', 'alpha', 'package.json'), JSON.stringify({
+      name: 'dsh-profile-alpha', dependencies: { remote: '1.0.0' }, dsh: { profile: { bundles: ['remote'] } },
+    }))
+    let repairs = 0
+    const service = createProfileService({ ...env.options, fillMissingDependencies: async () => { repairs += 1 } })
+    await expect(service.switch('alpha')).rejects.toThrow('确认补齐依赖')
+    expect(repairs).toBe(0)
+  })
+
   it('cleans Profile-scoped receipts and offline bodies without touching the shared store', async () => {
     const env = await fixture()
     const receiptPath = path.join(env.root, 'receipts.json')
