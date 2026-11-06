@@ -18,10 +18,10 @@ const ANTHROPIC_VERSION = '2023-06-01'
 const ERROR_BODY_LIMIT = 200
 
 export interface ApiProbeOptions {
-  readSettings: () => Promise<Pick<AppSettings, 'dshHome'>>
+  readSettings: () => Promise<Pick<AppSettings, 'dshHome'> & Partial<Pick<AppSettings, 'profileName'>>>
   fetchImpl?: typeof fetch
   /** 以下三项默认连接真实凭据/配置读取，测试时注入替身。 */
-  listProviders?: (dshHome: string) => Promise<CustomApiProvider[]>
+  listProviders?: (dshHome: string, profileName?: string) => Promise<CustomApiProvider[]>
   readNamedCredential?: (dshHome: string, name: string) => Promise<string | null>
   readOfficialApiKey?: (dshHome: string) => Promise<string | null>
 }
@@ -65,7 +65,7 @@ export function createApiProbe(options: ApiProbeOptions): ApiProbeService {
   const readOfficialApiKey = options.readOfficialApiKey ?? readDeepSeekApiKey
 
   async function resolveEndpoint(target: ApiProbeTarget): Promise<ResolvedEndpoint> {
-    const { dshHome } = await options.readSettings()
+    const { dshHome, profileName } = await options.readSettings()
     if (target.target === 'deepseek-official') {
       const apiKey = await readOfficialApiKey(dshHome).catch(() => null)
       return {
@@ -79,7 +79,7 @@ export function createApiProbe(options: ApiProbeOptions): ApiProbeService {
           : '尚未配置 DeepSeek API Key，请先在「API 配置」中保存。',
       }
     }
-    const providers = await listProviders(dshHome).catch(() => [] as CustomApiProvider[])
+    const providers = await listProviders(dshHome, profileName).catch(() => [] as CustomApiProvider[])
     const provider = providers.find(candidate => candidate.route === target.route)
     if (!provider) {
       throw new Error(`未找到路由为「${target.route}」的自定义 API 配置。`)

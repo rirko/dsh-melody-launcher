@@ -677,7 +677,7 @@ export function useLauncherStore() {
 
   const syncCustomApi = useCallback(async (): Promise<boolean> => {
     const providers = await run(BUSY.credential, () => api.syncCustomApiProviders(), {
-      success: '已从当前 Profile 同步 DSH 模型配置。',
+      success: '已将当前 Profile 的 DSH 模型同步到全局设置。',
     })
     if (!providers) return false
     setCustomApiProviders(providers)

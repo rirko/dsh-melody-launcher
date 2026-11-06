@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { parseDocument } from 'yaml'
@@ -8,6 +8,7 @@ import {
   listCustomApiProviders,
   removeCustomApiProvider,
   saveCustomApiProvider,
+  syncCustomApiProviders,
 } from '../electron/custom-api'
 
 let temporaryHome = ''
@@ -153,5 +154,112 @@ describe('custom API providers', () => {
 
   it('derives stable credential names from provider routes', () => {
     expect(credentialNameForRoute('my-openai-proxy')).toBe('MY_OPENAI_PROXY_API_KEY')
+  })
+
+  it('reads complete multi-model providers from the current Profile patch', async () => {
+    const profileDir = path.join(temporaryHome, 'profiles', 'pack-test')
+    await mkdir(profileDir, { recursive: true })
+    await writeFile(path.join(profileDir, 'cordis.patch.yml'), `- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: dsrc
+    model: deepseek-v4.1-flash
+    reasoningEffort: max
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  config:
+    providers:
+      dsrc:
+        displayName: dsrc
+        api: openai-completions
+        baseURL: https://example.com/v1
+        apiKeyEnv: DSRC_API_KEY
+        models:
+          - id: deepseek-v4.1-flash
+            contextWindow: 1000000
+            maxOutputTokens: 8192
+            input: [text, image]
+            reasoningEfforts:
+              off: null
+              low: low
+              max: max
+          - id: deepseek-chat
+            input: [text]
+`, 'utf8')
+    await writeFile(path.join(temporaryHome, '.credentials.yaml'), 'DSRC_API_KEY: secret\n', 'utf8')
+
+    const providers = await syncCustomApiProviders(temporaryHome, 'pack-test')
+    expect(providers).toHaveLength(1)
+    expect(providers[0]).toMatchObject({
+      route: 'dsrc',
+      modelIds: ['deepseek-v4.1-flash', 'deepseek-chat'],
+      defaultModel: 'dsrc/deepseek-v4.1-flash',
+      hasApiKey: true,
+    })
+    expect(providers[0].models?.[0]).toMatchObject({ contextWindow: 1000000, maxOutputTokens: 8192, input: ['text', 'image'] })
+    expect(providers[0].models?.[0].reasoningEfforts).toEqual({ off: null, low: 'low', max: 'max' })
+    const global = parseDocument(await readFile(path.join(temporaryHome, 'settings.yaml'), 'utf8')).toJS() as any
+    expect(global['llm-pi-ai'].providers.dsrc.models[0]).toMatchObject({ id: 'deepseek-v4.1-flash' })
+    expect(global['agent-default-model']).toEqual({ provider: 'dsrc', model: 'deepseek-v4.1-flash', reasoningEffort: 'max' })
+  })
+
+  it('replaces global model providers from the Profile while preserving unrelated settings', async () => {
+    const profileDir = path.join(temporaryHome, 'profiles', 'pack-test')
+    await mkdir(profileDir, { recursive: true })
+    await writeFile(path.join(profileDir, 'cordis.patch.yml'), `- id: llm-pi-ai
+  config:
+    providers:
+      profile-api:
+        displayName: Profile API
+        api: openai-completions
+        baseURL: https://profile.example/v1
+        models:
+          - id: profile-model
+`, 'utf8')
+    await writeFile(path.join(temporaryHome, 'settings.yaml'), `other-feature:
+  enabled: true
+agent-default-model:
+  provider: stale
+  model: stale-model
+llm-pi-ai:
+  keepMe: true
+  providers:
+    stale:
+      displayName: Stale
+      api: openai-completions
+      baseURL: https://stale.example/v1
+      models: [{ id: stale-model }]
+`, 'utf8')
+
+    await syncCustomApiProviders(temporaryHome, 'pack-test')
+    const settings = parseDocument(await readFile(path.join(temporaryHome, 'settings.yaml'), 'utf8')).toJS() as any
+    expect(settings['other-feature']).toEqual({ enabled: true })
+    expect(settings['llm-pi-ai'].keepMe).toBe(true)
+    expect(Object.keys(settings['llm-pi-ai'].providers)).toEqual(['profile-api'])
+    expect(settings['agent-default-model']).toBeUndefined()
+  })
+
+  it('writes provider edits back to the Profile patch without flattening it', async () => {
+    const profileDir = path.join(temporaryHome, 'profiles', 'pack-test')
+    await mkdir(profileDir, { recursive: true })
+    await writeFile(path.join(profileDir, 'cordis.patch.yml'), `- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  config:
+    keepMe: true
+    providers: {}
+- id: ui-conversation
+  config:
+    busyEnter: queue
+`, 'utf8')
+
+    await saveCustomApiProvider(temporaryHome, {
+      ...providerInput({
+        models: [{ id: 'model-a', contextWindow: 32768, maxOutputTokens: 4096, input: ['text', 'image'], reasoningEfforts: { low: 'low' } }],
+      }),
+    }, 'pack-test')
+    const patch = parseDocument(await readFile(path.join(profileDir, 'cordis.patch.yml'), 'utf8')).toJS() as any[]
+    expect(patch[0].config.keepMe).toBe(true)
+    expect(patch[0].config.providers['local-gateway'].models[0]).toMatchObject({ id: 'model-a', contextWindow: 32768 })
+    expect(patch[1].id).toBe('ui-conversation')
   })
 })

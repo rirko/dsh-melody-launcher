@@ -695,6 +695,7 @@ function LauncherShell() {
           onSaveDeepSeek={store.saveApiKey}
           onClearDeepSeek={store.clearApiKey}
           onSaveCustom={store.saveCustomApi}
+          onSyncCustom={store.syncCustomApi}
           onRemoveCustom={store.removeCustomApi}
           onProbe={store.probeApi}
         />
