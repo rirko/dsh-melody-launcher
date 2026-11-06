@@ -18,6 +18,7 @@
   <repository name="HuanLinOTO/dsh-plugin-anti-ads" branch="master" updated="2026-08-17T02:18:27Z" tags="plugin"/>
   <repository name="1738348785/dsh-plugin-text-translation" branch="main" updated="2026-09-13T18:40:27Z" tags="plugin"/>
   <repository name="yjh051108/dsh-routing-suite" branch="main" updated="2026-11-06T08:32:12Z" tags="plugin"/>
+  <repository name="coldgust/dsh-translation-assistant" branch="main" updated="2026-10-26T14:11:37Z" tags="plugin"/>
   <repository name="zhu1090093659/dsh-web-ui" branch="dev" updated="2026-08-22T09:02:17Z" tags="plugin,skill"/>
   <repository name="edison7009/EchoBird" branch="main" updated="2026-08-22T08:47:29Z" tags="invalid"/>
   <repository name="EverMind-AI/EverOS" branch="main" updated="2026-08-22T08:40:58Z" tags="plugin,skill"/>
