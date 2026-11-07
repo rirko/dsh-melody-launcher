@@ -72,6 +72,56 @@ describe('Profile runtime version authority', () => {
     expect(third).toEqual(first)
   })
 
+  it('falls back to safe paths when legacy settings contain array values', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-settings-invalid-paths-'))
+    settingsRoots.push(root)
+    const defaults = defaultSettings({ homeDirectory: root, documentsDirectory: root })
+    const filePath = path.join(root, 'settings.json')
+    await writeFile(filePath, JSON.stringify({
+      ...defaults,
+      dshHome: [root, 'broken'],
+      workspace: [root, 'broken'],
+      launchExecutable: ['npx.cmd'],
+    }), 'utf8')
+    const store = createSettingsStore({
+      filePath,
+      createDefaults: () => defaults,
+      detectInstalledDsh: async () => ({ installed: false, executable: null, version: null, source: null }),
+    })
+
+    await expect(store.read()).resolves.toMatchObject({
+      dshHome: defaults.dshHome,
+      workspace: defaults.workspace,
+      launchExecutable: defaults.launchExecutable,
+    })
+  })
+
+  it('migrates single-entry file picker arrays to their path values', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-settings-single-path-'))
+    settingsRoots.push(root)
+    const defaults = defaultSettings({ homeDirectory: root, documentsDirectory: root })
+    const selectedHome = path.join(root, 'selected-dsh-home')
+    const selectedWorkspace = path.join(root, 'selected-workspace')
+    const filePath = path.join(root, 'settings.json')
+    await writeFile(filePath, JSON.stringify({
+      ...defaults,
+      dshHome: [selectedHome],
+      workspace: [selectedWorkspace],
+      launchExecutable: ['npx.cmd'],
+    }), 'utf8')
+    const store = createSettingsStore({
+      filePath,
+      createDefaults: () => defaults,
+      detectInstalledDsh: async () => ({ installed: false, executable: null, version: null, source: null }),
+    })
+
+    await expect(store.read()).resolves.toMatchObject({
+      dshHome: selectedHome,
+      workspace: selectedWorkspace,
+      launchExecutable: 'npx.cmd',
+    })
+  })
+
   it('does not create Profile directories or metadata during settings reads', async () => {
     const env = await settingsFixture()
     expect((await env.store.read()).dshVersion).toBe('0.1.0')
