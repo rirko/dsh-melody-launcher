@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import type { Dirent } from 'node:fs'
 import { mkdir, readdir, rm, readFile, writeFile } from 'node:fs/promises'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import path from 'node:path'
@@ -16,6 +17,7 @@ import type {
 import {
   findInstalledDsh,
   getManagedDshStatus,
+  isNetworkPath,
   managedDshExecutable,
   packageManagerProgress,
 } from './dsh-install'
@@ -225,16 +227,25 @@ export async function findManagedDshVersions(runtimeRoot: string): Promise<Array
   source: 'launcher' | 'legacy'
 }>> {
   const found: Array<{ version: string; root: string; executable: string; source: 'launcher' | 'legacy' }> = []
-  const legacy = await getManagedDshStatus(runtimeRoot)
+  if (isNetworkPath(runtimeRoot)) return found
+  const deadline = Date.now() + 5_000
+  const legacy = await getManagedDshStatus(runtimeRoot, 1_000)
   if (legacy.installed && legacy.version && legacy.executable) {
     found.push({ version: normalizeDshVersion(legacy.version), root: runtimeRoot, executable: legacy.executable, source: 'legacy' })
   }
   const versionsRoot = path.join(runtimeRoot, 'versions')
-  const entries = await readdir(versionsRoot, { withFileTypes: true }).catch(() => [])
+  const entries = await Promise.race<Dirent[]>([
+    readdir(versionsRoot, { withFileTypes: true }) as Promise<Dirent[]>,
+    new Promise<Dirent[]>(resolve => {
+      const timer = setTimeout(() => resolve([]), Math.max(1, deadline - Date.now()))
+      timer.unref?.()
+    }),
+  ]).catch(() => [])
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
+    if (Date.now() >= deadline) break
     const root = path.join(versionsRoot, entry.name)
-    const status = await getManagedDshStatus(root)
+    const status = await getManagedDshStatus(root, Math.min(1_000, Math.max(1, deadline - Date.now())))
     if (status.installed && status.version && status.executable) {
       found.push({ version: normalizeDshVersion(status.version), root, executable: status.executable, source: 'launcher' })
     }

@@ -51,6 +51,27 @@ describe('Profile runtime version authority', () => {
     expect(JSON.parse(await readFile(env.filePath, 'utf8')).dshVersion).toBe('0.1.0')
   })
 
+  it('coalesces concurrent initial reads before running DSH detection', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-settings-concurrent-'))
+    settingsRoots.push(root)
+    const defaults = defaultSettings({ homeDirectory: root, documentsDirectory: root })
+    let detectionCalls = 0
+    const store = createSettingsStore({
+      filePath: path.join(root, 'settings.json'),
+      createDefaults: () => defaults,
+      detectInstalledDsh: async () => {
+        detectionCalls += 1
+        await new Promise(resolve => setTimeout(resolve, 20))
+        return { installed: false, executable: null, version: null, source: null }
+      },
+    })
+
+    const [first, second, third] = await Promise.all([store.read(), store.read(), store.read()])
+    expect(detectionCalls).toBe(1)
+    expect(second).toEqual(first)
+    expect(third).toEqual(first)
+  })
+
   it('does not create Profile directories or metadata during settings reads', async () => {
     const env = await settingsFixture()
     expect((await env.store.read()).dshVersion).toBe('0.1.0')

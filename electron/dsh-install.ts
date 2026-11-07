@@ -9,7 +9,16 @@ interface DshDetectionOptions {
   managedRoot: string
   configuredExecutable?: string
   environment?: NodeJS.ProcessEnv
+  /**
+   * Upper bound for the complete filesystem scan.  Windows can keep an
+   * access/readdir request pending for a disconnected UNC or mapped drive;
+   * DSH detection must never hold the launcher startup forever in that case.
+   */
+  timeoutMs?: number
 }
+
+const DEFAULT_DSH_DETECTION_TIMEOUT_MS = 5_000
+const DEFAULT_DSH_PROBE_TIMEOUT_MS = 1_000
 
 export function isDshRepository(fullName: string): boolean {
   return fullName.toLowerCase() === DSH_REPOSITORY
@@ -25,6 +34,32 @@ function missingDshStatus(): DshInstallationStatus {
 
 function isDshExecutableName(filePath: string): boolean {
   return /^(?:dsh|dsh\.cmd|dsh\.exe)$/i.test(path.basename(filePath))
+}
+
+/** Windows UNC and extended-UNC paths can block fs promises while offline. */
+export function isNetworkPath(value: string): boolean {
+  if (process.platform !== 'win32') return false
+  const normalized = value.trim().replaceAll('/', '\\')
+  return normalized.startsWith('\\\\') || normalized.startsWith('\\\\?\\UNC\\')
+}
+
+function boundedTimeout(value: number | undefined, fallback: number): number {
+  return Number.isFinite(value) && value !== undefined && value > 0 ? Math.max(1, Math.floor(value)) : fallback
+}
+
+async function withTimeout<T>(operation: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>(resolve => {
+        timer = setTimeout(() => resolve(fallback), timeoutMs)
+        timer.unref?.()
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }
 
 async function pnpmGlobalManifestCandidates(binDirectory: string): Promise<string[]> {
@@ -64,29 +99,33 @@ async function manifestCandidates(executable: string, resolvedExecutable: string
 async function inspectDshExecutable(
   executable: string,
   source: DshInstallationStatus['source'],
+  timeoutMs = DEFAULT_DSH_PROBE_TIMEOUT_MS,
 ): Promise<DshInstallationStatus> {
-  if (!path.isAbsolute(executable) || !isDshExecutableName(executable)) return missingDshStatus()
-  try {
-    await access(executable)
-    const resolvedExecutable = await realpath(executable).catch(() => executable)
-    for (const manifestPath of await manifestCandidates(executable, resolvedExecutable)) {
-      try {
-        const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { name?: unknown; version?: unknown }
-        if (manifest.name !== DSH_PACKAGE_NAME || typeof manifest.version !== 'string' || !manifest.version.trim()) continue
-        return { installed: true, version: manifest.version, executable, source }
-      } catch {
-        // Keep checking other standard npm layouts.
+  if (!path.isAbsolute(executable) || !isDshExecutableName(executable) || isNetworkPath(executable)) return missingDshStatus()
+  const probe = async (): Promise<DshInstallationStatus> => {
+    try {
+      await access(executable)
+      const resolvedExecutable = await realpath(executable).catch(() => executable)
+      for (const manifestPath of await manifestCandidates(executable, resolvedExecutable)) {
+        try {
+          const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { name?: unknown; version?: unknown }
+          if (manifest.name !== DSH_PACKAGE_NAME || typeof manifest.version !== 'string' || !manifest.version.trim()) continue
+          return { installed: true, version: manifest.version, executable, source }
+        } catch {
+          // Keep checking other standard npm layouts.
+        }
       }
+    } catch {
+      // Missing and inaccessible candidates are not installations.
     }
-  } catch {
-    // Missing and inaccessible candidates are not installations.
+    return missingDshStatus()
   }
-  return missingDshStatus()
+  return withTimeout(probe(), boundedTimeout(timeoutMs, DEFAULT_DSH_PROBE_TIMEOUT_MS), missingDshStatus())
 }
 
 function systemDshCandidates(configuredExecutable: string | undefined, environment: NodeJS.ProcessEnv): string[] {
   const candidates: string[] = []
-  if (configuredExecutable && path.isAbsolute(configuredExecutable)) candidates.push(configuredExecutable)
+  if (configuredExecutable && path.isAbsolute(configuredExecutable) && !isNetworkPath(configuredExecutable)) candidates.push(configuredExecutable)
 
   const pathKey = Object.keys(environment).find(key => key.toLowerCase() === 'path')
   const pathEntries = (pathKey ? environment[pathKey] : '')?.split(path.delimiter).filter(Boolean) ?? []
@@ -112,7 +151,7 @@ function systemDshCandidates(configuredExecutable: string | undefined, environme
   const executableNames = process.platform === 'win32' ? ['dsh.cmd', 'dsh.exe', 'dsh'] : ['dsh']
   for (const entry of [...pathEntries, ...extraEntries]) {
     const normalized = entry.trim().replace(/^"|"$/g, '')
-    if (!normalized) continue
+    if (!normalized || isNetworkPath(normalized)) continue
     for (const name of executableNames) candidates.push(path.join(normalized, name))
   }
 
@@ -126,11 +165,14 @@ function systemDshCandidates(configuredExecutable: string | undefined, environme
 }
 
 export async function findInstalledDsh(options: DshDetectionOptions): Promise<DshInstallationStatus> {
-  const managed = await getManagedDshStatus(options.managedRoot)
+  const deadline = Date.now() + boundedTimeout(options.timeoutMs, DEFAULT_DSH_DETECTION_TIMEOUT_MS)
+  const remaining = () => Math.max(1, deadline - Date.now())
+  const managed = await getManagedDshStatus(options.managedRoot, Math.min(DEFAULT_DSH_PROBE_TIMEOUT_MS, remaining()))
   if (managed.installed) return managed
 
   for (const executable of systemDshCandidates(options.configuredExecutable, options.environment ?? process.env)) {
-    const detected = await inspectDshExecutable(executable, 'system')
+    if (Date.now() >= deadline) break
+    const detected = await inspectDshExecutable(executable, 'system', Math.min(DEFAULT_DSH_PROBE_TIMEOUT_MS, remaining()))
     if (detected.installed) return detected
   }
   return missingDshStatus()
@@ -211,7 +253,7 @@ export function packageManagerProgress(
   return null
 }
 
-export async function getManagedDshStatus(runtimeRoot: string): Promise<DshInstallationStatus> {
+export async function getManagedDshStatus(runtimeRoot: string, timeoutMs = DEFAULT_DSH_PROBE_TIMEOUT_MS): Promise<DshInstallationStatus> {
   const executable = managedDshExecutable(runtimeRoot)
-  return inspectDshExecutable(executable, 'launcher')
+  return inspectDshExecutable(executable, 'launcher', timeoutMs)
 }

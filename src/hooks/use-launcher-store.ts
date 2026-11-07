@@ -52,6 +52,26 @@ export function pluginTrialStateKey(profileName: string, packageName: string): s
   return `${profileName}:${packageName}`
 }
 
+const STARTUP_OPERATION_TIMEOUT_MS = 8_000
+
+function withStartupTimeout<T>(
+  promise: Promise<T>,
+  label: string,
+  fallback?: T,
+): Promise<T> {
+  const hasFallback = arguments.length >= 3
+  let timer: number | undefined
+  const timeout = new Promise<T>((resolve, reject) => {
+    timer = window.setTimeout(() => {
+      if (hasFallback) resolve(fallback as T)
+      else reject(new Error(`${label}超过 ${Math.round(STARTUP_OPERATION_TIMEOUT_MS / 1000)} 秒未完成。`))
+    }, STARTUP_OPERATION_TIMEOUT_MS)
+  })
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== undefined) window.clearTimeout(timer)
+  })
+}
+
 export function useLauncherStore() {
   const api = useLauncherApi()
   const { toast, showToast, dismissToast } = useToast()
@@ -104,6 +124,7 @@ export function useLauncherStore() {
   const [profiles, setProfiles] = useState<ProfileSummary[]>([])
   const [packSnapshotsAvailable, setPackSnapshotsAvailable] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [startupError, setStartupError] = useState<string | null>(null)
   const activeRuntimeReplacement = installedApplications.find(
     application => application.enabled && application.launchMode === 'runtime-replacement',
   ) ?? null
@@ -126,24 +147,25 @@ export function useLauncherStore() {
 
   useEffect(() => {
     let disposed = false
+    setStartupError(null)
     void Promise.all([
-      api.getSettings(),
-      api.readProfile(),
-      api.getRuntimeState(),
+      withStartupTimeout(api.getSettings(), '读取启动设置'),
+      withStartupTimeout(api.readProfile(), '读取当前 Profile'),
+      withStartupTimeout(api.getRuntimeState(), '读取运行状态', EMPTY_RUNTIME_STATE),
       // 凭据文件损坏时凭据状态未知，但不应阻塞整个启动器加载。
-      api.getDeepSeekCredentialStatus().catch(error => {
+      withStartupTimeout(api.getDeepSeekCredentialStatus().catch(error => {
         showToast({ kind: 'error', message: errorText(error) })
         return { configured: false }
-      }),
-      api.detectDshInstallation(),
-      api.readInstalledSkills(),
-      api.readInstalledApplications(),
-      api.readInstalledPresets(),
-      api.listPacks(),
-      api.listProfiles(),
-      api.packHasSnapshot(),
-      api.readPluginTrials(),
-      api.listCustomApiProviders().catch(() => [] as CustomApiProvider[]),
+      }), '读取凭据状态', { configured: false }),
+      withStartupTimeout(api.detectDshInstallation(), '检测 DSH 安装', EMPTY_DSH_INSTALLATION),
+      withStartupTimeout(api.readInstalledSkills(), '读取 Skills', [] as InstalledSkill[]),
+      withStartupTimeout(api.readInstalledApplications(), '读取应用加载项', [] as InstalledApplicationAddon[]),
+      withStartupTimeout(api.readInstalledPresets(), '读取预设', [] as InstalledPreset[]),
+      withStartupTimeout(api.listPacks(), '读取整合包', [] as PackStatus[]),
+      withStartupTimeout(api.listProfiles(), '读取 Profile 列表', [] as ProfileSummary[]),
+      withStartupTimeout(api.packHasSnapshot(), '检查整合包快照', false),
+      withStartupTimeout(api.readPluginTrials(), '读取插件试运行记录', [] as PluginTrialResult[]),
+      withStartupTimeout(api.listCustomApiProviders().catch(() => [] as CustomApiProvider[]), '读取模型配置', [] as CustomApiProvider[]),
     ])
       .then(([nextSettings, nextProfile, nextRuntime, nextCredentialStatus, nextDshInstallation, nextInstalledSkills, nextInstalledApplications, nextInstalledPresets, nextPacks, nextProfiles, nextPackSnapshot, nextPluginTrials, nextCustomApiProviders]) => {
         setSettings(nextSettings)
@@ -161,7 +183,10 @@ export function useLauncherStore() {
         setPluginTrials(Object.fromEntries(nextPluginTrials.map(result => [pluginTrialStateKey(result.profileName, result.packageName), result])))
         setCustomApiProviders(nextCustomApiProviders)
       })
-      .catch(error => showToast({ kind: 'error', message: errorText(error) }))
+      .catch(error => {
+        if (!disposed) setStartupError(errorText(error))
+        showToast({ kind: 'error', message: errorText(error) })
+      })
       .finally(() => setLoading(false))
 
     // 下载队列快照独立加载：重启恢复的待执行任务由主进程落盘，这里主动拉一次，
@@ -1066,6 +1091,7 @@ export function useLauncherStore() {
   return {
     // 状态
     loading,
+    startupError,
     settings,
     profile,
     runtime,

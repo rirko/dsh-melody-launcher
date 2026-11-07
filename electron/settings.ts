@@ -220,6 +220,9 @@ export interface SettingsStoreOptions {
 
 export function createSettingsStore(options: SettingsStoreOptions): SettingsStore {
   let cache: AppSettings | null = null
+  // 首屏会并发请求 settings/profile/runtime 等多个 IPC。合并首次读取，
+  // 避免每个调用都重复扫描本地 DSH 和 PATH。
+  let pendingRead: Promise<AppSettings> | null = null
 
   async function profileDshVersion(settings: AppSettings): Promise<string | null | undefined> {
     if (!isSafeProfileName(settings.profileName) || typeof settings.dshHome !== 'string' || !path.isAbsolute(settings.dshHome)) return undefined
@@ -269,18 +272,27 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       cache = await projectRuntime(profileVersion === undefined ? cache : { ...cache, dshVersion: profileVersion })
       return cache
     }
-    const defaults = options.createDefaults()
-    let stored: Partial<AppSettings> | null = null
+    if (pendingRead) return pendingRead
+    const load = (async (): Promise<AppSettings> => {
+      const defaults = options.createDefaults()
+      let stored: Partial<AppSettings> | null = null
+      try {
+        stored = JSON.parse(await readFile(options.filePath, 'utf8')) as Partial<AppSettings>
+      } catch {
+        stored = null
+      }
+      let loaded = mergeStoredSettings(defaults, stored)
+      const profileVersion = await profileDshVersion(loaded)
+      if (profileVersion !== undefined) loaded = { ...loaded, dshVersion: profileVersion }
+      cache = await projectRuntime(loaded, true)
+      return cache
+    })()
+    pendingRead = load
     try {
-      stored = JSON.parse(await readFile(options.filePath, 'utf8')) as Partial<AppSettings>
-    } catch {
-      stored = null
+      return await load
+    } finally {
+      if (pendingRead === load) pendingRead = null
     }
-    let loaded = mergeStoredSettings(defaults, stored)
-    const profileVersion = await profileDshVersion(loaded)
-    if (profileVersion !== undefined) loaded = { ...loaded, dshVersion: profileVersion }
-    cache = await projectRuntime(loaded, true)
-    return cache
   }
 
   return {
