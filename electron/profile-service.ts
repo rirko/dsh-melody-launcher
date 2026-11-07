@@ -27,6 +27,8 @@ export interface ProfileMetadata {
   distributionKind?: 'standard-profile' | 'meta-repo' | 'distribution'
   importState?: 'complete' | 'partial' | 'failed'
   importFailures?: string[]
+  /** 来源为官方默认整合包时的包版本号（「已下载」徽标与一键获取判重用）。 */
+  officialPackVersion?: string | null
   dshSourceVersion?: string | null
   importWarnings?: string[]
 }
@@ -71,8 +73,7 @@ export interface ProfileServiceOptions {
    * profile-owned copy behind, but it must never remove the shared pnpm store. */
   packBodiesRoot?: string | (() => Promise<string>)
   isRuntimeRunning?: () => boolean
-  /** Optional repair hook used only after the user explicitly confirms a
-   * switch into a Profile with missing node_modules links. */
+  /** Repair missing links from local sources, fetching missing dependency cache entries when needed. */
   fillMissingDependencies?: (profileName: string, missing: string[]) => Promise<void>
 }
 
@@ -80,6 +81,7 @@ export interface ProfileService {
   list(): Promise<ProfileSummary[]>
   create(input: ProfileCreateOptions): Promise<ProfileSummary>
   clone(sourceName: string, targetName: string, description?: string): Promise<ProfileSummary>
+  prepare(profileName: string): Promise<void>
   switch(profileName: string, fillMissing?: boolean | ((missing: string[]) => Promise<void>)): Promise<AppSettings>
   remove(profileName: string): Promise<void>
   metadata(profileName: string): Promise<ProfileSummary>
@@ -192,6 +194,7 @@ function normalizeMetadata(raw: unknown, fallbackName: string): ProfileMetadata 
     packName: typeof value.packName === 'string' ? value.packName : undefined,
     distributionKind: value.distributionKind === 'standard-profile' || value.distributionKind === 'meta-repo' || value.distributionKind === 'distribution' ? value.distributionKind : undefined,
     importState: value.importState === 'complete' || value.importState === 'partial' || value.importState === 'failed' ? value.importState : undefined,
+    officialPackVersion: typeof value.officialPackVersion === 'string' ? value.officialPackVersion : null,
     importFailures: Array.isArray(value.importFailures) ? value.importFailures.filter((item): item is string => typeof item === 'string').slice(0, 200) : undefined,
     dshSourceVersion: typeof value.dshSourceVersion === 'string' ? value.dshSourceVersion : null,
     importWarnings: Array.isArray(value.importWarnings) ? value.importWarnings.filter((item): item is string => typeof item === 'string').slice(0, 100) : undefined,
@@ -683,31 +686,37 @@ export async function cloneProfile(options: ProfileServiceOptions, sourceName: s
   return createProfile(options, { name: targetName, cloneFrom: sourceName, description })
 }
 
-export async function switchProfile(options: ProfileServiceOptions, profileName: string, fillMissing?: boolean | ((missing: string[]) => Promise<void>)): Promise<AppSettings> {
-  if (options.isRuntimeRunning?.()) throw new Error('请先停止 DSH，再切换 Profile。')
+export async function prepareProfileDependencies(options: ProfileServiceOptions, profileName: string, fillMissing?: boolean | ((missing: string[]) => Promise<void>)): Promise<void> {
   const dshHome = await homeOf(options)
   const targetDir = profileDirFor(dshHome, profileName)
   if (!await exists(targetDir)) throw new Error(`Profile「${profileName}」不存在。`)
   const profile = await readProfile(dshHome, profileName, options.pluginReceiptsPath)
   const initialMissing = profile.initialized ? await missingDependencies(profile) : []
-  // Materialize links for packages that already exist in another Profile or
-  // the shared body pool without requiring a second confirmation dialog.
   const locallyAvailable = await locallyAvailableDependencies(dshHome, profileName, initialMissing)
-  if (locallyAvailable.length > 0 && options.fillMissingDependencies) {
-    await options.fillMissingDependencies(profileName, locallyAvailable).catch(() => undefined)
+  const repair = typeof fillMissing === 'function'
+    ? fillMissing
+    : options.fillMissingDependencies
+      ? (items: string[]) => options.fillMissingDependencies!(profileName, items)
+      : null
+  const repairable = fillMissing ? initialMissing : locallyAvailable
+  if (repairable.length > 0 && repair) {
+    try {
+      await repair(repairable)
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new Error(`Profile「${profileName}」依赖准备失败：${detail}`, { cause: error })
+    }
   }
   const missing = profile.initialized ? await missingDependencies(await readProfile(dshHome, profileName, options.pluginReceiptsPath)) : []
   if (missing.length > 0) {
-    const repair = typeof fillMissing === 'function'
-      ? fillMissing
-      : fillMissing === true && options.fillMissingDependencies
-        ? (items: string[]) => options.fillMissingDependencies!(profileName, items)
-        : null
-    if (!repair) throw new Error(`Profile「${profileName}」缺少插件：${missing.join('、')}。确认补齐依赖后再切换。`)
-    await repair(missing)
-    const afterRepair = await missingDependencies(await readProfile(dshHome, profileName, options.pluginReceiptsPath))
-    if (afterRepair.length > 0) throw new Error(`Profile「${profileName}」仍缺少插件：${afterRepair.join('、')}`)
+    throw new Error(`Profile「${profileName}」缺少插件：${missing.join('、')}。${repair && repairable.length > 0 ? '补齐后仍未生成可用依赖，请检查安装日志。' : '确认补齐依赖后再切换。'}`)
   }
+}
+
+export async function switchProfile(options: ProfileServiceOptions, profileName: string, fillMissing?: boolean | ((missing: string[]) => Promise<void>)): Promise<AppSettings> {
+  if (options.isRuntimeRunning?.()) throw new Error('请先停止 DSH，再切换 Profile。')
+  const dshHome = await homeOf(options)
+  await prepareProfileDependencies(options, profileName, fillMissing)
   const settings = await options.readSettings()
   const metadata = await readProfileMetadata(dshHome, profileName)
   // DSH version is part of the Profile transfer metadata. Switching the
@@ -959,6 +968,7 @@ export function createProfileService(options: ProfileServiceOptions): ProfileSer
     list: () => listProfiles(options),
     create: input => createProfile(options, input),
     clone: (sourceName, targetName, description) => cloneProfile(options, sourceName, targetName, description),
+    prepare: profileName => prepareProfileDependencies(options, profileName, true),
     switch: (profileName, fillMissing) => switchProfile(options, profileName, fillMissing),
     remove: profileName => deleteProfile(options, profileName),
     async metadata(profileName) {

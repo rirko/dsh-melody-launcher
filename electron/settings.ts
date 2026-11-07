@@ -70,6 +70,25 @@ function validLauncherBackground(value: unknown): string | null {
     : null
 }
 
+/** 兼容早期文件选择器误把单个 filePaths 数组写入设置的情况。 */
+function safeStoredAbsolutePath(value: unknown, fallback: string): string {
+  const candidate = typeof value === 'string'
+    ? value
+    : Array.isArray(value) && value.length === 1 && typeof value[0] === 'string'
+      ? value[0]
+      : null
+  return candidate && path.isAbsolute(candidate) ? candidate : fallback
+}
+
+function safeStoredCommand(value: unknown, fallback: string): string {
+  const candidate = typeof value === 'string'
+    ? value
+    : Array.isArray(value) && value.length === 1 && typeof value[0] === 'string'
+      ? value[0]
+      : null
+  return candidate?.trim() || fallback
+}
+
 /** Skill 压缩包上限（MB）：16 到 2048 之外的取值一律回落默认 64。 */
 function validSkillMaxArchiveMb(value: unknown): number {
   return Number.isInteger(value) && (value as number) >= 16 && (value as number) <= 2048
@@ -174,9 +193,10 @@ export function mergeStoredSettings(defaults: AppSettings, stored: Partial<AppSe
     dshVersion: stored.dshVersion == null ? null : validRuntimeVersion(stored.dshVersion) ? stored.dshVersion.trim() : null,
     nodeVersion: stored.nodeVersion == null ? null : validRuntimeVersion(stored.nodeVersion) ? stored.nodeVersion.trim() : null,
     activePackId: null,
-    dshInstallPath: typeof stored.dshInstallPath === 'string' && path.isAbsolute(stored.dshInstallPath)
-      ? stored.dshInstallPath
-      : defaults.dshInstallPath,
+    dshInstallPath: safeStoredAbsolutePath(stored.dshInstallPath, defaults.dshInstallPath),
+    dshHome: safeStoredAbsolutePath(stored.dshHome, defaults.dshHome),
+    workspace: safeStoredAbsolutePath(stored.workspace, defaults.workspace),
+    launchExecutable: safeStoredCommand(stored.launchExecutable, defaults.launchExecutable),
     launchArgs: Array.isArray(stored.launchArgs)
       ? stored.launchArgs.filter(value => typeof value === 'string')
       : defaults.launchArgs,
@@ -220,6 +240,9 @@ export interface SettingsStoreOptions {
 
 export function createSettingsStore(options: SettingsStoreOptions): SettingsStore {
   let cache: AppSettings | null = null
+  // 首屏会并发请求 settings/profile/runtime 等多个 IPC。合并首次读取，
+  // 避免每个调用都重复扫描本地 DSH 和 PATH。
+  let pendingRead: Promise<AppSettings> | null = null
 
   async function profileDshVersion(settings: AppSettings): Promise<string | null | undefined> {
     if (!isSafeProfileName(settings.profileName) || typeof settings.dshHome !== 'string' || !path.isAbsolute(settings.dshHome)) return undefined
@@ -269,18 +292,27 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       cache = await projectRuntime(profileVersion === undefined ? cache : { ...cache, dshVersion: profileVersion })
       return cache
     }
-    const defaults = options.createDefaults()
-    let stored: Partial<AppSettings> | null = null
+    if (pendingRead) return pendingRead
+    const load = (async (): Promise<AppSettings> => {
+      const defaults = options.createDefaults()
+      let stored: Partial<AppSettings> | null = null
+      try {
+        stored = JSON.parse(await readFile(options.filePath, 'utf8')) as Partial<AppSettings>
+      } catch {
+        stored = null
+      }
+      let loaded = mergeStoredSettings(defaults, stored)
+      const profileVersion = await profileDshVersion(loaded)
+      if (profileVersion !== undefined) loaded = { ...loaded, dshVersion: profileVersion }
+      cache = await projectRuntime(loaded, true)
+      return cache
+    })()
+    pendingRead = load
     try {
-      stored = JSON.parse(await readFile(options.filePath, 'utf8')) as Partial<AppSettings>
-    } catch {
-      stored = null
+      return await load
+    } finally {
+      if (pendingRead === load) pendingRead = null
     }
-    let loaded = mergeStoredSettings(defaults, stored)
-    const profileVersion = await profileDshVersion(loaded)
-    if (profileVersion !== undefined) loaded = { ...loaded, dshVersion: profileVersion }
-    cache = await projectRuntime(loaded, true)
-    return cache
   }
 
   return {

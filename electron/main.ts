@@ -5,7 +5,7 @@ import { cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { AppSettings, RuntimeOutput, SkillInstallTarget, WindowMode } from '../src/types'
+import type { OfficialPackRelease, AppSettings, RuntimeOutput, SkillInstallTarget, WindowMode } from '../src/types'
 import { ACP_RUNTIME_DIRNAME, CREDENTIALS_LOCK_DIRNAME, createAiInstaller, healCredentialsLock, type AiInstaller } from './ai-install'
 import { createApplicationAddonManager, type ApplicationAddonManager } from './application-addons'
 import { applyWindowMode, applyWindowModeImmediate, createMainWindow, createRendererChannel } from './app-window'
@@ -17,6 +17,8 @@ import { readDeepSeekApiKey } from './credentials'
 import { resolveAgentApiForModel, resolveCopilotAgentApi } from './copilot-api'
 import { createApiProbe, type ApiProbeService } from './api-probe'
 import { createInstallQueue, type InstallQueue } from './install-queue'
+import { createOfficialPackService } from './official-pack'
+import { readPackRegistry } from './pack-registry'
 import { createDeepSeekBalanceService } from './deepseek-balance'
 import { createDshUsageService } from './dsh-usage'
 import { matchSkillsShTarget } from './skills-sh'
@@ -64,7 +66,8 @@ import { configureProcessTracker, shutdownTrackedProcesses, withExecutableDirect
 import { createProcessSupervisor, type ProcessSupervisor } from './process-supervisor'
 import { readProfile, reorderPlugins, togglePlugin } from './profile'
 import { createRecommendedWebUiService, type RecommendedWebUiService } from './recommended-web-ui'
-import { consolidatePluginPool, createProfileService, ensureProfileWorkspaceConfig, migrateLegacyPacks, type ProfileService } from './profile-service'
+import { installProfileDependencies } from './profile-dependency-install'
+import { consolidatePluginPool, createProfileService, ensureProfileWorkspaceConfig, migrateLegacyPacks, readProfileMetadata, writeProfileMetadata, type ProfileService } from './profile-service'
 import { installPresetFromDirectory } from './preset-install'
 import { installSkillFromDirectory } from './skill-install'
 import { createRendererEvents } from './renderer-events'
@@ -118,6 +121,7 @@ interface Services {
   profiles: ProfileService
   nonstandardPack: NonstandardPackService
   apiProbe: ApiProbeService
+  officialPack: { listVersions(): Promise<OfficialPackRelease[]>; install(version: string): Promise<{ outcome: string; message?: string }> }
   installQueue: InstallQueue
   deepSeekBalance: ReturnType<typeof createDeepSeekBalanceService>
   dshUsageService: ReturnType<typeof createDshUsageService>
@@ -360,26 +364,34 @@ function createServices(): Services {
             offlineInstallAttempted = true
             offlineNode ??= await prepareNodeRuntime('plugin')
             offlinePnpm ??= await preparePnpmRuntime('plugin', offlineNode)
-            await syncProfilePnpmConfig(targetProfileDir, buildNetworkEnvironment(current).npmRegistry, pluginStoreRoot)
-            const result = await runCommand(offlinePnpm.executable, ['install', '--dir', targetProfileDir, '--offline', '--no-frozen-lockfile', '--config.auto-install-peers=false', '--store-dir', pluginStoreRoot], {
-              cwd: targetProfileDir,
-              env: withGitOnPath(withExecutableDirectoryOnPath(offlinePnpm.executable, withExecutableDirectoryOnPath(offlineNode.node, {
-                ...process.env,
-                DSH_HOME: current.dshHome,
-                npm_config_store_dir: pluginStoreRoot,
-                NPM_CONFIG_STORE_DIR: pluginStoreRoot,
-                pnpm_config_store_dir: pluginStoreRoot,
-                PNPM_CONFIG_STORE_DIR: pluginStoreRoot,
-                CI: 'true',
-                npm_config_yes: 'true',
-                NPM_CONFIG_YES: 'true',
-                PNPM_CONFIG_YES: 'true',
-                COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
-              }))),
-              inactivityTimeoutMs: 5 * 60 * 1000,
-              onOutput: (text, level) => events.output('plugin', level, text),
+            const registry = buildNetworkEnvironment(current).npmRegistry
+            await syncProfilePnpmConfig(targetProfileDir, registry, pluginStoreRoot)
+            await installProfileDependencies({
+              profileName,
+              profileDirectory: targetProfileDir,
+              storeDirectory: pluginStoreRoot,
+              registry,
+              onOfflineMiss: () => events.output('plugin', 'info', '本地依赖缓存不完整，正在从配置的镜像源补齐；不会运行安装脚本。'),
+              execute: args => runCommand(offlinePnpm!.executable, args, {
+                cwd: targetProfileDir,
+                env: withGitOnPath(withExecutableDirectoryOnPath(offlinePnpm!.executable, withExecutableDirectoryOnPath(offlineNode!.node, {
+                  ...process.env,
+                  ...buildNetworkEnvironment(current).proxy,
+                  DSH_HOME: current.dshHome,
+                  npm_config_store_dir: pluginStoreRoot,
+                  NPM_CONFIG_STORE_DIR: pluginStoreRoot,
+                  pnpm_config_store_dir: pluginStoreRoot,
+                  PNPM_CONFIG_STORE_DIR: pluginStoreRoot,
+                  CI: 'true',
+                  npm_config_yes: 'true',
+                  NPM_CONFIG_YES: 'true',
+                  PNPM_CONFIG_YES: 'true',
+                  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
+                }))),
+                inactivityTimeoutMs: 5 * 60 * 1000,
+                onOutput: (text, level) => events.output('plugin', level, text),
+              }),
             })
-            if (result.exitCode !== 0) throw new Error(`插件「${packageName}」无法从共享插件池补齐，请检查来源记录。`)
           }
           continue
         }
@@ -524,8 +536,8 @@ function createServices(): Services {
     packageStoreRoot: path.join(userData, 'plugin-store'),
     readSettings: () => settings.read(),
     readApiKey: dshHome => readDeepSeekApiKey(dshHome),
-    resolveAgentApi: dshHome => resolveCopilotAgentApi(dshHome),
-    resolveAgentApiForModel: (dshHome, provider, model) => resolveAgentApiForModel(dshHome, provider, model),
+    resolveAgentApi: (dshHome, profileName) => resolveCopilotAgentApi(dshHome, profileName),
+    resolveAgentApiForModel: (dshHome, provider, model, profileName) => resolveAgentApiForModel(dshHome, provider, model, profileName),
     prepareNodeRuntime: () => prepareNodeRuntime('ai'),
     preparePnpmRuntime: nodeRuntime => preparePnpmRuntime('ai', nodeRuntime),
     emitEvent: event => events.aiSessionEvent(event),
@@ -652,11 +664,12 @@ function createServices(): Services {
     togglePreset: (name, enabled) => installer.togglePreset(name, enabled),
   }
 
+  const packRegistryPath = path.join(userData, 'packs.json')
   packManager = createPackManager({
     readSettings: () => settings.read(),
     saveSettings: next => settings.save(next),
     nativeRuntime: resolveInstalledNativeRuntime,
-    registryPath: path.join(userData, 'packs.json'),
+    registryPath: packRegistryPath,
     manifestRoot: path.join(userData, 'pack-manifests'),
     snapshotRoot: path.join(userData, 'pack-snapshots'),
     pluginReceiptsPath,
@@ -706,6 +719,22 @@ function createServices(): Services {
         return { ...installed, profile }
       },
       'pack-create': request => packManager!.createPack(request),
+      'official-pack': async version => {
+        const result = await officialPack.install(version)
+        if (result.result?.id) {
+          // 快照包绑定了确定的 DSH 版本：本机没有就自动下载（不切换当前选择）。
+          // 统一 Profile 模式下包记录存在 Profile 元数据里，packs.json 不参与。
+          const dshHome = (await settings.read()).dshHome
+          const dshVersion = await readProfileMetadata(dshHome, result.result.id).then(m => m.dshVersion, () => null)
+          if (dshVersion) {
+            const environment = await runtimeVersions.read(false)
+            if (!environment.dshInstalled.some(item => item.version === dshVersion)) {
+              await runtimeVersions.installDsh(dshVersion, { select: false })
+            }
+          }
+        }
+        return result
+      },
       'pack-import': async job => {
         const result = await packManager!.importPack(job.path, job.items, job.name === undefined ? undefined : { name: job.name })
         const current = await settings.read()
@@ -754,6 +783,30 @@ function createServices(): Services {
     if (result.dependencies > 0) events.output('plugin', 'info', `已将 ${result.dependencies} 个 Profile 插件依赖归并到共享插件池。`)
   }).catch(error => events.output('plugin', 'error', `旧整合包/插件池迁移失败：${error instanceof Error ? error.message : String(error)}`))
 
+  // 官方整合包：版本目录 + 获取流程（换源下载 → 快照导入 → 盖官方版本戳 → 外观回原生）。
+  const officialPack = createOfficialPackService({
+    fetchImpl: proxyAwareFetch,
+    importPack: (filePath, items, importOptions) => packManager!.importPack(filePath, items, importOptions),
+    homeForPack: async () => (await settings.read()).dshHome,
+    stampOfficialVersion: async (packId, packVersion) => {
+      const dshHome = (await settings.read()).dshHome
+      await writeProfileMetadata(dshHome, packId, { officialPackVersion: packVersion })
+    },
+    isOfficialVersionImported: async packVersion => {
+      // 权威存储是各 Profile 的元数据；packs.json 在统一 Profile 模式下不参与。
+      const dshHome = (await settings.read()).dshHome
+      const entries = await readdir(path.join(dshHome, 'profiles'), { withFileTypes: true }).catch(() => [])
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        const meta = await readProfileMetadata(dshHome, entry.name).catch(() => null)
+        if (meta?.officialPackVersion === packVersion) return true
+      }
+      return false
+    },
+    downloadDir: path.join(userData, 'official-packs'),
+    onProgress: progress => events.officialPackProgress(progress),
+  })
+
   return {
     settings,
     pluginReceiptsPath,
@@ -773,6 +826,7 @@ function createServices(): Services {
     profiles: profileService,
     nonstandardPack,
     apiProbe,
+    officialPack,
     installQueue,
     deepSeekBalance,
     dshUsageService,

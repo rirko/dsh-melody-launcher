@@ -353,7 +353,8 @@ function LauncherShell() {
       <div className="app-loading">
         <div className="brand-mark"><Layers3 size={22} /></div>
         <LoaderCircle className="spin" size={22} />
-        <span>正在读取 DSH 配置</span>
+        <span>{store.startupError ?? '正在读取 DSH 配置'}</span>
+        {store.startupError && <button type="button" className="secondary-button compact" onClick={() => window.location.reload()}>重试</button>}
       </div>
     )
   }
@@ -695,6 +696,7 @@ function LauncherShell() {
           onSaveDeepSeek={store.saveApiKey}
           onClearDeepSeek={store.clearApiKey}
           onSaveCustom={store.saveCustomApi}
+          onSyncCustom={store.syncCustomApi}
           onRemoveCustom={store.removeCustomApi}
           onProbe={store.probeApi}
         />

@@ -144,6 +144,20 @@ describe('managed DSH installation', () => {
     })
   })
 
+  it.runIf(process.platform === 'win32')('skips disconnected UNC paths during detection', async () => {
+    const started = Date.now()
+    await expect(findInstalledDsh({
+      managedRoot: '\\\\127.0.0.1\\dsh-launcher-missing',
+      configuredExecutable: '\\\\127.0.0.1\\dsh-launcher-missing\\dsh.cmd',
+      environment: {
+        PATH: '\\\\127.0.0.1\\dsh-launcher-missing',
+        ProgramFiles: '\\\\127.0.0.1\\dsh-launcher-missing',
+      },
+      timeoutMs: 25,
+    })).resolves.toEqual({ installed: false, version: null, executable: null, source: null })
+    expect(Date.now() - started).toBeLessThan(500)
+  })
+
   it('ignores unrelated executables named dsh', async () => {
     const systemRoot = path.join(runtimeRoot, 'unrelated-bin')
     const executable = path.join(systemRoot, process.platform === 'win32' ? 'dsh.cmd' : 'dsh')

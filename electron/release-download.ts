@@ -19,12 +19,14 @@ export async function downloadReleaseAsset(
   maxBytes: number,
   onProgress?: (received: number, total: number | null) => void,
   fetchImpl?: typeof fetch,
+  signal?: AbortSignal,
 ): Promise<Buffer> {
   assertHttpsReleaseUrl(url)
   const doFetch = fetchImpl ?? fetch
   const response = await doFetch(url, {
     headers: { 'User-Agent': 'DSH-Launcher' },
     redirect: 'follow',
+    signal,
   })
   if (!response.ok || !response.body) {
     throw new Error(`下载 Release 资产失败（HTTP ${response.status}）。`)
@@ -38,8 +40,12 @@ export async function downloadReleaseAsset(
   let received = 0
   try {
     while (true) {
+      // 换源守卫在读到慢流数据前就 abort 了：这里每次读取后都检查，
+      // 让不感知 signal 的响应体也能被及时打断。
+      signal?.throwIfAborted()
       const chunk = await reader.read()
       if (chunk.done) break
+      signal?.throwIfAborted()
       received += chunk.value.byteLength
       if (received > maxBytes) {
         await reader.cancel().catch(() => undefined)

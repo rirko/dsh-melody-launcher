@@ -51,6 +51,77 @@ describe('Profile runtime version authority', () => {
     expect(JSON.parse(await readFile(env.filePath, 'utf8')).dshVersion).toBe('0.1.0')
   })
 
+  it('coalesces concurrent initial reads before running DSH detection', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-settings-concurrent-'))
+    settingsRoots.push(root)
+    const defaults = defaultSettings({ homeDirectory: root, documentsDirectory: root })
+    let detectionCalls = 0
+    const store = createSettingsStore({
+      filePath: path.join(root, 'settings.json'),
+      createDefaults: () => defaults,
+      detectInstalledDsh: async () => {
+        detectionCalls += 1
+        await new Promise(resolve => setTimeout(resolve, 20))
+        return { installed: false, executable: null, version: null, source: null }
+      },
+    })
+
+    const [first, second, third] = await Promise.all([store.read(), store.read(), store.read()])
+    expect(detectionCalls).toBe(1)
+    expect(second).toEqual(first)
+    expect(third).toEqual(first)
+  })
+
+  it('falls back to safe paths when legacy settings contain array values', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-settings-invalid-paths-'))
+    settingsRoots.push(root)
+    const defaults = defaultSettings({ homeDirectory: root, documentsDirectory: root })
+    const filePath = path.join(root, 'settings.json')
+    await writeFile(filePath, JSON.stringify({
+      ...defaults,
+      dshHome: [root, 'broken'],
+      workspace: [root, 'broken'],
+      launchExecutable: ['npx.cmd'],
+    }), 'utf8')
+    const store = createSettingsStore({
+      filePath,
+      createDefaults: () => defaults,
+      detectInstalledDsh: async () => ({ installed: false, executable: null, version: null, source: null }),
+    })
+
+    await expect(store.read()).resolves.toMatchObject({
+      dshHome: defaults.dshHome,
+      workspace: defaults.workspace,
+      launchExecutable: defaults.launchExecutable,
+    })
+  })
+
+  it('migrates single-entry file picker arrays to their path values', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-settings-single-path-'))
+    settingsRoots.push(root)
+    const defaults = defaultSettings({ homeDirectory: root, documentsDirectory: root })
+    const selectedHome = path.join(root, 'selected-dsh-home')
+    const selectedWorkspace = path.join(root, 'selected-workspace')
+    const filePath = path.join(root, 'settings.json')
+    await writeFile(filePath, JSON.stringify({
+      ...defaults,
+      dshHome: [selectedHome],
+      workspace: [selectedWorkspace],
+      launchExecutable: ['npx.cmd'],
+    }), 'utf8')
+    const store = createSettingsStore({
+      filePath,
+      createDefaults: () => defaults,
+      detectInstalledDsh: async () => ({ installed: false, executable: null, version: null, source: null }),
+    })
+
+    await expect(store.read()).resolves.toMatchObject({
+      dshHome: selectedHome,
+      workspace: selectedWorkspace,
+      launchExecutable: 'npx.cmd',
+    })
+  })
+
   it('does not create Profile directories or metadata during settings reads', async () => {
     const env = await settingsFixture()
     expect((await env.store.read()).dshVersion).toBe('0.1.0')

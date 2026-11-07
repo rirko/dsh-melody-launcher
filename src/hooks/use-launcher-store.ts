@@ -25,7 +25,7 @@ import type {
   LauncherUpdateProgress,
   LauncherUpdateStatus,
   ManagedPlugin,
-  PackStatus,
+  OfficialPackRelease, OfficialPackDownloadProgress, PackStatus,
   ProfileSummary,
   PluginTrialResult,
   PresetInstallResult,
@@ -50,6 +50,26 @@ export type RuntimeToggleResult = 'installed' | 'started' | 'stopped' | 'failed'
 
 export function pluginTrialStateKey(profileName: string, packageName: string): string {
   return `${profileName}:${packageName}`
+}
+
+const STARTUP_OPERATION_TIMEOUT_MS = 8_000
+
+function withStartupTimeout<T>(
+  promise: Promise<T>,
+  label: string,
+  fallback?: T,
+): Promise<T> {
+  const hasFallback = arguments.length >= 3
+  let timer: number | undefined
+  const timeout = new Promise<T>((resolve, reject) => {
+    timer = window.setTimeout(() => {
+      if (hasFallback) resolve(fallback as T)
+      else reject(new Error(`${label}超过 ${Math.round(STARTUP_OPERATION_TIMEOUT_MS / 1000)} 秒未完成。`))
+    }, STARTUP_OPERATION_TIMEOUT_MS)
+  })
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== undefined) window.clearTimeout(timer)
+  })
 }
 
 export function useLauncherStore() {
@@ -95,9 +115,16 @@ export function useLauncherStore() {
   const catalogProgressLogState = useRef<Record<string, string>>({})
   const [selectedPlugin, setSelectedPlugin] = useState<string | null>(null)
   const [packs, setPacks] = useState<PackStatus[]>([])
+  // 官方整合包版本目录（Release 资产列表）；error 非空表示这次读取失败。
+  const [officialVersions, setOfficialVersions] = useState<OfficialPackRelease[] | null>(null)
+  const [officialVersionsBusy, setOfficialVersionsBusy] = useState(false)
+  const [officialVersionsError, setOfficialVersionsError] = useState<string | null>(null)
+  const [officialPackProgress, setOfficialPackProgress] = useState<OfficialPackDownloadProgress | null>(null)
+  const [installingOfficialVersion, setInstallingOfficialVersion] = useState<string | null>(null)
   const [profiles, setProfiles] = useState<ProfileSummary[]>([])
   const [packSnapshotsAvailable, setPackSnapshotsAvailable] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [startupError, setStartupError] = useState<string | null>(null)
   const activeRuntimeReplacement = installedApplications.find(
     application => application.enabled && application.launchMode === 'runtime-replacement',
   ) ?? null
@@ -120,24 +147,25 @@ export function useLauncherStore() {
 
   useEffect(() => {
     let disposed = false
+    setStartupError(null)
     void Promise.all([
-      api.getSettings(),
-      api.readProfile(),
-      api.getRuntimeState(),
+      withStartupTimeout(api.getSettings(), '读取启动设置'),
+      withStartupTimeout(api.readProfile(), '读取当前 Profile'),
+      withStartupTimeout(api.getRuntimeState(), '读取运行状态', EMPTY_RUNTIME_STATE),
       // 凭据文件损坏时凭据状态未知，但不应阻塞整个启动器加载。
-      api.getDeepSeekCredentialStatus().catch(error => {
+      withStartupTimeout(api.getDeepSeekCredentialStatus().catch(error => {
         showToast({ kind: 'error', message: errorText(error) })
         return { configured: false }
-      }),
-      api.detectDshInstallation(),
-      api.readInstalledSkills(),
-      api.readInstalledApplications(),
-      api.readInstalledPresets(),
-      api.listPacks(),
-      api.listProfiles(),
-      api.packHasSnapshot(),
-      api.readPluginTrials(),
-      api.listCustomApiProviders().catch(() => [] as CustomApiProvider[]),
+      }), '读取凭据状态', { configured: false }),
+      withStartupTimeout(api.detectDshInstallation(), '检测 DSH 安装', EMPTY_DSH_INSTALLATION),
+      withStartupTimeout(api.readInstalledSkills(), '读取 Skills', [] as InstalledSkill[]),
+      withStartupTimeout(api.readInstalledApplications(), '读取应用加载项', [] as InstalledApplicationAddon[]),
+      withStartupTimeout(api.readInstalledPresets(), '读取预设', [] as InstalledPreset[]),
+      withStartupTimeout(api.listPacks(), '读取整合包', [] as PackStatus[]),
+      withStartupTimeout(api.listProfiles(), '读取 Profile 列表', [] as ProfileSummary[]),
+      withStartupTimeout(api.packHasSnapshot(), '检查整合包快照', false),
+      withStartupTimeout(api.readPluginTrials(), '读取插件试运行记录', [] as PluginTrialResult[]),
+      withStartupTimeout(api.listCustomApiProviders().catch(() => [] as CustomApiProvider[]), '读取模型配置', [] as CustomApiProvider[]),
     ])
       .then(([nextSettings, nextProfile, nextRuntime, nextCredentialStatus, nextDshInstallation, nextInstalledSkills, nextInstalledApplications, nextInstalledPresets, nextPacks, nextProfiles, nextPackSnapshot, nextPluginTrials, nextCustomApiProviders]) => {
         setSettings(nextSettings)
@@ -155,7 +183,10 @@ export function useLauncherStore() {
         setPluginTrials(Object.fromEntries(nextPluginTrials.map(result => [pluginTrialStateKey(result.profileName, result.packageName), result])))
         setCustomApiProviders(nextCustomApiProviders)
       })
-      .catch(error => showToast({ kind: 'error', message: errorText(error) }))
+      .catch(error => {
+        if (!disposed) setStartupError(errorText(error))
+        showToast({ kind: 'error', message: errorText(error) })
+      })
       .finally(() => setLoading(false))
 
     // 下载队列快照独立加载：重启恢复的待执行任务由主进程落盘，这里主动拉一次，
@@ -272,6 +303,7 @@ export function useLauncherStore() {
       api.onRuntimeState(setRuntime),
       api.onInstallProgress(handleInstallProgress),
       api.onInstallQueue(setInstallQueue),
+      api.onOfficialPackProgress(setOfficialPackProgress),
       api.onCatalogAnalysisProgress(handleCatalogAnalysisProgress),
       api.onDshMarketProgress(progress => {
         // 市场的插件级操作（安装/更新/卸载）与目录同步一样，只写日志行，
@@ -668,6 +700,15 @@ export function useLauncherStore() {
     return true
   }, [api, run])
 
+  const syncCustomApi = useCallback(async (): Promise<boolean> => {
+    const providers = await run(BUSY.credential, () => api.syncCustomApiProviders(), {
+      success: '已将当前 Profile 的 DSH 模型同步到全局设置。',
+    })
+    if (!providers) return false
+    setCustomApiProviders(providers)
+    return true
+  }, [api, run])
+
   const removeCustomApi = useCallback(async (route: string): Promise<boolean> => {
     const providers = await run(BUSY.credential, () => api.removeCustomApiProvider(route), {
       success: `自定义 API「${route}」已删除。`,
@@ -782,6 +823,44 @@ export function useLauncherStore() {
     })
     if (next) setPacks(next)
   }, [api, run, showToast])
+
+  // 官方整合包版本列表：失败不弹 toast（堆叠里有专门的重试位），只在面板里显示。
+  const loadOfficialVersions = useCallback(async (force = false) => {
+    if (officialVersionsBusy) return
+    if (!force && officialVersions) return
+    setOfficialVersionsBusy(true)
+    setOfficialVersionsError(null)
+    try {
+      const next = await api.listOfficialPackVersions()
+      setOfficialVersions(next)
+    } catch (error) {
+      setOfficialVersionsError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setOfficialVersionsBusy(false)
+    }
+  }, [api, officialVersions, officialVersionsBusy])
+
+  // 获取官方整合包：进安装队列排队（下载 + 快照导入），完成 Promise 在任务结算时兑现。
+  const installOfficialPackVersion = useCallback(async (version: string): Promise<boolean> => {
+    if (installingOfficialVersion) return false
+    setInstallingOfficialVersion(version)
+    try {
+      const result = await run(`official-pack:${version}`, () => api.installOfficialPackVersion(version), {
+        onError: error => showToast({ kind: 'error', message: errorText(error) }),
+      })
+      const outcome = (result as { outcome?: string } | undefined)?.outcome
+      if (outcome === 'present') {
+        showToast({ kind: 'success', message: `官方整合包 ${version} 已经在本地了。` })
+      } else if (outcome === 'imported') {
+        showToast({ kind: 'success', message: `官方整合包 ${version} 已导入，可在整合包列表切换启用。` })
+      }
+      await refreshPacks()
+      return outcome === 'imported' || outcome === 'present'
+    } finally {
+      setInstallingOfficialVersion(null)
+      setOfficialPackProgress(null)
+    }
+  }, [api, installingOfficialVersion, refreshPacks, run, showToast])
 
   const refreshProfiles = useCallback(async () => {
     const next = await api.listProfiles()
@@ -1012,6 +1091,7 @@ export function useLauncherStore() {
   return {
     // 状态
     loading,
+    startupError,
     settings,
     profile,
     runtime,
@@ -1037,6 +1117,13 @@ export function useLauncherStore() {
     selectedPlugin,
     selected: profile?.plugins.find(plugin => plugin.packageName === selectedPlugin) ?? null,
     packs,
+    officialVersions,
+    officialVersionsBusy,
+    officialVersionsError,
+    loadOfficialVersions,
+    officialPackProgress,
+    installingOfficialVersion,
+    installOfficialPackVersion,
     profiles,
     packSnapshotsAvailable,
     busy,
@@ -1074,6 +1161,7 @@ export function useLauncherStore() {
     saveApiKey,
     clearApiKey,
     saveCustomApi,
+    syncCustomApi,
     removeCustomApi,
     probeApi,
     pauseQueue,

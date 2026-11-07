@@ -903,7 +903,6 @@ export function DiscoverView({
                       : badge
                         ? <span className={`repository-analysis-badge ${badge.className}`}>{badge.label}</span>
                         : <span className="repository-analysis-badge pending">待检测</span>}
-                    {repo.featured && <span className="featured-badge">内置</span>}
                   </div>
                   <p>{repo.description}</p>
                   {isChecking && <CatalogAnalysisSteps progress={analysisProgress[repo.fullName]} />}

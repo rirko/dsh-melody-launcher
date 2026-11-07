@@ -19,6 +19,7 @@ import type {
   ApiProbeTarget,
   CredentialStatus,
   CustomApiProtocol,
+  CustomApiModel,
   CustomApiProvider,
   CustomApiProviderInput,
 } from '../../types'
@@ -32,6 +33,7 @@ interface CredentialDialogProps {
   onSaveDeepSeek: (apiKey: string) => Promise<boolean>
   onClearDeepSeek: () => Promise<boolean>
   onSaveCustom: (input: CustomApiProviderInput) => Promise<boolean>
+  onSyncCustom: () => Promise<boolean>
   onRemoveCustom: (route: string) => Promise<boolean>
   onProbe: (target: ApiProbeTarget) => Promise<ApiProbeResult>
 }
@@ -43,6 +45,7 @@ interface ProviderDraft {
   baseUrl: string
   protocol: CustomApiProtocol
   modelText: string
+  models?: CustomApiModel[]
   apiKey: string
   hadApiKey: boolean
 }
@@ -66,6 +69,9 @@ function emptyDraft(): ProviderDraft {
 }
 
 function draftFromProvider(provider: CustomApiProvider): ProviderDraft {
+  const models = provider.models?.length
+    ? provider.models.map(model => ({ ...model, input: [...model.input], reasoningEfforts: { ...model.reasoningEfforts } }))
+    : provider.modelIds.map(id => ({ id, input: ['text' as const], reasoningEfforts: {} }))
   return {
     originalRoute: provider.route,
     route: provider.route,
@@ -73,6 +79,7 @@ function draftFromProvider(provider: CustomApiProvider): ProviderDraft {
     baseUrl: provider.baseUrl,
     protocol: provider.protocol,
     modelText: provider.modelIds.join('\n'),
+    models,
     apiKey: '',
     hadApiKey: provider.hasApiKey,
   }
@@ -87,6 +94,7 @@ export function CredentialDialog({
   onSaveDeepSeek,
   onClearDeepSeek,
   onSaveCustom,
+  onSyncCustom,
   onRemoveCustom,
   onProbe,
 }: CredentialDialogProps) {
@@ -128,7 +136,8 @@ export function CredentialDialog({
       displayName: draft.displayName,
       baseUrl: draft.baseUrl,
       protocol: draft.protocol,
-      modelIds: draft.modelText.split(/\r?\n/),
+      modelIds: (draft.models ?? []).map(model => model.id.trim()).filter(Boolean),
+      models: draft.models,
       apiKey: draft.apiKey,
     }
     if (await onSaveCustom(input)) {
@@ -190,7 +199,10 @@ export function CredentialDialog({
             <div className="custom-api-panel">
               <div className="custom-api-heading">
                 <div><strong>自定义模型服务</strong><span>通过 DSH 内置的 LLM Provider 加载。</span></div>
-                <button type="button" className="secondary-button compact" disabled={busy || loading} onClick={() => { setDraft(emptyDraft()); setConfirmingRemove(null) }}><Plus size={15} />新增</button>
+                <div className="custom-api-heading-actions">
+                  <button type="button" className="secondary-button compact" disabled={busy || loading} onClick={() => void onSyncCustom()}><LoaderCircle size={15} className={busy ? 'spin' : ''} />同步到全局设置</button>
+                  <button type="button" className="secondary-button compact" disabled={busy || loading} onClick={() => { setDraft(emptyDraft()); setConfirmingRemove(null) }}><Plus size={15} />新增</button>
+                </div>
               </div>
 
               {loading ? (
@@ -206,6 +218,8 @@ export function CredentialDialog({
                         <strong>{provider.displayName}</strong>
                         <span>{provider.route} · {PROTOCOL_LABELS[provider.protocol]}</span>
                         <small title={provider.baseUrl}>{provider.baseUrl}</small>
+                        {provider.models && provider.models.length > 0 && <div className="custom-api-model-list">{provider.models.map(model => <small key={model.id}>{model.id} · {model.contextWindow ? `上下文 ${model.contextWindow}` : '上下文未设置'}{model.maxOutputTokens ? ` · 输出 ${model.maxOutputTokens}` : ''} · {model.input.join('、')}</small>)}</div>}
+                        {provider.defaultModel?.startsWith(`${provider.route}/`) && <small>默认模型：{provider.defaultModel.slice(provider.route.length + 1)}</small>}
                         {probeResults[provider.route] && (
                           <small className={`api-probe-result ${probeResults[provider.route].ok ? 'ok' : 'fail'}`}>{probeResults[provider.route].message}</small>
                         )}
@@ -250,10 +264,21 @@ export function CredentialDialog({
                     <label><span>路由</span><input value={draft.route} onChange={event => setDraft(current => current ? { ...current, route: event.target.value.toLowerCase() } : current)} placeholder="例如：local-ollama" spellCheck={false} /></label>
                     <label className="wide"><span>Base URL</span><input value={draft.baseUrl} onChange={event => setDraft(current => current ? { ...current, baseUrl: event.target.value } : current)} placeholder="https://example.com/v1" spellCheck={false} /></label>
                     <label><span>协议</span><select value={draft.protocol} onChange={event => setDraft(current => current ? { ...current, protocol: event.target.value as CustomApiProtocol } : current)}>{Object.entries(PROTOCOL_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-                    <label><span>模型 ID</span><textarea value={draft.modelText} onChange={event => setDraft(current => current ? { ...current, modelText: event.target.value } : current)} placeholder={'model-a\nmodel-b'} spellCheck={false} /></label>
+                    <div className="custom-model-editor wide">
+                      <div className="custom-model-editor-heading"><span>模型目录</span><button type="button" className="settings-nav-link" onClick={() => setDraft(current => current ? { ...current, models: [...(current.models ?? []), { id: '', input: ['text'], reasoningEfforts: {} }] } : current)}><Plus size={14} />添加模型</button></div>
+                      {(draft.models ?? []).map((model, index) => <div className="custom-model-row" key={`${index}-${model.id}`}>
+                        <input value={model.id} placeholder="模型 ID" onChange={event => setDraft(current => current ? { ...current, models: (current.models ?? []).map((item, itemIndex) => itemIndex === index ? { ...item, id: event.target.value } : item) } : current)} />
+                        <input value={model.name ?? ''} placeholder="显示名称" onChange={event => setDraft(current => current ? { ...current, models: (current.models ?? []).map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value || undefined } : item) } : current)} />
+                        <input type="number" min="1" value={model.contextWindow ?? ''} placeholder="上下文窗口" onChange={event => setDraft(current => current ? { ...current, models: (current.models ?? []).map((item, itemIndex) => itemIndex === index ? { ...item, contextWindow: event.target.value ? Number(event.target.value) : undefined } : item) } : current)} />
+                        <input type="number" min="1" value={model.maxOutputTokens ?? ''} placeholder="最大输出 Token" onChange={event => setDraft(current => current ? { ...current, models: (current.models ?? []).map((item, itemIndex) => itemIndex === index ? { ...item, maxOutputTokens: event.target.value ? Number(event.target.value) : undefined } : item) } : current)} />
+                        <input value={Object.keys(model.reasoningEfforts).join(',')} placeholder="推理档位" onChange={event => setDraft(current => current ? { ...current, models: (current.models ?? []).map((item, itemIndex) => itemIndex === index ? { ...item, reasoningEfforts: Object.fromEntries(event.target.value.split(',').map(value => value.trim()).filter(Boolean).map(value => [value, item.reasoningEfforts[value] ?? value])) } : item) } : current)} />
+                        <span className="custom-model-inputs"><label><input type="checkbox" checked={model.input.includes('text')} onChange={event => setDraft(current => current ? { ...current, models: (current.models ?? []).map((item, itemIndex) => itemIndex === index ? { ...item, input: event.target.checked ? [...new Set([...item.input, 'text' as const])] : item.input.filter(input => input !== 'text') } : item) } : current)} />文本</label><label><input type="checkbox" checked={model.input.includes('image')} onChange={event => setDraft(current => current ? { ...current, models: (current.models ?? []).map((item, itemIndex) => itemIndex === index ? { ...item, input: event.target.checked ? [...new Set([...item.input, 'image' as const])] : item.input.filter(input => input !== 'image') } : item) } : current)} />图片</label></span>
+                      </div>)}
+                      <small className="custom-model-hint">推理档位：已从 DSH Profile 同步并保留；新增档位可在 DSH 中配置后再次点击同步。</small>
+                    </div>
                     <label className="wide"><span>API Key（可选）</span><div className="secret-input"><input autoComplete="off" type={customKeyVisible ? 'text' : 'password'} value={draft.apiKey} onChange={event => setDraft(current => current ? { ...current, apiKey: event.target.value } : current)} placeholder={draft.hadApiKey ? '留空保留现有密钥' : '本地免鉴权服务可留空'} spellCheck={false} /><button type="button" title={customKeyVisible ? '隐藏 Key' : '显示 Key'} aria-label={customKeyVisible ? '隐藏 Key' : '显示 Key'} onClick={() => setCustomKeyVisible(current => !current)}>{customKeyVisible ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></label>
                   </div>
-                  <p className="credential-privacy">配置写入 settings.yaml；密钥单独写入 .credentials.yaml，界面不会读取或显示密钥原文。</p>
+                  <p className="credential-privacy">配置写入当前 Profile 的 cordis.patch.yml；点击“同步到全局设置”后才会镜像到 settings.yaml。密钥单独写入 .credentials.yaml，界面不会读取或显示密钥原文。</p>
                 </form>
               )}
             </div>
@@ -278,7 +303,7 @@ export function CredentialDialog({
           ) : draft ? (
             <>
               <button type="button" className="secondary-button" disabled={busy} onClick={() => setDraft(null)}>取消编辑</button>
-              <button type="submit" form="custom-api-form" className="primary-command" disabled={busy || !draft.route.trim() || !draft.displayName.trim() || !draft.baseUrl.trim() || !draft.modelText.trim()}>{busy ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}{draft.originalRoute ? '保存修改' : '添加 API'}</button>
+              <button type="submit" form="custom-api-form" className="primary-command" disabled={busy || !draft.route.trim() || !draft.displayName.trim() || !draft.baseUrl.trim() || !(draft.models ?? []).some(model => model.id.trim())}>{busy ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}{draft.originalRoute ? '保存修改' : '添加 API'}</button>
             </>
           ) : (
             <button type="button" className="secondary-button" onClick={onClose} disabled={busy}>关闭</button>

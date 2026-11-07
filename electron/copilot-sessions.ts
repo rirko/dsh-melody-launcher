@@ -147,9 +147,9 @@ export interface CopilotSessionManagerOptions {
    * DeepSeek Key 缺失时解析自定义 API 供 Copilot 使用：
    * 返回 provider 路由、模型与密钥环境变量；无可用配置返回 null。
    */
-  resolveAgentApi?: (dshHome: string) => Promise<CopilotAgentApi | null>
+  resolveAgentApi?: (dshHome: string, profileName?: string) => Promise<CopilotAgentApi | null>
   /** 把模型选择器里的 provider/model 解析为 agent API（用户显式选择）。 */
-  resolveAgentApiForModel?: (dshHome: string, provider: string, model: string) => Promise<CopilotModelResolution>
+  resolveAgentApiForModel?: (dshHome: string, provider: string, model: string, profileName?: string) => Promise<CopilotModelResolution>
   prepareNodeRuntime: () => Promise<NodeRuntime>
   preparePnpmRuntime: (nodeRuntime: NodeRuntime) => Promise<PnpmRuntime>
   emitEvent: (event: AiSessionEvent) => void
@@ -1642,7 +1642,7 @@ export function createCopilotSessionManager(options: CopilotSessionManagerOption
     if (sessionModel && options.resolveAgentApiForModel) {
       const separator = sessionModel.indexOf('|')
       if (separator <= 0) throw new Error('模型配置无效，请重新选择。')
-      const resolution = await options.resolveAgentApiForModel(settings.dshHome, sessionModel.slice(0, separator), sessionModel.slice(separator + 1))
+      const resolution = await options.resolveAgentApiForModel(settings.dshHome, sessionModel.slice(0, separator), sessionModel.slice(separator + 1), settings.profileName)
       if (resolution.kind === 'unavailable') throw new Error(resolution.reason)
       if (resolution.kind === 'custom') {
         provider = resolution.api.provider
@@ -1656,7 +1656,7 @@ export function createCopilotSessionManager(options: CopilotSessionManagerOption
         if (!apiKey) throw new Error('DeepSeek 官方 Key 未配置，请先在 API 配置中填写。')
       }
     } else {
-      const fallback = await options.resolveAgentApi?.(settings.dshHome) ?? null
+      const fallback = await options.resolveAgentApi?.(settings.dshHome, settings.profileName) ?? null
       if (fallback) {
         provider = fallback.provider
         model = fallback.model
