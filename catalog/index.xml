@@ -7,9 +7,11 @@
   <repository name="chuspeeism/dashi-taskboard" branch="main" updated="2026-08-19T02:41:16Z" tags="skill"/>
   <repository name="anywhere-labs/deepseek-harness-desktop" branch="master" updated="2026-08-22T09:09:48Z" tags="skill,runtime"/>
   <repository name="esengine/DeepSeek-Reasonix" branch="studio" updated="2026-10-21T21:31:08Z" tags="plugin,skill"/>
+  <repository name="Fei2411/DS-Bot" branch="main" updated="2026-11-07T12:54:37Z" tags="skill"/>
   <repository name="Nagi-ovo/dsh-ads" branch="main" updated="2026-08-19T05:33:25Z" tags="plugin"/>
   <repository name="xiaobright/dsh-anchored-standard" branch="main" updated="2026-08-22T07:14:10Z" tags="invalid"/>
   <repository name="omdsh-dev/DSH-better-sidebar" branch="main" updated="2026-08-19T03:54:07Z" tags="plugin"/>
+  <repository name="mi-tuan/dsh-breeze-claim" branch="main" updated="2026-11-05T08:42:33Z" tags="plugin"/>
   <repository name="Leawind/dsh-minecraft-dev" branch="main" updated="2026-08-15T19:30:41Z" tags="skill"/>
   <repository name="oil-oil/dsh-oil-ui" branch="main" updated="2026-10-20T11:34:08Z" tags="plugin,skill"/>
   <repository name="whiteguo233/dsh-openbiliclaw" branch="main" updated="2026-08-23T08:33:26Z" tags="plugin,skill"/>
